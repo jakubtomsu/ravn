@@ -633,7 +633,7 @@ _js_event_callbacks := [js.Event_Kind]_JS_Event_Callback {
         assert(e.kind == .Wheel)
         event: Event_Scroll
         // TODO: e.wheel.delta_mode
-        event.delta = {f32(e.wheel.delta.x), f32(e.wheel.delta.y)}
+        event.delta = {f32(e.wheel.delta.x), -f32(e.wheel.delta.y)}
         _event_queue_push(event)
     },
 
