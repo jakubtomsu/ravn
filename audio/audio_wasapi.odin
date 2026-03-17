@@ -1,14 +1,10 @@
 #+build windows
 package raven_audio
 
-import "base:intrinsics"
 import "../base"
-
 import "wasapi"
+import "base:intrinsics"
 import "core:sys/windows"
-import "core:math"
-
-BACKEND_WASAPI :: "WASAPI"
 
 when BACKEND == BACKEND_WASAPI {
 
@@ -124,7 +120,13 @@ when BACKEND == BACKEND_WASAPI {
         windows.CoUninitialize()
     }
 
-    _update_output_buffer :: proc() {
+    _render :: proc() {
+        if SINGLE_THREAD {
+            _wasapi_render_buffer()
+        }
+    }
+
+    _wasapi_render_buffer :: proc() {
         padding: u32
         _wasapi_check(_state.audio_client->GetCurrentPadding(&padding))
         frames_available := _state.buffer_frame_num - padding
@@ -156,7 +158,7 @@ when BACKEND == BACKEND_WASAPI {
 
             windows.WaitForSingleObject(_state.buffer_event, windows.INFINITE)
 
-            _update_output_buffer()
+            _wasapi_render_buffer()
         }
 
         return 0

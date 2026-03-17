@@ -17,12 +17,21 @@ import "wav"
 
 BACKEND :: #config(AUDIO_BACKEND, BACKEND_DEFAULT)
 
+BACKEND_NONE :: "None"
+BACKEND_WASAPI :: "WASAPI"
+BACKEND_WEBAUDIO :: "WebAudio"
+BACKEND_MINIAUDIO :: "miniaudio"
+BACKEND_SDL3 :: "SDL3"
+
 when ODIN_OS == .Windows {
     BACKEND_DEFAULT :: BACKEND_WASAPI
+} else when ODIN_OS == .JS {
+    BACKEND_DEFAULT :: BACKEND_WEBAUDIO
 } else {
     BACKEND_DEFAULT :: BACKEND_MINIAUDIO
 }
 
+// Has no effect on some backends.
 SINGLE_THREAD :: #config(AUDIO_SINGLE_THREAD, false)
 
 MAX_SOUNDS :: #config(AUDIO_MAX_SOUNDS, 1024)
@@ -199,9 +208,6 @@ init :: proc(state: ^State) -> bool {
         return false
     }
 
-    assert(_state.frame_rate >= 8000)
-    assert(_state.frame_rate <= 192000)
-
     return true
 }
 
@@ -218,11 +224,10 @@ shutdown :: proc() {
 }
 
 // Call every frame from the main thread.
-// Low overhead, audio is in another thread.
 update :: proc() {
-    if SINGLE_THREAD {
-        _update_output_buffer()
-    }
+    // On some platforms this does audio rendering on the main thread.
+    // But on most backends, this is a no-op and everything is async.
+    _render()
 }
 
 set_master_mixer :: proc(mixer: Generator_Proc) {
@@ -250,7 +255,7 @@ create_resource :: proc(
     format:         Resource_Format,
     data:           []byte,
     flags:          bit_set[Resource_Flag] = {},
-    frame_rate:    u32 = 0,
+    frame_rate:     u32 = 0,
 ) -> (result: Resource_Handle, ok: bool) {
     assert(format != .Invalid)
 
@@ -525,6 +530,9 @@ SCRATCH_BUFFER_SIZE :: 1024 * 2
 SPEED_OF_SOUND :: 343 // m/s, dry air at around 20C
 
 default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
+    assert(_state.frame_rate >= 8000)
+    assert(_state.frame_rate <= 192000)
+
     _scratch: [SCRATCH_BUFFER_SIZE][2]f32
     scratch := _scratch[:len(frame_buf)]
 
@@ -555,6 +563,10 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
         }
 
         sound := &_state.sounds[sound_index]
+
+        if !sound.playing {
+            continue
+        }
 
         resource, resource_ok := _get_resource(sound.resource)
         assert(resource_ok)
@@ -651,7 +663,7 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
 
             side_dots = -side_dots
 
-            pan_range = pan_range + side_dots * 0.9
+            pan_range = pan_range + side_dots * 0.8
 
             // Small spatial frequency response (hacky)
             // Above: HPF due to ear shape

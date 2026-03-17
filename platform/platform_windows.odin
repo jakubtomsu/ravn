@@ -7,7 +7,7 @@ import "base:intrinsics"
 import "base:runtime"
 import "core:sys/windows"
 
-// Vet
+_ :: base
 _ :: intrinsics
 _ :: runtime
 _ :: windows

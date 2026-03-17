@@ -1,6 +1,6 @@
 #include "raven.hlsli"
 
-StructuredBuffer<Sprite_Inst> instances : register(t0);
+RESOURCE_SLOT(0, StructuredBuffer<Sprite_Inst> instances);
 
 VS_Out vs_main(uint vid : SV_VertexID, uint inst_id : SV_InstanceID) {
     Sprite_Inst inst = instances[inst_id + instance_offset];

@@ -278,8 +278,6 @@ intersect_terrain :: proc(
     ly: f32 = 0.0
     steps := 0
 
-    defer base.log_dump(steps)
-
     // accuracy proportional to the distance
     for t: f32 = tmin; t < tmax; t += t * step_size {
         p := pos + dir * t

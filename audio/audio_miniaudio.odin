@@ -1,5 +1,5 @@
-#+build !js
 #+vet explicit-allocators shadowing unused
+#+build !js
 package raven_audio
 
 import "base:runtime"
@@ -11,8 +11,6 @@ import ma "vendor:miniaudio"
 _ :: ma
 _ :: base
 _ :: runtime
-
-BACKEND_MINIAUDIO :: "miniaudio"
 
 when BACKEND == BACKEND_MINIAUDIO {
     _State :: struct {
@@ -46,7 +44,7 @@ when BACKEND == BACKEND_MINIAUDIO {
         ma.device_uninit(&_state.device)
     }
 
-    _update_output_buffer :: proc() {
+    _render :: proc() {
         // No single threaded support
     }
 

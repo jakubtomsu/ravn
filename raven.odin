@@ -461,10 +461,7 @@ Draw_Global_Constants :: struct #all_or_none #align(16) {
     frame:          u32,
     resolution:     [2]i32,
     rand_seed:      u32,
-    param0:         u32,
-    param1:         u32,
-    param2:         u32,
-    param3:         u32,
+    param:          [4]u32, // user params
 }
 
 Draw_Layer_Constants :: struct #all_or_none #align(16) {
@@ -623,6 +620,7 @@ when ODIN_OS == .JS {
 
 
 // Default runner for a raven app.
+//
 // Calling this does nothing when compiling as a DLL, it's the responsibility
 // of whoever loaded the DLL (e.g. hotreload runner) to call the app.
 // NOTE: Things like reload never get called in this mode.
@@ -827,7 +825,9 @@ init_state :: proc(allocator := context.allocator) {
         panic("Failed to initialize GPU")
     }
 
-    shader_compiler.init(&_state.shader_compiler_state)
+    when !RELEASE {
+        shader_compiler.init(&_state.shader_compiler_state)
+    }
 
     if ODIN_OS != .JS {
         assert(gpu.is_init_done())
@@ -1328,24 +1328,23 @@ _load_builtin_assets :: proc() {
     default_vs: []byte
     default_ps: []byte
 
-    // switch gpu.BACKEND {
-    // case gpu.BACKEND_D3D11:
+    when !RELEASE {
+        default_sprite_vs = #load("data/default_sprite.vs.hlsl")
+        default_vs = #load("data/default.vs.hlsl")
+        default_ps = #load("data/default.ps.hlsl")
+    } else when gpu.BACKEND ==  gpu.BACKEND_D3D11 {
+        default_sprite_vs = #load("data/default_sprite.vs.hlsl.dxbc")
+        default_vs = #load("data/default.vs.hlsl.dxbc")
+        default_ps = #load("data/default.ps.hlsl.dxbc")
 
-    default_sprite_vs = #load("data/default_sprite.vs.hlsl")
-    default_vs = #load("data/default.vs.hlsl")
-    default_ps = #load("data/default.ps.hlsl")
+    } else when gpu.BACKEND == gpu.BACKEND_WGPU {
+        default_sprite_vs = #load("data/default_sprite.vs.hlsl.wgsl")
+        default_vs = #load("data/default.vs.hlsl.wgsl")
+        default_ps = #load("data/default.ps.hlsl.wgsl")
+    } else {
+        #panic("GPU backend not supported")
+    }
 
-    // case gpu.BACKEND_WGPU:
-
-    //     INCL :: #load("data/raven.wgsl", string)
-
-    //     default_sprite_vs = transmute([]byte)(INCL + #load("data/default_sprite.vs.wgsl", string))
-    //     default_vs = transmute([]byte)(INCL + #load("data/default.vs.wgsl", string))
-    //     default_ps = transmute([]byte)(INCL + #load("data/default.ps.wgsl", string))
-
-    // case:
-    //     panic("GPU backend not supported or unknown")
-    // }
 
     _state.builtin_vertex_shader = {
         .Default = create_vertex_shader("default", default_vs) or_else panic("Failed to load default vertex shader"),
@@ -2711,7 +2710,7 @@ _shader_include_proc :: proc(path: string, user: rawptr) -> (result: string, ok:
 }
 
 when gpu.BACKEND == gpu.BACKEND_D3D11 {
-    SHADER_COMPILER_TARGET :: shader_compiler.Target.DXIL
+    SHADER_COMPILER_TARGET :: shader_compiler.Target.DXBC
 } else when gpu.BACKEND == gpu.BACKEND_WGPU {
     SHADER_COMPILER_TARGET :: shader_compiler.Target.WGSL
 } else {
@@ -2720,8 +2719,10 @@ when gpu.BACKEND == gpu.BACKEND_D3D11 {
 
 @(require_results)
 create_vertex_shader :: proc(name: string, data: []byte) -> (result: Vertex_Shader_Handle, ok: bool) {
-    compiled := data
-    when !RELEASE {
+    compiled: []byte
+    when RELEASE {
+        compiled = data
+    } else {
         compiled, ok = shader_compiler.compile(
             name = name,
             source = string(data),
@@ -2754,8 +2755,10 @@ create_vertex_shader :: proc(name: string, data: []byte) -> (result: Vertex_Shad
 
 @(require_results)
 create_pixel_shader :: proc(name: string, data: []byte) -> (result: Pixel_Shader_Handle, ok: bool) {
-    compiled := data
-    when !RELEASE {
+    compiled: []byte
+    when RELEASE {
+        compiled = data
+    } else {
         compiled, ok = shader_compiler.compile(
             name = name,
             source = string(data),
@@ -3244,8 +3247,8 @@ draw_sprite :: proc(
     scaling:    Sprite_Scaling = .Pixel,
     param:      u32 = 0,
 ) {
-    validate_vec(pos)
-    validate_vec(scale)
+    validate_vec3(pos)
+    validate_vec2(scale)
     validate_quat(rot)
 
     if col.a < 0.01 || abs(scale.x * scale.y) < 0.0001 {
@@ -3475,8 +3478,8 @@ draw_mesh :: proc(
     add_col:    Vec4 = 0,
     param:      u32 = 0,
 ) {
-    validate_vec(pos)
-    validate_vec(scale)
+    validate_vec3(pos)
+    validate_vec3(scale)
     validate_quat(rot)
 
     mesh, mesh_ok := get_internal_mesh(handle)
@@ -3583,10 +3586,10 @@ draw_triangles :: proc(
     add_col:    Vec4 = 0,
     param:      u32 = 0,
 ) {
-    validate_vec(pos)
+    validate_vec3(pos)
     validate_quat(rot)
-    validate_vec(col)
-    validate_vec(add_col)
+    validate_vec4(col)
+    validate_vec4(add_col)
     validate(len(verts) % 3 == 0)
 
     if len(verts) == 0 {
@@ -3639,10 +3642,10 @@ draw_lines :: proc(
     param:      u32 = 0,
 ) {
     validate(len(verts) % 2 == 0)
-    validate_vec(pos)
+    validate_vec3(pos)
     validate_quat(rot)
-    validate_vec(col)
-    validate_vec(add_col)
+    validate_vec4(col)
+    validate_vec4(add_col)
 
     if len(verts) == 0 {
         return
@@ -3692,9 +3695,9 @@ draw_triangle :: proc(
     add_col:    Vec4 = BLACK,
     normals:    Maybe([3]Vec3) = nil,
 ) {
-    validate_vec(pos[0])
-    validate_vec(pos[1])
-    validate_vec(pos[2])
+    validate_vec3(pos[0])
+    validate_vec3(pos[1])
+    validate_vec3(pos[2])
 
     norm, norm_ok := normals.?
     if !norm_ok {
@@ -3722,8 +3725,8 @@ draw_line :: proc(
     add_col:    Vec4 = BLACK,
     normals:    Maybe([2]Vec3) = nil,
 ) {
-    validate_vec(pos[0])
-    validate_vec(pos[1])
+    validate_vec3(pos[0])
+    validate_vec3(pos[1])
 
     norm, norm_ok := normals.?
     if !norm_ok {
@@ -4043,10 +4046,7 @@ _upload_gpu_global_constants :: proc() {
         frame = u32(get_frame_index()),
         resolution = _state.screen_size,
         rand_seed = 0,
-        param0 = 0,
-        param1 = 0,
-        param2 = 0,
-        param3 = 0,
+        param = 0,
     }))
 }
 
@@ -4960,6 +4960,7 @@ screen_to_world_ray :: proc(pos: Vec2, cam: Camera) -> Vec3 {
 
 // play sound
 create_sound :: audio.create_sound
+destroy_sound :: audio.destroy_sound
 
 load_sound_resource :: proc(path: string) -> (result: Sound_Resource_Handle, ok: bool) #optional_ok {
     name := strip_path_name(path)
@@ -5427,12 +5428,25 @@ validate_f32 :: #force_inline proc(x: f32, loc := #caller_location) {
 }
 
 
+@(disabled = !VALIDATION)
+validate_vec2 :: proc(v: [2]f32, loc := #caller_location) {
+    validate_f32(v.x, loc)
+    validate_f32(v.y, loc)
+}
 
 @(disabled = !VALIDATION)
-validate_vec :: proc(v: [$N]f32, loc := #caller_location) {
-    for x in v {
-        validate_f32(x, loc)
-    }
+validate_vec3 :: proc(v: [3]f32, loc := #caller_location) {
+    validate_f32(v.x, loc)
+    validate_f32(v.y, loc)
+    validate_f32(v.z, loc)
+}
+
+@(disabled = !VALIDATION)
+validate_vec4 :: proc(v: [4]f32, loc := #caller_location) {
+    validate_f32(v.x, loc)
+    validate_f32(v.y, loc)
+    validate_f32(v.z, loc)
+    validate_f32(v.w, loc)
 }
 
 @(disabled = !VALIDATION)
@@ -5445,29 +5459,29 @@ validate_quat :: proc(q: quaternion128, loc := #caller_location) {
 
 @(disabled = !VALIDATION)
 validate_mat2 :: proc(m: Mat2, loc := #caller_location) {
-    validate_vec(m[0], loc)
-    validate_vec(m[1], loc)
+    validate_vec2(m[0], loc)
+    validate_vec2(m[1], loc)
 }
 
 @(disabled = !VALIDATION)
 validate_mat3 :: proc(m: Mat3, loc := #caller_location) {
-    validate_vec(m[0], loc)
-    validate_vec(m[1], loc)
-    validate_vec(m[2], loc)
+    validate_vec3(m[0], loc)
+    validate_vec3(m[1], loc)
+    validate_vec3(m[2], loc)
 }
 
 @(disabled = !VALIDATION)
 validate_mat4 :: proc(m: Mat4, loc := #caller_location) {
-    validate_vec(m[0], loc)
-    validate_vec(m[1], loc)
-    validate_vec(m[2], loc)
-    validate_vec(m[3], loc)
+    validate_vec4(m[0], loc)
+    validate_vec4(m[1], loc)
+    validate_vec4(m[2], loc)
+    validate_vec4(m[3], loc)
 }
 
 @(disabled = !VALIDATION)
 validate_rect :: proc(v: Rect, loc := #caller_location) {
-    validate_vec(v.min)
-    validate_vec(v.max)
+    validate_vec2(v.min)
+    validate_vec2(v.max)
 }
 
 @(disabled = !VALIDATION)

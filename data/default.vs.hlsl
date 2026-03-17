@@ -1,7 +1,7 @@
 #include "raven.hlsli"
 
-StructuredBuffer<Mesh_Inst> instances : register(t0);
-StructuredBuffer<Vertex> verts : register(t1);
+RESOURCE_SLOT(0, StructuredBuffer<Mesh_Inst> instances);
+RESOURCE_SLOT(1, StructuredBuffer<Vertex> verts);
 
 VS_Out vs_main(uint vid : SV_VertexID, uint inst_id : SV_InstanceID) {
     Mesh_Inst inst = instances[inst_id + instance_offset];

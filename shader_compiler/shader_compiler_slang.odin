@@ -1,4 +1,5 @@
 #+vet explicit-allocators shadowing style
+#+build !js
 package raven_shader_compiler
 
 import "../base"
@@ -18,8 +19,6 @@ _compile_slang_wgsl :: proc(
     source:         string,
     opts:           Options,
 ) -> (result: []byte, ok: bool) {
-    base.log_info("Shader %s:\n%s", name, source)
-
     // Implements something like the following slangc command:
     // slangc.exe name.hlsl -target wgsl -entry vs_main -stage vertex -o shader.wgsl -fvk-b-shift 0 0 -fvk-t-shift 8 0 -fvk-s-shift 16 0
 
@@ -29,13 +28,28 @@ _compile_slang_wgsl :: proc(
         profile = _state.global_session->findProfile("wgsl_1_0"),
     }
 
+    // Hardcoded for now...
+
+    CONSTANTS_BIND_SLOTS :: 8
+    SAMPLER_BIND_SLOTS :: 8
+    RESOURCE_BIND_SLOTS :: 32
+    RW_RESOURCE_BIND_SLOTS :: 32
+
+    SAMPLER_SLOT_SHIFT :: 0
+    CONSTANTS_SLOT_SHIFT :: SAMPLER_SLOT_SHIFT + SAMPLER_BIND_SLOTS
+    RESOURCE_SLOT_SHIFT :: CONSTANTS_SLOT_SHIFT + CONSTANTS_BIND_SLOTS
+    RW_RESOURCE_SLOT_SHIFT :: RESOURCE_SLOT_SHIFT + RESOURCE_BIND_SLOTS
+
+
     // NOTE: this is broken
     // https://github.com/shader-slang/slang/issues/10441
     options := [?]slang.CompilerOptionEntry {
         { .Stage, {.Int, i32(slang.Stage.VERTEX), 0, nil, nil}},
-        { .VulkanBindShift, {.Int, pack_vk_shift(1, 0), 0, nil, nil}},
-        { .VulkanBindShift, {.Int, pack_vk_shift(2, 0), 8, nil, nil}},
-        { .VulkanBindShift, {.Int, pack_vk_shift(3, 0), 16, nil, nil}},
+        { .Optimization, {.Int, i32(opts.release ? slang.OptimizationLevel.HIGH : slang.OptimizationLevel.NONE), 0, nil, nil}},
+        // { .VulkanBindShift, {.Int, pack_vk_shift(slang.HLSLToVulkanLayoutBindingKind.Sampler, 0), SAMPLER_SLOT_SHIFT, nil, nil}},
+        // { .VulkanBindShift, {.Int, pack_vk_shift(slang.HLSLToVulkanLayoutBindingKind.ConstantBuffer, 0), CONSTANTS_SLOT_SHIFT, nil, nil}},
+        // { .VulkanBindShift, {.Int, pack_vk_shift(slang.HLSLToVulkanLayoutBindingKind.ShaderResource, 0), RESOURCE_SLOT_SHIFT, nil, nil}},
+        // { .VulkanBindShift, {.Int, pack_vk_shift(slang.HLSLToVulkanLayoutBindingKind.UnorderedAccess, 0), RW_RESOURCE_SLOT_SHIFT, nil, nil}},
     }
 
     file_system: _Slang_IFileSystem = {
@@ -60,6 +74,7 @@ _compile_slang_wgsl :: proc(
         structureSize = size_of(slang.SessionDesc),
         targetCount = 1,
         targets = &target_desc,
+        defaultMatrixLayoutMode = .COLUMN_MAJOR,
         compilerOptionEntries = &options[0],
         compilerOptionEntryCount = len(options),
         fileSystem = &file_system,
@@ -89,8 +104,6 @@ _compile_slang_wgsl :: proc(
     case .Compute:entry_point_name = "cs_main"
     }
 
-    base.log_dump(entry_point_name)
-
     entry_point: ^slang.IEntryPoint
     _slang_check(module->findAndCheckEntryPoint(entry_point_name, _slang_stage(opts.stage), &entry_point, &diag))
     _slang_diag(diag)
@@ -112,11 +125,9 @@ _compile_slang_wgsl :: proc(
         return nil, false
     }
 
-    base.log_debug("Shader %s:\n%s", name, _slang_blob_str(wgsl_code))
-
     return _slang_blob_buf(wgsl_code), true
 
-    pack_vk_shift :: proc(kind: u8, set: u32) -> i32 {
+    pack_vk_shift :: proc(#any_int kind: u8, set: u32) -> i32 {
         return transmute(i32)((u32(kind) << 24) | (set & 0x00FFFFFF))
     }
 }
@@ -173,7 +184,7 @@ _slang_ifilesystem_loadfile :: proc "system" (
     assert(path != nil)
     assert(outBlob != nil)
 
-    base.log_info("INCLUDE %s", path)
+    // base.log_info("INCLUDE %s", path)
 
     if this.opts.include_proc == nil {
         return .E_NOT_FOUND

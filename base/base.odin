@@ -51,10 +51,17 @@ make_logger :: proc() -> runtime.Logger {
     return {
         procedure = _logger_proc,
         data = nil,
+        options = {.Terminal_Color},
     }
 }
 
-_logger_proc :: proc(logger_data: rawptr, level: runtime.Logger_Level, text: string, options: bit_set[runtime.Logger_Option], loc := #caller_location) {
+_logger_proc :: proc(
+    logger_data:    rawptr,
+    level:          runtime.Logger_Level,
+    text:           string,
+    options:        bit_set[runtime.Logger_Option],
+    loc             := #caller_location,
+) {
     ESC :: "\e"
     CSI :: ESC + "["
     SGR :: "m"
@@ -75,20 +82,14 @@ _logger_proc :: proc(logger_data: rawptr, level: runtime.Logger_Level, text: str
     if .Terminal_Color in options {
         end_col = CSI + RESET + SGR
         switch level {
-        case .Debug:
-            begin_col = CSI + FG_BLACK + SGR
-        case .Info:
-            begin_col = CSI + FG_CYAN + SGR
-        case .Warning:
-            begin_col = CSI + FG_YELLOW + SGR
-        case .Error:
-            begin_col = CSI + FG_RED + SGR
-        case .Fatal:
-            begin_col = CSI + FG_RED + SGR
+        case .Debug:    begin_col = CSI + FG_BLACK + SGR
+        case .Info:     begin_col = CSI + FG_CYAN + SGR
+        case .Warning:  begin_col = CSI + FG_YELLOW + SGR
+        case .Error:    begin_col = CSI + FG_RED + SGR
+        case .Fatal:    begin_col = CSI + FG_RED + SGR
         }
     }
 
-    // TODO: time, flags, color?
     ufmt.eprintfln("%s%s%s%s(%i:%i) %s: %s",
         begin_col,
         _logger_prefix[level],

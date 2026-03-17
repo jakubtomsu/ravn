@@ -8,9 +8,9 @@ import "base:runtime"
 
 BACKEND :: #config(PLATFORM_BACKEND, DEFAULT_BACKEND)
 
-BACKEND_JS :: "JS"
-BACKEND_WINDOWS :: "Windows"
 BACKEND_DUMMY :: "Dummy"
+BACKEND_WINDOWS :: "Windows"
+BACKEND_JS :: "JS"
 
 when ODIN_OS == .Windows {
     DEFAULT_BACKEND :: BACKEND_WINDOWS
@@ -22,8 +22,6 @@ when ODIN_OS == .Windows {
     #panic("Platform not supported")
     DEFAULT_BACKEND :: BACKEND_DUMMY
 }
-
-#assert((ODIN_OS == .JS) == (BACKEND == BACKEND_JS))
 
 SEPARATOR :: "\\" when ODIN_OS == .Windows else "/"
 

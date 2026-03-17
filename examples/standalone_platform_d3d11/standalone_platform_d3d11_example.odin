@@ -4,10 +4,10 @@ package raven_example_platform_d3d11
 // https://gist.github.com/d7samurai/1e9a1f1a366740f7d8a3a20397fcfa6b
 
 import "../../platform"
+import "../../base"
 import "base:runtime"
 import "core:math"
 import "core:fmt"
-import "core:log"
 import "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
@@ -24,7 +24,7 @@ g_screen_size: [2]f32
 state: platform.State
 
 main :: proc() {
-    context.logger = log.create_console_logger()
+    context.logger = base.make_logger()
 
     platform.init(&state)
     defer platform.shutdown()

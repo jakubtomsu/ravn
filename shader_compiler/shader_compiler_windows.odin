@@ -9,7 +9,7 @@ import "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/d3d_compiler"
 
-_compile_dxil :: proc(
+_compile_dxbc :: proc(
     name:           string,
     source:         string,
     opts:           Options,

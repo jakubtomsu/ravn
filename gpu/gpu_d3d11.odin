@@ -371,7 +371,7 @@ when BACKEND == BACKEND_D3D11 {
         return true
     }
 
-    // data: DXIL bytecode
+    // data: DXBC bytecode
     _create_shader :: proc(name: string, data: []u8, kind: Shader_Kind) -> (result: _Shader, ok: bool) {
         switch kind {
         case .Invalid:

@@ -1,3 +1,5 @@
+#+vet explicit-allocators shadowing unused
+#+build !js
 package raven_audio
 
 // https://github.com/libsdl-org/SDL/blob/main/examples/audio/02-simple-playback-callback/simple-playback-callback.c
@@ -6,11 +8,13 @@ import "../base"
 import sdl "vendor:sdl3"
 import "base:intrinsics"
 
-BACKEND_SDL3 :: "SDL3"
-
-_SDL3_FRAME_RATE :: 48000
+_ :: base
+_ :: sdl
+_ :: intrinsics
 
 when BACKEND == BACKEND_SDL3 {
+    _SDL3_FRAME_RATE :: 48000
+
     _State :: struct {
         stream: ^sdl.AudioStream,
     }
@@ -53,7 +57,7 @@ when BACKEND == BACKEND_SDL3 {
         sdl.DestroyAudioStream(_state.stream)
     }
 
-    _update_output_buffer :: proc() {
+    _render :: proc() {
         // No single threaded support
     }
 

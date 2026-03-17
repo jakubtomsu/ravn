@@ -27,8 +27,8 @@ main :: proc() {
     gpu.update_swapchain(native_window, size)
 
     shader_compiler.init(new(shader_compiler.State))
-    ps_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Pixel, target = .DXIL}) or_else panic("ps_blob")
-    vs_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Vertex, target = .DXIL}) or_else panic("vs_blob")
+    ps_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Pixel, target = .DXBC}) or_else panic("ps_blob")
+    vs_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Vertex, target = .DXBC}) or_else panic("vs_blob")
 
     pip := gpu.create_pipeline("triangle-pip", gpu.pipeline_desc(
         ps = gpu.create_shader("triangle-ps", ps_blob, .Pixel) or_else panic("ps"),

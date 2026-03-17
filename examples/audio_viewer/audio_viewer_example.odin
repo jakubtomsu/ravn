@@ -107,7 +107,7 @@ _update :: proc(_: rawptr) -> rawptr {
     }
 
     if rv.key_pressed(.Space) {
-        state.sound = rv.play_sound(state.sound_res,
+        state.sound = rv.create_sound(state.sound_res,
             pitch = rand.float32_range(0.01, 2),
             volume = 2,
             // pan = rand.float32_range(-1, 1),

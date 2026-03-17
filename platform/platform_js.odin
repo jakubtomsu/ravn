@@ -1,3 +1,13 @@
+/*
+NOTE: frame loop is done by the odin.js repeatedly calling `step`:
+
+    @(private="file", export)
+    step :: proc(dt: f32) -> bool {
+        frame(dt)
+        return true
+    }
+
+*/
 #+build js
 #+vet explicit-allocators shadowing unused
 package raven_platform
@@ -5,12 +15,7 @@ package raven_platform
 import "../base"
 import "core:sys/wasm/js"
 
-// // NOTE: frame loop is done by the odin.js repeatedly calling `step`.
-// @(private="file", export)
-// step :: proc(dt: f32) -> bool {
-//     frame(dt)
-//     return true
-// }
+#assert(BACKEND == BACKEND_JS)
 
 _CANVAS_ID :: "#raven-canvas"
 
@@ -26,7 +31,6 @@ _Barrier :: struct { _: u8 }
 _Thread :: struct { _: u8 }
 _Window :: struct { _: u8 }
 _Module :: struct { _: u8 }
-
 
 
 

@@ -1,22 +1,46 @@
-cbuffer global_constants : register(b0) {
+#ifndef RAVEN
+#define RAVEN 1
+
+#define CONSTANTS_BIND_SLOTS 8
+#define SAMPLER_BIND_SLOTS 8
+#define RESOURCE_BIND_SLOTS 32
+#define RW_RESOURCE_BIND_SLOTS 32
+
+#define SAMPLER_SLOT_SHIFT 0
+#define CONSTANTS_SLOT_SHIFT (SAMPLER_SLOT_SHIFT + SAMPLER_BIND_SLOTS)
+#define RESOURCE_SLOT_SHIFT (CONSTANTS_SLOT_SHIFT + CONSTANTS_BIND_SLOTS)
+#define RW_RESOURCE_SLOT_SHIFT (RESOURCE_SLOT_SHIFT + RESOURCE_BIND_SLOTS)
+
+#define _JOIN(a, b) a ## b
+
+#ifdef __SLANG__
+#define SAMPLER_SLOT(slot, decl) [[vk::binding(slot + SAMPLER_SLOT_SHIFT, 0)]] decl
+#define CONSTANTS_SLOT(slot, decl) [[vk::binding(slot + CONSTANTS_SLOT_SHIFT, 0)]] decl
+#define RESOURCE_SLOT(slot, decl) [[vk::binding(slot + RESOURCE_SLOT_SHIFT, 0)]] decl
+#define RW_RESOURCE_SLOT(slot, decl) [[vk::binding(slot + RW_RESOURCE_SLOT_SHIFT, 0)]] decl
+#else
+#define SAMPLER_SLOT(slot, decl) decl : register(_JOIN(s, slot))
+#define CONSTANTS_SLOT(slot, decl) decl : register(_JOIN(b, slot))
+#define RESOURCE_SLOT(slot, decl) decl : register(_JOIN(t, slot))
+#define RW_RESOURCE_SLOT(slot, decl) decl : register(_JOIN(u, slot))
+#endif
+
+CONSTANTS_SLOT(0, cbuffer global_constants) {
     float rv_global_time;
     float rv_global_delta_time;
     uint  rv_global_frame;
     int2  rv_global_resolution;
     uint  rv_global_rand_seed;
-    uint  rv_global_param0;
-    uint  rv_global_param1;
-    uint  rv_global_param2;
-    uint  rv_global_param3;
+    uint4 rv_global_param;
 }
 
-cbuffer layer_constants : register(b1) {
+CONSTANTS_SLOT(1, cbuffer layer_constants) {
     float4x4 view_proj;
     float3 cam_pos;
     int layer_index;
 }
 
-cbuffer batch_constants : register(b2) {
+CONSTANTS_SLOT(2, cbuffer batch_constants) {
     uint instance_offset;
     uint vertex_offset;
 }
@@ -87,3 +111,5 @@ float4 unpack_signed_color_unorm8(uint val) {
 float2 unpack_uv_unorm16(uint val) {
     return unpack_unorm16(val) * 16.0f - 8.0f;
 }
+
+#endif // RAVEN
