@@ -99,7 +99,7 @@ struct RV_Varyings_0
     @location(2) uv_2 : vec2<f32>,
     @location(3) col_3 : vec4<f32>,
     @location(4) add_col_1 : vec4<f32>,
-    @location(5) tex_slice_1 : u32,
+    @interpolate(flat) @location(5) tex_slice_1 : u32,
 };
 
 @vertex
@@ -109,7 +109,7 @@ fn vs_main(@builtin(vertex_index) vid_0 : u32, @builtin(instance_index) inst_id_
     var _S3 : RV_Mesh_Inst_0 = rv_unpack_mesh_inst_0(&(_S2));
     var _S4 : RV_Vertex_Packed_std430_0 = verts_0[vid_0 + _S3.vert_offs_0];
     var _S5 : RV_Vertex_0 = rv_unpack_vertex_0(&(_S4));
-    var world_pos_1 : vec3<f32> = _S3.pos_1 + (((_S5.pos_2) * (_S3.mat_0)));
+    var world_pos_1 : vec3<f32> = _S3.pos_1 + (((_S3.mat_0) * (_S5.pos_2)));
     var vars_0 : RV_Varyings_0;
     vars_0.pos_3 = (((vec4<f32>(world_pos_1, 1.0f)) * (mat4x4<f32>(rv_layer_constants_0.rv_view_proj_0.data_0[i32(0)][i32(0)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(1)][i32(0)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(2)][i32(0)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(3)][i32(0)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(0)][i32(1)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(1)][i32(1)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(2)][i32(1)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(3)][i32(1)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(0)][i32(2)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(1)][i32(2)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(2)][i32(2)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(3)][i32(2)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(0)][i32(3)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(1)][i32(3)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(2)][i32(3)], rv_layer_constants_0.rv_view_proj_0.data_0[i32(3)][i32(3)]))));
     vars_0.world_pos_0 = world_pos_1;

@@ -5,6 +5,7 @@
 
 (function() {
     const BUFFER_SAMPLES = 480;
+    const FRAME_RATE = 48000;
 
     class RavenAudioInterface {
         constructor(mem) {
@@ -16,7 +17,9 @@
         }
 
         async _async_init() {
-            this.audio_context = new AudioContext({sampleRate: 48000});
+            this.audio_context = new AudioContext({sampleRate: FRAME_RATE});
+
+            console.log("Webaudio initializing...")
 
             try {
                 await this.audio_context.audioWorklet.addModule("raven_webaudio_processor.js");
@@ -46,6 +49,8 @@
             document.addEventListener('click', this.resume_audio);
             document.addEventListener('keydown', this.resume_audio);
             document.addEventListener('touchstart', this.resume_audio);
+
+            console.log("Webaudio init done")
         }
 
         getInterface() {
@@ -83,13 +88,13 @@
                         return;
                     }
 
-                    let left_samples = new Float32Array(this.mem.buffer, data_ptr, BUFFER_SAMPLES * 2);
+                    let samples = new Float32Array(this.mem.memory.buffer, data_ptr, BUFFER_SAMPLES * 2);
 
                     let buffer = this.buffer_pool.length > 0
                         ? this.buffer_pool.pop()
                         : new Float32Array(BUFFER_SAMPLES * 2);
 
-                    buffer.set(left_samples);
+                    buffer.set(samples);
 
                     this.audio_node.port.postMessage(
                         {type: 'queue_buffer', data: buffer},

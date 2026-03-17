@@ -3,6 +3,7 @@ class RavenAudioWorkletProcessor extends AudioWorkletProcessor {
         super();
         this.buffers = []; // Transferrables
         this.curr_buffer_offset = 0;
+        this.phase = 0;
 
         this.port.onmessage = (event) => {
             if (event.data.type === 'queue_buffer') {
@@ -23,6 +24,9 @@ class RavenAudioWorkletProcessor extends AudioWorkletProcessor {
 
         while (offset < left.length) {
             if (this.buffers.length == 0) {
+                // Enable when tweaking buffer latency.
+                // Helpful for investigating choppy sound playback.
+                // console.warn("WebAudio: BUFFER STARVATION!")
                 left.fill(0, offset);
                 right.fill(0, offset);
                 break;

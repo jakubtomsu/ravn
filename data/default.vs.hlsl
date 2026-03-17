@@ -7,7 +7,7 @@ RV_Varyings vs_main(uint vid : SV_VertexID, uint inst_id : SV_InstanceID) {
     RV_Mesh_Inst inst = rv_unpack_mesh_inst(instances[inst_id + rv_instance_offset]);
     RV_Vertex vert = rv_unpack_vertex(verts[vid + inst.vert_offs]);
 
-    float3 world_pos = inst.pos + mul(inst.mat, vert.pos);
+    float3 world_pos = inst.pos + mul(vert.pos, inst.mat);
 
     RV_Varyings vars;
     vars.pos = mul(rv_view_proj, float4(world_pos, 1.0f));

@@ -87,7 +87,7 @@ struct RV_Varyings_0
     @location(2) uv_0 : vec2<f32>,
     @location(3) col_1 : vec4<f32>,
     @location(4) add_col_2 : vec4<f32>,
-    @location(5) tex_slice_2 : u32,
+    @interpolate(flat) @location(5) tex_slice_2 : u32,
 };
 
 @vertex

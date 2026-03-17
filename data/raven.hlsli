@@ -183,7 +183,7 @@ struct RV_Varyings {
     float2 uv : TEX;
     float4 col : COL;
     float4 add_col : ADD_COL;
-    uint   tex_slice : TEXSLICE;
+    nointerpolation uint tex_slice : TEXSLICE;
 };
 
 #endif // RAVEN
