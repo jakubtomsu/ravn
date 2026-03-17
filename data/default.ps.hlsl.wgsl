@@ -21,8 +21,11 @@ struct pixelInput_0
 fn ps_main( _S1 : pixelInput_0, @builtin(front_facing) frontface_0 : bool, @builtin(position) pos_0 : vec4<f32>) -> pixelOutput_0
 {
     var _S2 : vec3<f32> = vec3<f32>(_S1.uv_0, f32(_S1.tex_slice_0));
-    var col_1 : vec4<f32> = _S1.add_col_0 + _S1.col_0 * (textureSample((tex_0), (smp_0), ((_S2)).xy, i32(((_S2)).z)));
-    if((col_1.w) < 0.00100000004749745f)
+    var _S3 : pixelOutput_0 = pixelOutput_0( _S1.add_col_0 + _S1.col_0 * (textureSample((tex_0), (smp_0), ((_S2)).xy, i32(((_S2)).z))) );
+    return _S3;
+}
+
+f)
     {
         discard;
     }

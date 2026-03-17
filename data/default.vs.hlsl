@@ -1,25 +1,22 @@
 #include "raven.hlsli"
 
-RESOURCE_SLOT(0, StructuredBuffer<Mesh_Inst> instances);
-RESOURCE_SLOT(1, StructuredBuffer<Vertex> verts);
+RV_RESOURCE_SLOT(0, StructuredBuffer<RV_Mesh_Inst_Packed> instances);
+RV_RESOURCE_SLOT(1, StructuredBuffer<RV_Vertex_Packed> verts);
 
-VS_Out vs_main(uint vid : SV_VertexID, uint inst_id : SV_InstanceID) {
-    Mesh_Inst inst = instances[inst_id + instance_offset];
-    uint vert_offs = inst.tex_slice_vert_offs >> 8;
-    Vertex vert = verts[vid + vert_offs];
+RV_Varyings vs_main(uint vid : SV_VertexID, uint inst_id : SV_InstanceID) {
+    RV_Mesh_Inst inst = rv_unpack_mesh_inst(instances[inst_id + rv_instance_offset]);
+    RV_Vertex vert = rv_unpack_vertex(verts[vid + inst.vert_offs]);
 
-    float3x3 mat = float3x3(inst.mat_x, inst.mat_y, inst.mat_z);
+    float3 world_pos = inst.pos + mul(inst.mat, vert.pos);
 
-    VS_Out o;
-    float3 world_pos = inst.pos + mul(vert.pos, mat);
-    o.pos = mul(view_proj, float4(world_pos, 1.0f));
-    o.world_pos = world_pos;
-    o.normal = unpack_unorm8(vert.normal).xyz; // * adjugate
-    o.uv = vert.uv;
-    o.col = unpack_signed_color_unorm8(inst.col);
-    o.col *= unpack_unorm8(vert.col);
-    o.add_col = unpack_signed_color_unorm8(inst.add_col);
-    o.tex_slice = inst.tex_slice_vert_offs & 0xff;
+    RV_Varyings vars;
+    vars.pos = mul(rv_view_proj, float4(world_pos, 1.0f));
+    vars.world_pos = world_pos;
+    vars.normal = vert.normal;
+    vars.uv = vert.uv;
+    vars.col = inst.col * vert.col;
+    vars.add_col = inst.add_col;
+    vars.tex_slice = inst.tex_slice;
 
-    return o;
+    return vars;
 }
