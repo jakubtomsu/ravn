@@ -625,7 +625,7 @@ _js_event_callbacks := [js.Event_Kind]_JS_Event_Callback {
     .Scroll = proc(e: js.Event) {
         assert(e.kind == .Scroll)
         event: Event_Scroll
-        event.delta = {f32(e.scroll.delta.x), f32(e.scroll.delta.y)}
+        event.delta = {f32(e.scroll.delta.x), -f32(e.scroll.delta.y)}
         _event_queue_push(event)
     },
 
