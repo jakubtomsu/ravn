@@ -7,9 +7,10 @@ float4 ps_main(RV_Varyings vars, uint frontface : SV_IsFrontFace) : SV_Target {
     float3 normal = normalize(bool(frontface) ? vars.normal : -vars.normal);
     float4 col = vars.add_col + vars.col * tex.Sample(smp, float3(vars.uv, float(vars.tex_slice)));
 
-    // if (col.a < 0.001) {
-    //     discard;
-    // }
+    // TODO: shader variants to not have this in every PS
+    if (col.a < 0.001) {
+        discard;
+    }
 
     return col;
 }

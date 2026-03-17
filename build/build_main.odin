@@ -3,18 +3,31 @@ package raven_build
 
 import "../platform"
 import "../base"
+import "../base/ufmt"
 
 import "core:strings"
-import "core:reflect"
 
 ODIN_EXE :: "odin"
 
 Command :: enum {
-    export,
-    export_web,
-    run_hot,
-    build_hot,
-    compile_builtin_shaders,
+    Export_Web,
+    Run_Hot,
+    Build_Hot,
+    Builtin_Shaders,
+}
+
+_command_name := [Command]string {
+    .Export_Web = "export-web",
+    .Run_Hot = "run-hot",
+    .Build_Hot = "build-hot",
+    .Builtin_Shaders = "builtin-shaders",
+}
+
+_command_info := [Command]string {
+    .Export_Web = "Compile the packge to WASM and package a web build",
+    .Run_Hot = "Run the package in hot reload mode",
+    .Build_Hot = "Only compile the hot reload DLL",
+    .Builtin_Shaders = "Precompile builtin shaders",
 }
 
 Flags :: struct {
@@ -23,7 +36,22 @@ Flags :: struct {
 }
 
 parse_flags :: proc(params: []string) -> (flags: Flags, ok: bool) {
-    show_help := true
+    show_help := false
+
+    defer if show_help {
+        ufmt.eprintfln("Raven build tool")
+        ufmt.eprintfln("Usage:")
+        ufmt.eprintfln("\tbuild command [arguments]")
+        ufmt.eprintfln("Commands:")
+        for cmd in Command {
+            ufmt.eprintf("\t%v", _command_name[cmd])
+            for _ in len(_command_name[cmd])..<30 {
+                ufmt.eprintf(" ")
+            }
+            ufmt.eprintfln("%v", _command_info[cmd])
+        }
+        ufmt.eprintfln("")
+    }
 
     if len(params) == 0 {
         show_help = true
@@ -31,17 +59,21 @@ parse_flags :: proc(params: []string) -> (flags: Flags, ok: bool) {
     }
 
     cmd_ok: bool
-    flags.cmd, cmd_ok = reflect.enum_from_name(Command, params[0])
-    if !cmd_ok {
-        base.log_err("Invalid command '%s'. Must be one of:", params[0])
-        for cmd in Command {
-            base.log_err("\t%v", cmd)
+    for name, cmd in _command_name {
+        if params[0] == name {
+            flags.cmd = cmd
+            cmd_ok = true
+            break
         }
+    }
+    if !cmd_ok {
+        base.log_err("Invalid command '%s'", params[0])
+        show_help = true
         return {}, false
     }
 
     #partial switch flags.cmd {
-    case .compile_builtin_shaders:
+    case .Builtin_Shaders:
 
     case:
         if len(params) < 2 {
@@ -71,28 +103,25 @@ main :: proc() {
     init()
 
     switch fl.cmd {
-    case .export:
-        unimplemented()
-
-    case .export_web:
+    case .Export_Web:
         if !export_web(strings.concatenate({pkg_name, "-web-export"}), pkg_name, fl.pkg) {
             base.log_err("Web export failed")
             platform.exit_process(1)
         }
 
-    case .run_hot:
+    case .Run_Hot:
         clean_hot(pkg_name)
         compile_hot(fl.pkg, pkg_name = pkg_name, index = 0)
         hotreload_run(pkg_name, fl.pkg)
         clean_hot(pkg_name)
 
-    case .compile_builtin_shaders:
+    case .Builtin_Shaders:
         if !compile_builtin_shaders() {
             base.log_err("Failed to compile builtin shaders")
             platform.exit_process(1)
         }
 
-    case .build_hot:
+    case .Build_Hot:
         latest, _ := hotreload_find_latest_dll(pkg_name)
         base.log_info("Building %i", latest.index + 1)
         compile_hot(fl.pkg, pkg_name = pkg_name, index = latest.index + 1)

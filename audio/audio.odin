@@ -355,10 +355,13 @@ create_sound :: proc(
         return {}, false
     }
 
-    assert(intrinsics.atomic_load(&_state.sounds_state[index]) == .Free)
-
     res, res_ok := _get_resource(resource_handle)
-    assert(res_ok)
+    if !res_ok {
+        base.log_err("Attempting to play sound with invalid resource handle %v", resource_handle)
+        return {}, false
+    }
+
+    assert(intrinsics.atomic_load(&_state.sounds_state[index]) == .Free)
 
     result = {
         index = index,

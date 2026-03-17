@@ -84,7 +84,7 @@ _init :: proc() {
 
     state.death_sound = rv.create_sound_resource_encoded("death", #load("../data/snake_death_sound.wav")) or_else panic("load")
     state.berry_sound = rv.create_sound_resource_encoded("berry", #load("../data/snake_powerup_sound.wav")) or_else panic("load")
-    state.music_res = rv.create_sound_resource_encoded("music", #load("../data/Emerald.ogg")) or_else panic("load")
+    // state.music_res = rv.create_sound_resource_encoded("music", #load("../data/Emerald.ogg")) or_else panic("load")
 
     state.screen = .Menu
 }
