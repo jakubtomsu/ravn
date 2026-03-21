@@ -115,6 +115,8 @@ Spline_Handle :: distinct Handle
 Render_Texture_Handle :: distinct Handle
 Vertex_Shader_Handle :: distinct Handle
 Pixel_Shader_Handle :: distinct Handle
+Rig_Handle :: distinct Handle
+Anim_Handle :: distinct Handle
 Sound_Resource_Handle :: audio.Resource_Handle
 Sound_Handle :: audio.Sound_Handle
 
@@ -230,6 +232,7 @@ State :: struct #align(64) {
     textures_hash:              [MAX_TEXTURES]Hash,
     textures_gen:               [MAX_TEXTURES]Handle_Gen,
     textures:                   [MAX_TEXTURES]Texture,
+
     texture_pools:              [MAX_TEXTURE_POOLS]Texture_Pool,
     texture_pools_len:          i32,
 
@@ -369,35 +372,50 @@ Vertex :: struct {
 
 /* Skinning API plan:
 
-rv.sample_anim(Anim_Handle, t:f32, Unit{Seconds, Percentage, Frames}) -> Pose
+rv.get_rig_joint() -> Rig_Joint
+
+rv.get_anim_rig(handle: Anim_Handle)
+rv.get_anim_duration(handle: Anim_Handle) -> f32
+rv.sample_anim(Anim_Handle, t:f32) -> Pose
 rv.get_anim_frame(Anim_Handle, index: i32) -> Pose
 
 rv.blend_pose(a, b) -> Pose
 rv.apply_pose(a) -> Pose (worldspace)
 rv.get_pose_joint(a)
+rv.clone_pose(a)
 
 rv.draw_skin(mesh..., pose)
 
 */
 
-RIG_ANIM_FRAME_LOOKUP :: 8
+ANIM_FRAME_LOOKUP :: 8
+
+Rig_Data :: struct {
+    joint_num:      i32,
+    joint_offset:   u32,
+}
+
+Rig_Joint :: struct {
+    name:       u64,
+    default:    Anim_Joint,
+}
 
 // NOTE: multiple frames in the animation could point to the same frame data.
 // Lot of looping animations can be a bit de-duplicated.
-Rig_Anim :: struct {
+Anim_Data :: struct {
     frame_num:      i32,
     frame_offset:   u32,
     dur:            f32,
     lookup:         [RIG_ANIM_FRAME_LOOKUP]u8, // faster frame search
 }
 
-Rig_Frame :: struct {
+Anim_Frame :: struct {
     time:           f32,
     joint_offset:   u32,
 }
 
-#assert(size_of(Rig_Joint) == 16 * 2)
-Rig_Joint :: struct {
+#assert(size_of(Anim_Joint) == 16 * 2)
+Anim_Joint :: struct {
     pos:    [3]f32,
     scale:  f32,
     rot:    [4]f32,
@@ -405,7 +423,7 @@ Rig_Joint :: struct {
 
 Pose :: struct {
     state:  Pose_State,
-    joints: []Rig_Joint,
+    joints: []Anim_Joint,
 }
 
 Pose_State :: enum u8 {
@@ -3843,7 +3861,10 @@ _push_draw_dynamic_verts :: proc(#any_int layer_index: int, verts: []Vertex) -> 
 }
 
 
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Line shapes
+//
 
 _BOX_CORNER_POSITIONS :: [8]Vec3 {
     0 = Vec3{-1, -1, -1},
@@ -5325,7 +5346,8 @@ pack_mesh_inst :: proc(
     tex_slice:  u8,
     vert_offs:  u32,
     mat_z:      [3]f32,
-    param:      u32,
+    pose:       u16,
+    param:      u16,
 ) -> Mesh_Inst {
     vert_offs := vert_offs
     assert(vert_offs < (1 << 24))
@@ -5338,6 +5360,7 @@ pack_mesh_inst :: proc(
         tex_slice   = tex_slice,
         vert_offs   = (cast(^[3]u8)&vert_offs)^,
         mat_z       = mat_z,
+        pose        = pose,
         param       = param,
     }
 }

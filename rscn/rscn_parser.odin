@@ -59,7 +59,7 @@ Image :: struct {
 Object :: struct {
     kind:           Object_Kind,
     mesh_index:     Vertex_Index,
-    spline_index:    Spline_Index,
+    spline_index:   Spline_Index,
     name:           string, // valid as long as the file data is valid
     parent:         Object_Index,
     image_index:    Image_Index,
