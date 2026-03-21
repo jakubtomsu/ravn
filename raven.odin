@@ -193,6 +193,7 @@ State :: struct #align(64) {
     sprite_inst_buf:            gpu.Resource_Handle,
     mesh_inst_buf:              gpu.Resource_Handle,
     dynamic_vert_buf:           gpu.Resource_Handle,
+    joint_buf:                  gpu.Resource_Handle,
     quad_ibuf:                  gpu.Resource_Handle,
 
     global_consts:              gpu.Resource_Handle,
@@ -332,6 +333,7 @@ Mesh :: struct {
     vert_offs:      i32,
     index_num:      i32,
     index_offs:     i32,
+    joint_num:      i32, // >= 0 if skin
 
     param:          u64, // user param
 
@@ -363,6 +365,53 @@ Vertex :: struct {
     col:        [4]u8,
     joints:     [4]u8,
     weights:    [4]u8,
+}
+
+/* Skinning API plan:
+
+rv.sample_anim(Anim_Handle, t:f32, Unit{Seconds, Percentage, Frames}) -> Pose
+rv.get_anim_frame(Anim_Handle, index: i32) -> Pose
+
+rv.blend_pose(a, b) -> Pose
+rv.apply_pose(a) -> Pose (worldspace)
+rv.get_pose_joint(a)
+
+rv.draw_skin(mesh..., pose)
+
+*/
+
+RIG_ANIM_FRAME_LOOKUP :: 8
+
+// NOTE: multiple frames in the animation could point to the same frame data.
+// Lot of looping animations can be a bit de-duplicated.
+Rig_Anim :: struct {
+    frame_num:      i32,
+    frame_offset:   u32,
+    dur:            f32,
+    lookup:         [RIG_ANIM_FRAME_LOOKUP]u8, // faster frame search
+}
+
+Rig_Frame :: struct {
+    time:           f32,
+    joint_offset:   u32,
+}
+
+#assert(size_of(Rig_Joint) == 16 * 2)
+Rig_Joint :: struct {
+    pos:    [3]f32,
+    scale:  f32,
+    rot:    [4]f32,
+}
+
+Pose :: struct {
+    state:  Pose_State,
+    joints: []Rig_Joint,
+}
+
+Pose_State :: enum u8 {
+    Local,
+    Transformed,
+    Baked,
 }
 
 
@@ -533,7 +582,8 @@ Mesh_Inst :: struct #all_or_none #align(16) {
     vert_offs:  [3]u8, // 24 bit packed
 
     mat_z:      [3]f32,
-    param:      u32, // user param
+    joint_offs: u16,
+    param:      u16, // user param
 }
 
 #assert(MAX_TEXTURES <= 256)
@@ -1507,6 +1557,8 @@ load_scene_from_data :: proc(txt: string, bin: []byte, dst_group: Group_Handle) 
         }
 
         // APPEND TO GPU
+
+        unimplemented()
 
     } else {
         verts := make([]Vertex, len(vert_buf), context.temp_allocator)
