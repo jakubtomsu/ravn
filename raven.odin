@@ -4013,6 +4013,7 @@ _upload_gpu_layer_constants :: proc() {
     gpu.update_constants(_state.draw_layers_consts, gpu.ptr_bytes(&consts_buf))
 }
 
+// Finishes drawing for this frame.
 // This takes all the draw_* command data and uploads them to GPU buffers.
 // Call render_gpu_layer(...) to actually draw.
 // NOTE: until the start of the next frame, all draw_* commands after this call will be ignored.
@@ -5316,6 +5317,8 @@ _counter_flush :: proc(counter: ^Counter_State) {
 }
 
 // Displays max of the recent history and a graph.
+// Maximum makes more sense than the average, because temporal spikes are important.
+//
 // Assumes screenspace camera.
 // 'unit' is for converting e.g. nanoseconds into a reasonable range.
 draw_counter :: proc(kind: Counter_Kind, pos: Vec3, scale: f32 = 1, unit: f32 = 1, col: Vec4 = 1, show_text := true) {

@@ -18,6 +18,14 @@ main :: proc() {
     rv.run_main_loop(_module_desc)
 }
 
+// The update procedure executes every frame.
+// Raven has a internal frame loop, which looks like this:
+//
+// while not app_requested_shutdown:
+//      1. read input and prepare frame
+//      2. module.update() <--- we're here
+//      3. submit GPU commands wait for new frame (vsync)
+//
 // NOTE: see simple_3d or other examples to learn how a full app with state does hotreload.
 _update :: proc(_: rawptr) -> rawptr {
     if rv.key_pressed(.Escape) {
@@ -38,8 +46,9 @@ _update :: proc(_: rawptr) -> rawptr {
     // Unicode fonts might get supported later.
     rv.draw_text("Hello World! ☺", {100, 100, 0}, scale = 4, spacing = 1)
 
-    // Draw the full font atlas texture
-    rv.draw_sprite({rv.get_screen_size().x * 0.5, rv.get_screen_size().y * 0.5, 0.1}, scale = 2)
+    // Draw the full font atlas texture, with color based on space key input.
+    col := rv.key_down(.Space) ? rv.GREEN : rv.WHITE
+    rv.draw_sprite({rv.get_screen_size().x * 0.5, rv.get_screen_size().y * 0.5, 0.1}, scale = 2, col = col)
 
     // The 'rv.draw_*' commands only record what geometry you want to render each frame.
     // To actually display it on the screen you must first upload it to the GPU, and then

@@ -1,0 +1,65 @@
+package draw_2d_example
+
+import rv "../.."
+import "../../platform"
+
+state: ^State
+
+State :: struct {
+}
+
+@export _module_desc := rv.Module_Desc {
+    state_size = size_of(State),
+    init = _init,
+    shutdown = _shutdown,
+    update = _update,
+}
+
+main :: proc() {
+    rv.run_main_loop(_module_desc)
+}
+
+_init :: proc() {
+    state = new(State)
+}
+
+_shutdown :: proc() {
+    free(state)
+}
+
+_update :: proc(hot_state: rawptr) -> rawptr {
+    if hot_state != nil {
+        state = cast(^State)hot_state
+    }
+
+    if rv.key_pressed(.Escape) {
+        rv.request_shutdown()
+    }
+
+    delta := rv.get_delta_time()
+
+    rv.set_layer_params(0, rv.make_2d_camera(0, 0.1))
+    rv.set_layer_params(1, rv.make_screen_camera(0))
+
+    rv.bind_depth_test(true)
+    rv.bind_depth_write(true)
+
+    if rv.scope_binds() {
+        rv.bind_layer(0)
+        rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
+        rv.bind_blend(.Alpha)
+
+        rv.draw_sprite(0, scale = 0.1) // draw entire texture
+
+        rv.draw_text("Hello World!", {10, 0, 0})
+    }
+
+    rv.bind_layer(1)
+    rv.draw_counter(.CPU_Frame_Ns, {20, 100, 0.1}, scale = 2, unit = 1e-6, col = rv.GREEN)
+
+    rv.upload_gpu_layers()
+    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
+    rv.render_gpu_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
+
+    return state
+}
