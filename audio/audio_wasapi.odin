@@ -7,7 +7,6 @@ import "base:intrinsics"
 import "core:sys/windows"
 
 when BACKEND == BACKEND_WASAPI {
-
     _State :: struct {
         audio_client:       ^wasapi.IAudioClient,
         render_client:      ^wasapi.IAudioRenderClient,
