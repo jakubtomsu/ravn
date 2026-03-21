@@ -355,21 +355,14 @@ Spline :: struct {
 Vertex_Index :: u16 // GPU Vertex Index
 Spline_Vertex :: rscn.Spline_Vertex
 
-// TODO: pack vertex data into the following format:
-// [3]u16    pos         6
-// [2]u8     normal      2
-// [2]u16    uv          4
-// [3]u8     color       3
-// [1]u8     _pad        1
-// total 16 bytes
-
-Vertex :: struct #align(16) {
-    pos:    [3]f32,
-    _pad:   f32,
-    uv:     [2]f32,
-    normal: [3]u8,
-    p0:     u8, // NOTE: this padding could store user parameters..?
-    col:    [4]u8,
+#assert(size_of(Vertex) == 2 * 16)
+Vertex :: struct {
+    pos:        [3]f32,
+    normal:     [2]u8,
+    uv:         [2]u16,
+    col:        [4]u8,
+    joints:     [4]u8,
+    weights:    [4]u8,
 }
 
 
@@ -1519,11 +1512,14 @@ load_scene_from_data :: proc(txt: string, bin: []byte, dst_group: Group_Handle) 
         verts := make([]Vertex, len(vert_buf), context.temp_allocator)
         for i in 0..<len(verts) {
             v := vert_buf[i]
+            normal := linalg.normalize(unpack_unorm8(v.normal.xyzz).xyz * 2.0 - 1.0)
             verts[i] = {
                 pos = v.pos,
-                uv = v.uv,
-                normal = v.normal,
+                uv = pack_uv_unorm16(v.uv),
+                normal = pack_normal_octahedral_unorm8(normal),
                 col = {v.color.r, v.color.g, v.color.b, 255},
+                joints = max(u8),
+                weights = 256/4,
             }
         }
 
@@ -5198,6 +5194,49 @@ unpack_uv_unorm16 :: proc "contextless" (val: [2]u16) -> [2]f32 {
     return unpack_unorm16(val) * 16.0 - 8.0
 }
 
+@(require_results)
+_wrap_octahedral :: proc "contextless" (v: [2]f32) -> [2]f32 {
+    f: [2]f32
+    f.x = v.x >= 0 ? 1 : -1
+    f.y = v.y >= 0 ? 1 : -1
+    return (1.0 - linalg.abs(v.yx)) * f
+}
+
+// Input is vector from a sphere.
+// Output is in range 0..1
+@(require_results)
+encode_octahedral :: proc "contextless" (n: [3]f32) -> [2]f32 {
+    n := n
+    n /= (linalg.abs(n.x) + linalg.abs(n.y) + linalg.abs(n.z))
+    n.xz = n.z >= 0.0 ? n.xz : cast([2]f32)_wrap_octahedral(n.xz)
+    n.xz = n.xz * 0.5 + 0.5
+    return n.xz
+}
+
+// Result is normalized vector on a sphere
+@(require_results)
+decode_octahedral :: proc "contextless" (f: [2]f32) -> [3]f32 {
+    f := f
+    f = f * 2.0 - 1.0
+    // https://twitter.com/Stubbesaurus/status/937994790553227264
+    n := [3]f32{f.x, 1.0 - abs(f.x) - abs(f.y), f.y}
+    t: f32 = clamp(-n.y, 0, 1)
+    // n.xy += (n.x >= 0.0 || n.y >= 0.0) ? -t : t
+    n.x += n.x >= 0 ? -t : t
+    n.z += n.z >= 0 ? -t : t
+    return linalg.normalize(n)
+}
+
+@(require_results)
+pack_normal_octahedral_unorm8 :: proc "contextless" (val: [3]f32) -> [2]u8 {
+    return pack_unorm8(encode_octahedral(val).xyyy).xy
+}
+
+@(require_results)
+unpack_normal_octahedral_unorm8 :: proc "contextless" (val: [2]u8) -> [3]f32 {
+    return decode_octahedral(unpack_unorm8(val.xyyy).xy)
+}
+
 
 @(require_results)
 pack_sprite_inst :: proc(
@@ -5253,16 +5292,20 @@ pack_mesh_inst :: proc(
 
 @(require_results)
 pack_vertex :: proc(
-    pos:    Vec3,
-    uv:     Vec2 = 0,
-    normal: Vec3 = {0, 1, 0},
-    col:    Vec4 = 1,
+    pos:        Vec3,
+    uv:         Vec2 = 0,
+    normal:     Vec3 = {0, 1, 0},
+    col:        Vec4 = 1,
+    joints:     [4]u8 = max(u8),
+    weights:    Vec4 = 0.25,
 ) -> Vertex {
     return {
         pos = pos,
-        uv = uv,
-        normal = pack_unorm8(normal.xyzz * 0.5 + 0.5).xyz,
+        uv = pack_uv_unorm16(uv),
+        normal = pack_normal_octahedral_unorm8(normal),
         col = pack_unorm8(col),
+        joints = joints,
+        weights = pack_unorm8(weights),
     }
 }
 
