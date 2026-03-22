@@ -28,19 +28,24 @@ when BACKEND == BACKEND_WASAPI {
             (^rawptr)(&enumerator),
         )) or_return
 
+        defer {
+            enumerator->Release()
+            enumerator = nil
+        }
+
         device: ^wasapi.IMMDevice
         _wasapi_check(enumerator->GetDefaultAudioEndpoint(.Render, .Console, &device)) or_return
-
         _wasapi_check(device->Activate(wasapi.IID_IAudioClient, windows.CLSCTX_ALL, nil, cast(^rawptr)&_state.audio_client)) or_return
 
-        enumerator->Release()
-        enumerator = nil
-        device->Release()
-        device = nil
+        defer {
+            device->Release()
+            device = nil
+        }
 
         device_format: ^wasapi.WAVEFORMATEXTENSIBLE
-        _wasapi_check(_state.audio_client->GetMixFormat(cast(^^wasapi.WAVEFORMATEX)&device_format))
+        _wasapi_check(_state.audio_client->GetMixFormat(cast(^^wasapi.WAVEFORMATEX)&device_format)) or_return
         assert(device_format.Format.wFormatTag == .EXTENSIBLE)
+        defer windows.CoTaskMemFree(device_format)
 
         base.log_info(
             "WASAPI Device format: samplerate: %i, channels: %v (%i), f32: %v",
@@ -52,9 +57,6 @@ when BACKEND == BACKEND_WASAPI {
         )
 
         format := (cast(^wasapi.WAVEFORMATEXTENSIBLE)device_format)^
-
-        windows.CoTaskMemFree(device_format)
-
         format.Samples.wValidBitsPerSample = 32
         format.dwChannelMask = {.FRONT_LEFT, .FRONT_RIGHT}
         format.SubFormat = wasapi.KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
@@ -76,17 +78,17 @@ when BACKEND == BACKEND_WASAPI {
             0,
             cast(^wasapi.WAVEFORMATEX)&format,
             nil,
-        ))
+        )) or_return
 
         if !SINGLE_THREAD {
             _state.buffer_event = windows.CreateEventW(nil, false, false, nil)
             _wasapi_check(_state.audio_client->SetEventHandle(_state.buffer_event))
         }
 
-        _wasapi_check(_state.audio_client->GetService(wasapi.IID_IAudioRenderClient, cast(^rawptr)&_state.render_client))
+        _wasapi_check(_state.audio_client->GetService(wasapi.IID_IAudioRenderClient, cast(^rawptr)&_state.render_client)) or_return
 
-        _wasapi_check(_state.audio_client->GetBufferSize(&_state.buffer_frame_num))
-        _wasapi_check(_state.audio_client->Start())
+        _wasapi_check(_state.audio_client->GetBufferSize(&_state.buffer_frame_num)) or_return
+        _wasapi_check(_state.audio_client->Start()) or_return
 
         if !SINGLE_THREAD {
             _state.thread = windows.CreateThread(
@@ -127,7 +129,10 @@ when BACKEND == BACKEND_WASAPI {
 
     _wasapi_render_buffer :: proc() {
         padding: u32
-        _wasapi_check(_state.audio_client->GetCurrentPadding(&padding))
+        if !_wasapi_check(_state.audio_client->GetCurrentPadding(&padding)) {
+            return
+        }
+
         frames_available := _state.buffer_frame_num - padding
 
         if frames_available == 0 {
@@ -135,7 +140,9 @@ when BACKEND == BACKEND_WASAPI {
         }
 
         data_ptr: [^]byte
-        _wasapi_check(_state.render_client->GetBuffer(frames_available, &data_ptr))
+        if !_wasapi_check(_state.render_client->GetBuffer(frames_available, &data_ptr)) {
+            return
+        }
 
         frame_buf := (cast([^][2]f32)data_ptr)[:frames_available]
         intrinsics.mem_zero(raw_data(frame_buf), len(frame_buf) * size_of([2]f32))
@@ -167,7 +174,6 @@ when BACKEND == BACKEND_WASAPI {
     _wasapi_check :: proc(hr: windows.HRESULT, expr := #caller_expression, loc := #caller_location) -> bool {
         if !windows.SUCCEEDED(hr) {
             base.log_err("WASAPI Error: %v (%x)", transmute(wasapi.Result)hr, transmute(u32)hr, loc = loc)
-            assert(false, message = expr, loc = loc)
             return false
         }
         return true

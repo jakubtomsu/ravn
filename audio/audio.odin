@@ -810,7 +810,7 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
         }
 
         // Skip silent
-        SILENCE_EPS :: 0.01
+        SILENCE_EPS :: 0.005
         if abs(volume_range[0]) < SILENCE_EPS && abs(volume_range[1]) < SILENCE_EPS {
             continue sound_loop
         }
@@ -818,10 +818,6 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
         for &pan in pan_range {
             pan = clamp(pan, -1, 1)
         }
-
-        // for &b in out_buf {
-        //     b = 0
-        // }
 
         delta_rate := f32(resource.frame_rate) / f32(frame_rate)
 
@@ -844,6 +840,7 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
         }
 
         // Recursive filters
+        // TODO: better filtering. Butterworth?
         // One-pole HPF and LPF
         // TODO: 2nd-order filtering?
         // Per-channel filtering?
@@ -888,7 +885,7 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
             sound.hpf_prev = hpf_prev
         }
 
-        // Final output
+        // Finally add to output buffer
 
         for frame, i in scratch {
             block_t := f32(i) * inv_frames
