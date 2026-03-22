@@ -918,10 +918,11 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
     }
 
     // Final pass
+    // Applies a limiter curve
 
     out_buf_simd := reinterpret_slice(#simd[8]f32, out_buf)
     for &vec in out_buf_simd {
-        // vec = fast_tanh_simd(vec)
+        vec = fast_tanh_simd(vec)
     }
 
     return
