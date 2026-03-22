@@ -109,13 +109,11 @@ GROUP_DEFAULT :: Group {
 
 // Represents the sample data.
 Resource :: struct {
-    data:           []byte,
-    samples:        []byte,
-    data_format:    Resource_Format,
-    sample_format:  Resource_Format,
-    flags:          bit_set[Resource_Flag], // Only read by the Audio Thread
+    data:           [^]byte,
+    format:         Resource_Format,
     frame_num:      u32,
     frame_rate:     u32, // hz
+    flags:          bit_set[Resource_Flag], // Only read by the Audio Thread
 }
 
 Resource_Flag :: enum u8 {
@@ -297,6 +295,14 @@ set_listener :: proc(
 // MARK: Sounds
 //
 
+create_resource_mono_f32 :: proc(frames: []f32, frame_rate: u32) -> (result: Resource_Handle, ok: bool) {
+    return create_resource(.Raw_F32, to_bytes(frames), flags = {.Mono}, frame_rate = frame_rate)
+}
+
+create_resource_stereo_f32 :: proc(frames: [][2]f32, frame_rate: u32) -> (result: Resource_Handle, ok: bool) {
+    return create_resource(.Raw_F32, to_bytes(frames), flags = {}, frame_rate = frame_rate)
+}
+
 create_resource :: proc(
     format:         Resource_Format,
     data:           []byte,
@@ -320,8 +326,8 @@ create_resource :: proc(
 
     resource := &_state.resources[index]
     resource^ = {
-        data = data,
-        data_format = format,
+        data = raw_data(data),
+        format = format,
         frame_rate = frame_rate,
         flags = flags,
     }
@@ -336,46 +342,65 @@ create_resource :: proc(
     case .Raw_F32:
         assert(frame_rate != 0)
         assert(len(data) % size_of(f32) == 0)
-        resource.sample_format = format
-        resource.samples = data
-        resource.frame_num = u32(len(data) / size_of(f32)) / num_channels
+        resource.frame_num = u32(len(data)) / (num_channels * size_of(f32))
 
     case .Raw_I16:
         assert(frame_rate != 0)
         assert(len(data) % size_of(f32) == 0)
-        resource.sample_format = format
-        resource.samples = data
-        resource.frame_num = u32(len(data) / size_of(i16)) / num_channels
+        resource.frame_num = u32(len(data)) / (num_channels * size_of(i16))
 
     case .Raw_U8:
         assert(frame_rate != 0)
         assert(len(data) % size_of(f32) == 0)
-        resource.sample_format = format
-        resource.samples = data
-        resource.frame_num = u32(len(data) / size_of(u8)) / num_channels
+        resource.frame_num = u32(len(data)) / (num_channels * size_of(u8))
 
     case .WAV:
-        header, samples, header_ok := wav.decode(data, context.allocator)
+        header, sample_bytes, header_ok := wav.decode_header(data)
         if !header_ok {
             return {}, false
         }
 
-        resource.sample_format = .Raw_F32
-        resource.samples = to_bytes(samples)
+        resource.data = raw_data(sample_bytes)
+        resource.frame_num = u32(len(sample_bytes)) / u32(header.format.num_channels * (header.format.bits_per_sample / 8))
         resource.frame_rate = header.format.sample_rate
-        resource.frame_num = u32(len(samples)) / u32(header.format.num_channels)
+
+        switch header.format.format {
+        case .Invalid:
+            assert(false)
+
+        case .PCM_Integer:
+            switch header.format.bits_per_sample {
+            case 8:
+                resource.format = .Raw_U8
+
+            case 16:
+                resource.format = .Raw_I16
+
+            case:
+                return {}, false
+            }
+
+        case .IEEE_754_Float:
+            if header.format.bits_per_sample != 32 {
+                return {}, false
+            }
+
+            resource.format = .Raw_F32
+        }
 
         switch header.format.num_channels {
         case 1: resource.flags += {.Mono}
         case 2: resource.flags -= {.Mono}
         case:
-            assert(false, "WAV files which don't have 1 or 2 channels aren't supported.")
+            assert(false, "Only WAV files with 1 or 2 channels are supported.")
             return {}, false
         }
     }
 
     assert(resource.frame_rate != 0)
-    assert(resource.data_format != .Invalid)
+    assert(resource.frame_num != 0)
+
+    base.log_dump(resource^)
 
     intrinsics.atomic_store(&_state.resources_state[index], .Used)
 
@@ -609,12 +634,12 @@ _get_group :: proc(#any_int index: int) -> (^Group, bool) {
 // MARK: Mixer
 //
 
-default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
+default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
     assert(_state.frame_rate >= 8000)
     assert(_state.frame_rate <= 192000)
 
     _scratch: [SCRATCH_FRAMES][2]f32
-    scratch := _scratch[:len(frame_buf)]
+    scratch := _scratch[:len(out_buf)]
 
     listener_prev := _state.listener_prev
 
@@ -631,7 +656,7 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
     listener_up := normalize(cross(listener_forw, listener_right))
     listener_prev_up := normalize(cross(listener_prev.forw, listener_prev.right))
 
-    global_delta_seconds := f32(len(frame_buf)) / f32(_state.frame_rate)
+    global_delta_seconds := f32(len(out_buf)) / f32(_state.frame_rate)
 
     group_param_range: [NUM_GROUPS][Sound_Param_Kind][2]f32
     for &group, i in _state.groups {
@@ -662,8 +687,6 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
 
         destroy := false
 
-        delta_seconds := f32(resource.frame_rate) / f32(frame_rate)
-
         // Wait before starting
         if sound.frame <= 0 {
             sound.frame += f64(global_delta_seconds) * f64(resource.frame_rate)
@@ -674,7 +697,7 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
 
         params: [Sound_Param_Kind][2]f32
         for &param, kind in sound.params {
-            params[kind] = update_param(&param, delta_seconds)
+            params[kind] = update_param(&param, global_delta_seconds)
         }
 
         volume_range := params[.Volume] * group_params[.Volume]
@@ -796,13 +819,20 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
             pan = clamp(pan, -1, 1)
         }
 
+        // for &b in out_buf {
+        //     b = 0
+        // }
+
+        delta_rate := f32(resource.frame_rate) / f32(frame_rate)
+
         end_time := sample_base_signal(
-            frame_buf = scratch,
-            sample_bytes = resource.samples,
-            sample_format = resource.sample_format,
+            out_buf = scratch,
+            frame_bytes = resource.data,
+            frame_num = resource.frame_num,
+            format = resource.format,
             mono = .Mono in resource.flags,
             time = sound.frame,
-            delta_range = pitch_range * delta_seconds,
+            delta_range = pitch_range * delta_rate,
             loop = .Loop in sound.flags,
             frame_range = sound.frame_range,
         )
@@ -818,7 +848,7 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
         // TODO: 2nd-order filtering?
         // Per-channel filtering?
 
-        inv_frames := 1.0 / f32(len(frame_buf))
+        inv_frames := 1.0 / f32(len(out_buf))
 
         lpf_range = {
             clamp(lpf_range[0], 0, 0.995),
@@ -879,12 +909,19 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
             val.x *= intrinsics.sqrt(0.5 + pan_half)
             val.y *= intrinsics.sqrt(0.5 - pan_half)
 
-            frame_buf[i] += val
+            out_buf[i] += val
         }
 
         if destroy {
             _free_sound(sound_index)
         }
+    }
+
+    // Final pass
+
+    out_buf_simd := reinterpret_slice(#simd[8]f32, out_buf)
+    for &vec in out_buf_simd {
+        // vec = fast_tanh_simd(vec)
     }
 
     return
@@ -895,6 +932,26 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
     }
 }
 
+// Approximation for tanh(x) in the range [-3, 3].
+// Pade epproximant with C2 continuity.
+fast_tanh :: proc(x: f32) -> f32 {
+    if x < -3 {
+        return -1
+    }
+    if x > 3 {
+        return 1
+    }
+    xx := x * x
+    return x * (27 + xx) / (27 + 9 * xx)
+}
+
+fast_tanh_simd :: proc(x: $T/#simd[$N]f32) -> T {
+    x := x
+    x = intrinsics.simd_clamp(x, -3, 3)
+    xx := x * x
+    return x * (27 + xx) / (27 + 9 * xx)
+}
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -903,9 +960,10 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
 
 // Interpolated, Stereo/Mono
 sample_base_signal :: proc(
-    frame_buf:      [][2]f32,
-    sample_bytes:   []byte,
-    sample_format:  Resource_Format,
+    out_buf:        [][2]f32,
+    frame_bytes:    [^]byte,
+    frame_num:      u32,
+    format:         Resource_Format,
     mono:           bool,
     time:           f64,
     delta_range:    [2]f32,
@@ -914,92 +972,224 @@ sample_base_signal :: proc(
 ) -> f64 {
     time := time
 
-    inv_frames := 1.0 / f32(len(frame_buf))
+    assert((frame_range[1] - frame_range[0]) > 0)
 
-    assert((frame_range[1] - frame_range[0]) > 4)
+    DELTA_EPS :: 0.0001
+    delta_one :=
+        abs(delta_range[0] - 1.0) < DELTA_EPS &&
+        abs(delta_range[1] - 1.0) < DELTA_EPS
 
-    switch sample_format {
+    switch format {
     case .Invalid, .WAV:
         assert(false)
 
     case .Raw_F32:
-        samples := reinterpret_bytes(f32, sample_bytes)[frame_range[0] : frame_range[1]]
         if mono {
-            time = _sample_signal(f32, Mono = true, samples = samples, frame_buf = frame_buf, time = time, delta_range = delta_range, loop = loop)
+            samples := (cast([^]f32)frame_bytes)[:frame_num][frame_range[0] : frame_range[1]]
+            if delta_one {
+                time = _sample_signal_direct_mono_f32_copy(samples, out_buf, time, loop = loop)
+            } else {
+                time = _sample_signal_fallback(samples, out_buf, time, delta_range = delta_range, loop = loop)
+            }
         } else {
-            time = _sample_signal(f32, Mono = false, samples = samples, frame_buf = frame_buf, time = time, delta_range = delta_range, loop = loop)
+            samples := (cast([^][2]f32)frame_bytes)[:frame_num][frame_range[0] : frame_range[1]]
+
+            if delta_one {
+                time = _sample_signal_direct_stereo_f32_copy(samples, out_buf, time, loop = loop)
+            } else {
+                time = _sample_signal_fallback(samples, out_buf, time, delta_range = delta_range, loop = loop)
+            }
         }
 
     case .Raw_I16:
-        samples := reinterpret_bytes(i16, sample_bytes)[frame_range[0] : frame_range[1]]
         if mono {
-            time = _sample_signal(i16, Mono = true, samples = samples, frame_buf = frame_buf, time = time, delta_range = delta_range, loop = loop)
+            samples := (cast([^]i16)frame_bytes)[:frame_num][frame_range[0] : frame_range[1]]
+            time = _sample_signal_fallback(samples, out_buf, time, delta_range = delta_range, loop = loop)
         } else {
-            time = _sample_signal(i16, Mono = false, samples = samples, frame_buf = frame_buf, time = time, delta_range = delta_range, loop = loop)
+            samples := (cast([^][2]i16)frame_bytes)[:frame_num][frame_range[0] : frame_range[1]]
+            time = _sample_signal_fallback(samples, out_buf, time, delta_range = delta_range, loop = loop)
         }
 
     case .Raw_U8:
-        samples := reinterpret_bytes(u8, sample_bytes)[frame_range[0] : frame_range[1]]
         if mono {
-            time = _sample_signal(u8, Mono = true, samples = samples, frame_buf = frame_buf, time = time, delta_range = delta_range, loop = loop)
+            samples := (cast([^]u8)frame_bytes)[:frame_num][frame_range[0] : frame_range[1]]
+            time = _sample_signal_fallback(samples, out_buf, time, delta_range = delta_range, loop = loop)
         } else {
-            time = _sample_signal(u8, Mono = false, samples = samples, frame_buf = frame_buf, time = time, delta_range = delta_range, loop = loop)
+            samples := (cast([^][2]u8)frame_bytes)[:frame_num][frame_range[0] : frame_range[1]]
+            time = _sample_signal_fallback(samples, out_buf, time, delta_range = delta_range, loop = loop)
         }
     }
 
     return time
+}
 
-    // TODO: accelerated method when sample rates match exactly and delta == 1
-    _sample_signal :: proc(
-        $T:             typeid,
-        $Mono:          bool,
-        samples:        []T,
-        frame_buf:      [][2]f32,
-        time:           f64,
-        delta_range:    [2]f32,
-        loop:           bool,
-    ) -> f64 {
-        time := time
+// TODO: accelerated method when sample rates match exactly and delta == 1
+_sample_signal_fallback :: proc(
+    frames:         []$T,
+    out_buf:        [][2]f32,
+    time:           f64,
+    delta_range:    [2]f32,
+    loop:           bool,
+) -> f64 {
+    time := time
 
-        assert(len(samples) > 4)
+    last_frame := uint(len(frames) - 1)
+    inv_frames := 1.0 / f32(len(out_buf))
 
-        num_frames := len(samples)
-        if !Mono {
-            num_frames /= 2
+    for i in 0..<len(out_buf) {
+        block_t := f32(i) * inv_frames
+
+        index0 := uint(time)
+        index1 := index0 + 1
+        frame_t := f32(time - f64(index0))
+
+        if loop {
+            index0 %= uint(len(frames))
+            index1 %= uint(len(frames))
+        } else {
+            index0 = min(index0, last_frame)
+            index1 = min(index1, last_frame)
         }
 
-        inv_frames := 1.0 / f32(len(frame_buf))
+        val0 := unpack_frame(frames[index0])
+        val1 := unpack_frame(frames[index1])
 
-        for i in 0..<len(frame_buf) {
-            block_t := f32(i) * inv_frames
-
-            frame_index := int(time)
-
-            if loop {
-                frame_index %= num_frames
-            } else {
-                frame_index = min(frame_index, num_frames - 3)
-            }
-
-            frame_t := f32(time - f64(frame_index))
-
-            when Mono {
-                mono := unpack_mono_samples(cast([^]T)&samples[frame_index])
-                stereo := transmute([2][2]f32)mono.xyxy
-            } else {
-                interleaved_stereo := unpack_stereo_samples(cast([^]T)&samples[frame_index * 2])
-                stereo := transmute([2][2]f32)swizzle(interleaved_stereo, 0, 2, 1, 3)
-            }
-
-            val := lerp(stereo[0], stereo[1], frame_t)
-            delta := lerp(delta_range[0], delta_range[1], block_t)
-
-            frame_buf[i] = val
-            time += f64(delta)
+        val := [2]f32{
+            lerp(val0[0], val1[0], frame_t),
+            lerp(val0[1], val1[1], frame_t),
         }
 
-        return time
+        out_buf[i] = val
+
+        delta := lerp(delta_range[0], delta_range[1], block_t)
+        time += f64(delta)
     }
+
+    return time
+}
+
+// Pitch = 1
+_sample_signal_direct_stereo_f32_copy :: proc(
+    samples:    [][2]f32,
+    out_buf:    [][2]f32,
+    time:       f64,
+    loop:       bool,
+) -> f64 {
+    time := time
+
+    samples_offset := int(time)
+    buf_offset := 0
+    for buf_offset < len(out_buf) {
+        if samples_offset >= len(samples) {
+            if loop {
+                samples_offset %= len(samples)
+            } else {
+                break
+            }
+        }
+
+        buf_remaining := len(out_buf) - buf_offset
+        samples_remaining := len(samples) - samples_offset
+
+        num_frames := max(0, min(buf_remaining, samples_remaining))
+
+        if num_frames > 0 {
+            intrinsics.mem_copy_non_overlapping(
+                raw_data(out_buf[buf_offset:]),
+                raw_data(samples[samples_offset:]),
+                size_of([2]f32) * num_frames,
+            )
+        }
+
+        samples_offset += num_frames
+        buf_offset += num_frames
+
+    }
+
+    // Fill tail with last sample, emulates clamped frame index
+    last_sample := samples[len(samples) - 1]
+    for ; buf_offset < len(out_buf); buf_offset += 1 {
+        out_buf[buf_offset] = last_sample
+    }
+
+    return time + f64(len(out_buf))
+}
+
+// Pitch = 1
+_sample_signal_direct_mono_f32_copy :: proc(
+    samples:    []f32,
+    out_buf:    [][2]f32,
+    time:       f64,
+    loop:       bool,
+) -> f64 {
+    time := time
+
+    samples_offset := int(time)
+    buf_offset := 0
+    for buf_offset < len(out_buf) {
+        if samples_offset >= len(samples) {
+            if loop {
+                samples_offset %= len(samples)
+            } else {
+                break
+            }
+        }
+
+        buf_remaining := len(out_buf) - buf_offset
+        samples_remaining := len(samples) - samples_offset
+
+        num_frames := max(0, min(buf_remaining, samples_remaining))
+
+        for sample, i in samples[samples_offset:][:num_frames] {
+            out_buf[buf_offset + i] = sample
+        }
+
+        samples_offset += num_frames
+        buf_offset += num_frames
+
+    }
+
+    // Fill tail with last sample, emulates clamped frame index
+    last_sample := samples[len(samples) - 1]
+    for ; buf_offset < len(out_buf); buf_offset += 1 {
+        out_buf[buf_offset] = last_sample
+    }
+
+    return time + f64(len(out_buf))
+}
+
+
+unpack_frame :: proc {
+    unpack_frame_mono_f32,
+    unpack_frame_mono_i16,
+    unpack_frame_mono_u8,
+    unpack_frame_stereo_f32,
+    unpack_frame_stereo_i16,
+    unpack_frame_stereo_u8,
+}
+
+unpack_frame_mono_u8 :: proc(v: u8) -> [2]f32 {
+    return (f32(v) - 128.0) * (1.0 / 255.0)
+}
+
+unpack_frame_mono_i16 :: proc(v: i16) -> [2]f32 {
+    return f32(v) * (1.0 / 32768.0)
+}
+
+unpack_frame_mono_f32 :: proc(v: f32) -> [2]f32 {
+    return v
+}
+
+unpack_frame_stereo_u8 :: proc(v: [2]u8) -> [2]f32 {
+    return ({f32(v.x), f32(v.y)} - 128.0) * (1.0 / 255.0)
+}
+
+unpack_frame_stereo_i16 :: proc(v: [2]i16) -> [2]f32 {
+    return {f32(v.x), f32(v.y)} * (1.0 / 32768.0)
+}
+
+unpack_frame_stereo_f32 :: proc(v: [2]f32) -> [2]f32 {
+    return v
 }
 
 
@@ -1048,62 +1238,6 @@ update_param :: proc(param: ^Param, delta: f32) -> (result: [2]f32) {
 linear_attenuation :: proc(x: f32, range: [2]f32) -> f32 {
     val := 1 - clamp((x - range[0]) / (range[1] - range[0]), 0, 1)
     return val // * val
-}
-
-unpack_sample_u8 :: proc(v: u8) -> f32 {
-    return (f32(v) - 128.0) * (1.0 / 255.0)
-}
-
-unpack_sample_i16 :: proc(v: i16) -> f32 {
-    return f32(v) * (1.0 / 32768.0)
-}
-
-unpack_sample_f32 :: proc(v: f32) -> f32 {
-    return v
-}
-
-unpack_mono_samples :: proc {
-    unpack_mono_samples_f32,
-    unpack_mono_samples_i16,
-    unpack_mono_samples_u8,
-}
-
-unpack_mono_samples_f32 :: proc(data: [^]f32) -> [2]f32 {
-    return (cast(^[2]f32)data)^
-}
-
-unpack_mono_samples_i16 :: proc(data: [^]i16) -> [2]f32 {
-    return {f32(data[0]), f32(data[1])} * (1.0 / 32768.0)
-}
-
-unpack_mono_samples_u8 :: proc(data: [^]u8) -> [2]f32 {
-    return ({f32(data[0]), f32(data[1])} - 128.0) * (1.0 / 255.0)
-}
-
-unpack_stereo_samples :: proc {
-    unpack_stereo_samples_f32,
-    unpack_stereo_samples_i16,
-    unpack_stereo_samples_u8,
-}
-
-unpack_stereo_samples_f32 :: proc(data: [^]f32) -> #simd[4]f32 {
-    return (cast(^#simd[4]f32)data)^
-}
-
-unpack_stereo_samples_i16 :: proc(data: [^]i16) -> #simd[4]f32 {
-    packed := (cast(^#simd[4]i16)data)^
-    return cast(#simd[4]f32)packed * (1.0 / 32768.0)
-}
-
-unpack_stereo_samples_u8 :: proc(data: [^]u8) -> #simd[4]f32 {
-    packed := (cast(^#simd[4]u8)data)^
-    return (cast(#simd[4]f32)packed - 128.0) * (1.0 / 255.0)
-}
-
-unpack_sample :: proc {
-    unpack_sample_u8,
-    unpack_sample_i16,
-    unpack_sample_f32,
 }
 
 @(require_results)
@@ -1162,6 +1296,14 @@ move_towards_vec3 :: proc "contextless" (val: [3]f32, target: [3]f32, delta: f32
     return val + dir * delta
 }
 
+
+@(require_results)
+reinterpret_slice :: proc "contextless" ($T: typeid, data: []$E, loc := #caller_location) -> []T {
+    bytes := to_bytes(data)
+    n := len(bytes) / size_of(T)
+    assert_contextless(n * size_of(T) == len(bytes), loc = loc)
+    return (cast([^]T)raw_data(bytes))[:n]
+}
 
 @(require_results)
 reinterpret_bytes :: proc "contextless" ($T: typeid, bytes: []byte, loc := #caller_location) -> []T {

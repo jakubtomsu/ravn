@@ -19,6 +19,7 @@ State :: struct {
     step:   f32,
     header: wav.Header,
     sound_res:  rv.Sound_Resource_Handle,
+    sound_res2: rv.Sound_Resource_Handle,
     sound: rv.Sound_Handle,
     samples: []f32,
 }
@@ -45,6 +46,13 @@ _init :: proc() {
 
     state.sound_res = rv.create_sound_resource_encoded("wave", file_data) or_else panic("foo")
     state.header = header
+
+    sin_samples := make([]f32, 480)
+    for &smp, i in sin_samples {
+        smp = f32(i) / 1000
+    }
+
+    state.sound_res2 = audio.create_resource_mono_f32(sin_samples, frame_rate = audio._state.frame_rate) or_else panic("kdjfslksdf")
 }
 
 _shutdown :: proc() {
@@ -107,10 +115,11 @@ _update :: proc(_: rawptr) -> rawptr {
     }
 
     if rv.key_pressed(.Space) {
-        state.sound = rv.create_sound(state.sound_res,
-            pitch = rand.float32_range(0.01, 2),
-            volume = 2,
-            pan = rand.float32_range(-1, 1),
+        state.sound = rv.create_sound(state.sound_res2,
+            // pitch = rand.float32_range(0.01, 2),
+            // volume = 2,
+            flags = {.Loop},
+            // pan = rand.float32_range(-1, 1),
         )
     }
 
