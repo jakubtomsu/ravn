@@ -23,11 +23,11 @@ jobs:
           cd Odin
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           ./build.bat
-          echo %CD%>> %GITHUB_PATH%
           ./odin version
           ./odin report
 
       - name: Check All
         shell: cmd
         run: |
+          set "ODIN_PATH=%CD%\Odin"
           call check_all.cmd
