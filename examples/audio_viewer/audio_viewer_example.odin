@@ -110,17 +110,16 @@ _update :: proc(_: rawptr) -> rawptr {
         state.sound = rv.create_sound(state.sound_res,
             pitch = rand.float32_range(0.01, 2),
             volume = 2,
-            // pan = rand.float32_range(-1, 1),
-            // pan = rand.float32() > 0.5 ? -1 : 1,
+            pan = rand.float32_range(-1, 1),
         )
     }
 
-    smp := audio.get_sound_time(state.sound)
+    smp := audio.get_sound_time(state.sound, .Frames)
 
     rv.draw_sprite(
         {sample_to_pixel(smp), rv.get_screen_size().y * 0.5, 0.7},
         scale = {4, 1200.0},
-        col = audio.is_sound_playing(state.sound) ? rv.GREEN : rv.DARK_GREEN,
+        col = audio.get_sound_playing(state.sound) ? rv.GREEN : rv.DARK_GREEN,
         scaling = .Absolute,
     )
 

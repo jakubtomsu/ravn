@@ -132,14 +132,13 @@ Resource_Format :: enum u8 {
 
 Sound :: struct {
     frame:              f64,
-    end_frame:          u32,
+    delay:              f32,
+    frame_range:        [2]u32,
     resource:           Resource_Handle,
     flags:              bit_set[Sound_Flag],
     group_index:        u8,
 
-    // Constant parameters
     playing:            b32,
-
     params:             [Sound_Param_Kind]Param,
 
     pos_curr:           [3]f32,
@@ -391,19 +390,20 @@ destroy_resource :: proc(handle: Resource_Handle) -> bool {
     return true
 }
 
-// NOTE: created sound is stopped by default
 create_sound :: proc(
-    resource_handle:    Resource_Handle,
-    flags:              bit_set[Sound_Flag] = {},
-    pitch:              f32 = 1.0,
-    pan:                f32 = 0,
-    volume:             f32 = 1,
-    playing             := true,
-    attenuation_range:  [2]f32 = {0.1, 100},
-    doppler_factor:     f32 = 1.0,
-    lowpass:            f32 = 0.0,
-    highpass:           f32 = 0.0,
-    #any_int group_index:    int = 0,
+    resource_handle:        Resource_Handle,
+    flags:                  bit_set[Sound_Flag] = {},
+    pitch:                  f32 = 1.0,
+    pan:                    f32 = 0,
+    volume:                 f32 = 1,
+    attenuation_range:      [2]f32 = {0.1, 100},
+    lowpass:                f32 = 0.0,
+    highpass:               f32 = 0.0,
+    doppler_factor:         f32 = 1.0,
+    playing                 := true,
+    chop:                   [2]f32 = {0, 1},
+    start_delay:            f32 = 0,
+    #any_int group_index:   int = 0,
 ) -> (result: Sound_Handle, ok: bool) #optional_ok {
     assert(group_index >= 0)
     assert(group_index < NUM_GROUPS)
@@ -421,6 +421,8 @@ create_sound :: proc(
     }
 
     assert(intrinsics.atomic_load(&_state.sounds_state[index]) == .Free)
+    assert(res.frame_rate > 0)
+    assert(res.frame_num > 0)
 
     result = {
         index = index,
@@ -433,7 +435,11 @@ create_sound :: proc(
         resource = resource_handle,
         flags = flags,
         playing = b32(playing),
-        end_frame = res.frame_num,
+        frame = -f64(start_delay) * f64(res.frame_rate),
+        frame_range = {
+            u32(chop[0] * f32(res.frame_num)),
+            u32(chop[1] * f32(res.frame_num)),
+        },
         params = {
             .Pitch             = _param(pitch),
             .Volume            = _param(volume),
@@ -472,7 +478,25 @@ get_sound_time :: proc(handle: Sound_Handle, unit: Unit = .Seconds) -> f32 {
     if !ok {
         return 0
     }
-    return f32(sound.frame)
+
+    frame_num := int(sound.frame_range[1]) - int(sound.frame_range[0])
+
+    switch unit {
+    case .Seconds:
+        res, res_ok := _get_resource(sound.resource)
+        if !res_ok {
+            return 0
+        }
+        return f32(sound.frame) * f32(res.frame_rate)
+
+    case .Frames:
+        return f32(sound.frame) + f32(sound.frame_range[0])
+
+    case .Percentage:
+        return f32(sound.frame) / f32(frame_num)
+    }
+
+    return 0
 }
 
 get_sound_playing :: proc(handle: Sound_Handle) -> bool {
@@ -607,12 +631,12 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
     listener_up := normalize(cross(listener_forw, listener_right))
     listener_prev_up := normalize(cross(listener_prev.forw, listener_prev.right))
 
-    group_delta_seconds := f32(len(frame_buf)) / f32(_state.frame_rate)
+    global_delta_seconds := f32(len(frame_buf)) / f32(_state.frame_rate)
 
     group_param_range: [NUM_GROUPS][Sound_Param_Kind][2]f32
     for &group, i in _state.groups {
         for &param, kind in group.sound_params {
-            group_param_range[i][kind] = update_param(&param, group_delta_seconds)
+            group_param_range[i][kind] = update_param(&param, global_delta_seconds)
         }
     }
 
@@ -639,6 +663,12 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
         destroy := false
 
         delta_seconds := f32(resource.frame_rate) / f32(frame_rate)
+
+        // Wait before starting
+        if sound.frame <= 0 {
+            sound.frame += f64(global_delta_seconds) * f64(resource.frame_rate)
+            continue
+        }
 
         group_params := group_param_range[sound.group_index]
 
@@ -774,11 +804,12 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
             time = sound.frame,
             delta_range = pitch_range * delta_seconds,
             loop = .Loop in sound.flags,
+            frame_range = sound.frame_range,
         )
 
         sound.frame = end_time
 
-        if .Loop not_in sound.flags && int(sound.frame) > int(resource.frame_num) {
+        if .Loop not_in sound.flags && int(sound.frame) > int(sound.frame_range[1] - sound.frame_range[0]) {
             destroy = true
         }
 
@@ -879,17 +910,20 @@ sample_base_signal :: proc(
     time:           f64,
     delta_range:    [2]f32,
     loop:           bool,
+    frame_range:    [2]u32,
 ) -> f64 {
     time := time
 
     inv_frames := 1.0 / f32(len(frame_buf))
+
+    assert((frame_range[1] - frame_range[0]) > 4)
 
     switch sample_format {
     case .Invalid, .WAV:
         assert(false)
 
     case .Raw_F32:
-        samples := reinterpret_bytes(f32, sample_bytes)
+        samples := reinterpret_bytes(f32, sample_bytes)[frame_range[0] : frame_range[1]]
         if mono {
             time = _sample_signal(f32, Mono = true, samples = samples, frame_buf = frame_buf, time = time, delta_range = delta_range, loop = loop)
         } else {
@@ -897,7 +931,7 @@ sample_base_signal :: proc(
         }
 
     case .Raw_I16:
-        samples := reinterpret_bytes(i16, sample_bytes)
+        samples := reinterpret_bytes(i16, sample_bytes)[frame_range[0] : frame_range[1]]
         if mono {
             time = _sample_signal(i16, Mono = true, samples = samples, frame_buf = frame_buf, time = time, delta_range = delta_range, loop = loop)
         } else {
@@ -905,7 +939,7 @@ sample_base_signal :: proc(
         }
 
     case .Raw_U8:
-        samples := reinterpret_bytes(u8, sample_bytes)
+        samples := reinterpret_bytes(u8, sample_bytes)[frame_range[0] : frame_range[1]]
         if mono {
             time = _sample_signal(u8, Mono = true, samples = samples, frame_buf = frame_buf, time = time, delta_range = delta_range, loop = loop)
         } else {
@@ -926,6 +960,8 @@ sample_base_signal :: proc(
         loop:           bool,
     ) -> f64 {
         time := time
+
+        assert(len(samples) > 4)
 
         num_frames := len(samples)
         if !Mono {
@@ -958,7 +994,7 @@ sample_base_signal :: proc(
             val := lerp(stereo[0], stereo[1], frame_t)
             delta := lerp(delta_range[0], delta_range[1], block_t)
 
-            frame_buf[i] += val
+            frame_buf[i] = val
             time += f64(delta)
         }
 
@@ -1128,9 +1164,9 @@ move_towards_vec3 :: proc "contextless" (val: [3]f32, target: [3]f32, delta: f32
 
 
 @(require_results)
-reinterpret_bytes :: proc "contextless" ($T: typeid, bytes: []byte) -> []T {
+reinterpret_bytes :: proc "contextless" ($T: typeid, bytes: []byte, loc := #caller_location) -> []T {
     n := len(bytes) / size_of(T)
-    assert_contextless(n * size_of(T) == len(bytes))
+    assert_contextless(n * size_of(T) == len(bytes), loc = loc)
     return ([^]T)(raw_data(bytes))[:n]
 }
 
@@ -1148,7 +1184,7 @@ volume_db_to_linear :: proc(gain: f32) -> f32 {
 }
 
 // Returns frequency in Hz for a given midi note.
-note :: proc(#any_int midi_n: i32) -> f32 {
+note_freq :: proc(#any_int midi_n: i32) -> f32 {
     return 440 * math.pow_f32(2, f32(midi_n - 69) * (1.0 / 12.0))
 }
 
