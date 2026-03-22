@@ -56,9 +56,8 @@ _update :: proc(_: rawptr) -> rawptr {
     rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.draw_text("Hello World! ☺", {100, 100, 0}, scale = 4, spacing = 1)
 
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE,
-        clear_color = rv.DARK_BLUE.rgb, clear_depth = true)
+    rv.submit_layers()
+    rv.render_layer(0, clear_color = rv.DARK_BLUE.rgb, clear_depth = true)
 
     return nil
 }

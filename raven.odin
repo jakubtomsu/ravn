@@ -176,7 +176,7 @@ State :: struct #align(64) {
     debug_trace_ctx:            debug_trace.Context,
     context_state:              Context_State,
 
-    uploaded_gpu_draws:         bool,
+    submitted_layers:         bool,
 
     input:                      Input,
 
@@ -1047,7 +1047,7 @@ begin_frame :: proc() -> (keep_running: bool) {
 
     assert(_state.bind_states_len == 0, "Looks like you forgot pop_binds() somewhere")
     _state.frame_index += 1
-    _state.uploaded_gpu_draws = false
+    _state.submitted_layers = false
 
     time_ns := platform.get_time_ns()
     _state.curr_time = time_ns
@@ -1513,6 +1513,7 @@ load_scene_from_data :: proc(txt: string, bin: []byte, dst_group: Group_Handle) 
         }
 
         // APPEND TO GPU
+        unimplemented()
 
     } else {
         verts := make([]Vertex, len(vert_buf), context.temp_allocator)
@@ -4079,12 +4080,12 @@ _upload_gpu_layer_constants :: proc() {
 }
 
 // This takes all the draw_* command data and uploads them to GPU buffers.
-// Call render_gpu_layer(...) to actually draw.
+// Call render_layer(...) to actually draw.
 // NOTE: until the start of the next frame, all draw_* commands after this call will be ignored.
 @(optimization_mode="favor_size")
-upload_gpu_layers :: proc() {
-    assert(!_state.uploaded_gpu_draws)
-    _state.uploaded_gpu_draws = true
+submit_layers :: proc() {
+    assert(!_state.submitted_layers)
+    _state.submitted_layers = true
 
     _upload_gpu_global_constants()
 
@@ -4478,20 +4479,37 @@ upload_gpu_layers :: proc() {
 // MARK: GPU Drawing
 //
 
+GPU_SAMPLER_SLOTS :: 4
+GPU_CONSTANT_SLOTS :: 4
+GPU_RESOURCE_SLOTS :: 4
+
 // NOTE: the instance bind data only use a few of the available sots (consts/resources/blends/etc)
 // We could possibly expose a direct way for the user to control this on per-layer basis.
 // Custom pipeline and pass desc input?
 @(optimization_mode="favor_size")
-render_gpu_layer :: proc(
-    #any_int index: i32,
-    ren_tex_handle: Render_Texture_Handle = DEFAULT_RENDER_TEXTURE,
-    clear_color:    Maybe(Vec3),
-    clear_depth:    bool,
+render_layer :: proc(
+    #any_int layer_index:   i32,
+    ren_tex_handle:         Render_Texture_Handle = DEFAULT_RENDER_TEXTURE,
+    clear_color:            Maybe(Vec3),
+    clear_depth:            bool,
+    // User configurable GPU parameters.
+    // Only first few slots are consumed by built-in raven resources,
+    // so the rest is free to use.
+    //
+    // See GPU_*_SLOTS for the offsets.
+    //
+    // NOTE: if you need even more configurability, there's nothing
+    // stopping you from writing a completely custom render_layer replacement.
+    // All you need to do is create a custom GPU pass and call _render_layer_* procs.
+    user_samplers:          []gpu.Sampler_Desc = nil,
+    user_constants:         []gpu.Resource_Handle = nil,
+    user_resources:         []gpu.Resource_Handle = nil,
 ) {
     assert(ren_tex_handle != {})
-    assert(_state.uploaded_gpu_draws, "You must call upload_gpu_layers() to submit draw data to VRAM before any actual rendering")
 
-    layer := _state.draw_layers[index]
+    if !_state.submitted_layers {
+        submit_layers()
+    }
 
     ren_tex, ren_tex_ok := get_internal_render_texture(ren_tex_handle)
     if !ren_tex_ok {
@@ -4539,10 +4557,22 @@ render_gpu_layer :: proc(
         pip_desc.samplers[i] = smp
     }
 
+    copy(pip_desc.samplers[GPU_SAMPLER_SLOTS:], user_samplers)
+    copy(pip_desc.constants[GPU_CONSTANT_SLOTS:], user_constants)
+    copy(pip_desc.resources[GPU_RESOURCE_SLOTS:], user_resources)
 
-    //
-    // Sprites
-    //
+    _render_layer_sprites(layer_index, pip_desc)
+    _render_layer_meshes(layer_index, pip_desc)
+    _render_layer_triangles(layer_index, pip_desc)
+    _render_layer_lines(layer_index, pip_desc)
+
+    return
+}
+
+_render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    pip_desc := pip_desc
+
+    layer := _state.draw_layers[layer_index]
 
     pip_desc.index = {
         resource = _state.quad_ibuf,
@@ -4574,16 +4604,17 @@ render_gpu_layer :: proc(
             index_offset = 0,
             const_offsets = {
                 0 = max(u32),
-                1 = u32(index),
+                1 = u32(layer_index),
                 2 = batch.offset,
             },
         )
     }
+}
 
+_render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    pip_desc := pip_desc
 
-    //
-    // Meshes
-    //
+    layer := _state.draw_layers[layer_index]
 
     pip_desc.index = {
         resource = {},
@@ -4619,16 +4650,17 @@ render_gpu_layer :: proc(
             index_offset = mesh.index_offs,
             const_offsets = {
                 0 = max(u32),
-                1 = u32(index),
+                1 = u32(layer_index),
                 2 = batch.offset,
             },
         )
     }
+}
 
+_render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    pip_desc := pip_desc
 
-    //
-    // Triangles
-    //
+    layer := _state.draw_layers[layer_index]
 
     pip_desc.index = {
         resource = {},
@@ -4659,16 +4691,17 @@ render_gpu_layer :: proc(
             instance_num = batch.num,
             const_offsets = {
                 0 = max(u32),
-                1 = u32(index),
+                1 = u32(layer_index),
                 2 = batch.offset,
             },
         )
     }
+}
 
+_render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    pip_desc := pip_desc
 
-    //
-    // Lines
-    //
+    layer := _state.draw_layers[layer_index]
 
     pip_desc.topo = .Lines
     pip_desc.index = {
@@ -4700,13 +4733,11 @@ render_gpu_layer :: proc(
             instance_num = batch.num,
             const_offsets = {
                 0 = max(u32),
-                1 = u32(index),
+                1 = u32(layer_index),
                 2 = batch.offset,
             },
         )
     }
-
-    return
 }
 
 _gpu_pipeline_desc_apply_draw_key :: proc(pip_desc: ^gpu.Pipeline_Desc, key: Draw_Sort_Key, loc := #caller_location) {

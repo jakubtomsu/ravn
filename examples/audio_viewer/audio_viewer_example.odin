@@ -128,8 +128,8 @@ _update :: proc(_: rawptr) -> rawptr {
         {10, 10, 0}
     )
 
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.BLACK.rgb, clear_depth = true)
+    rv.submit_layers()
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.BLACK.rgb, clear_depth = true)
 
     return nil
 }

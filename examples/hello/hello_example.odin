@@ -44,8 +44,8 @@ _update :: proc(_: rawptr) -> rawptr {
     // The 'rv.draw_*' commands only record what geometry you want to render each frame.
     // To actually display it on the screen you must first upload it to the GPU, and then
     // explicily render each layer into a particular render texture.
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, clear_color = rv.DARK_BLUE.rgb, clear_depth = true)
+    rv.submit_layers()
+    rv.render_layer(0, clear_color = rv.DARK_BLUE.rgb, clear_depth = true)
 
     return nil
 }

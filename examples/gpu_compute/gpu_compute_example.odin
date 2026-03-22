@@ -157,9 +157,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.draw_counter(.CPU_Frame_Ns, {20, 200, 0.1}, scale = 2, unit = 1e-6, col = rv.GREEN)
 
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, clear_color = rv.DARK_BLUE.rgb * 0.5, clear_depth = true)
-    rv.render_gpu_layer(1, clear_color = nil, clear_depth = true)
+    rv.submit_layers()
+    rv.render_layer(0, clear_color = rv.DARK_BLUE.rgb * 0.5, clear_depth = true)
+    rv.render_layer(1, clear_color = nil, clear_depth = true)
 
     return state
 }

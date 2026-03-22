@@ -364,9 +364,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_counter(.CPU_Frame_Ns, {10, 50, 0.2}, scale = 2, unit = 1e-6, col = rv.DARK_GREEN)
     rv.draw_counter(.CPU_Frame_Work_Ns, {10, 50, 0.1}, scale = 2, unit = 1e-6, col = rv.GREEN, show_text = false)
 
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0.05, 0.1, 0.2}, true)
-    rv.render_gpu_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
+    rv.submit_layers()
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0.05, 0.1, 0.2}, true)
+    rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
 
     // rv.end_frame(false) // disable VSYNC
 

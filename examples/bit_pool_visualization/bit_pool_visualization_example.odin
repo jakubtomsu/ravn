@@ -277,8 +277,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.draw_text("LMB to spawn particles", {10, 10, 0}, scale = 2)
 
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.Vec3{0, 0, 0.1}, clear_depth = true)
+    rv.submit_layers()
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.Vec3{0, 0, 0.1}, clear_depth = true)
 
     return state
 }

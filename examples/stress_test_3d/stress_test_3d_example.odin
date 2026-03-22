@@ -146,10 +146,10 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_counter(.CPU_Frame_Work_Ns, {10, 50, 0.1}, scale = 2, unit = 1e-6, col = rv.GREEN, show_text = false)
     rv.draw_counter(.Num_Draw_Calls, {10, 100, 0.1}, col = rv.ORANGE)
 
-    rv.upload_gpu_layers()
+    rv.submit_layers()
 
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
-    rv.render_gpu_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
+    rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
 
     return state
 }
