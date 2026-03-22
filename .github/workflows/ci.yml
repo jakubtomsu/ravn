@@ -29,5 +29,5 @@ jobs:
       - name: Check All
         shell: cmd
         run: |
-          set "ODIN_PATH=%CD%\Odin"
+          set "PATH=%CD%\Odin;%PATH%"
           call check_all.cmd
