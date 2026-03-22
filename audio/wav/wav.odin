@@ -166,7 +166,6 @@ decode_samples :: proc(format: Format_Chunk, data: []byte, allocator := context.
 
 // Initialize a header for writing it to a file.
 // To encode a WAV file, write the header immediately followed by the raw sample bytes.
-@(require_results)
 init_header :: proc(header: ^Header, sample_rate: u32, num_channels: u16, sample_size: u32, sample_format: Format, data: []byte) {
     header^ = {
         riff = RIFF_Chunk{
@@ -181,7 +180,7 @@ init_header :: proc(header: ^Header, sample_rate: u32, num_channels: u16, sample
                 id = FORMAT_CHUNK_ID,
                 size = size_of(Format_Chunk) - size_of(Chunk),
             },
-            format = format,,
+            format = format,
             num_channels = num_channels,
             sample_rate = sample_rate,
             byte_per_sec = u32(sample_rate) * sample_size,
