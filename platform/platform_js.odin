@@ -1,3 +1,13 @@
+/*
+NOTE: frame loop is done by the odin.js repeatedly calling `step`:
+
+    @(private="file", export)
+    step :: proc(dt: f32) -> bool {
+        frame(dt)
+        return true
+    }
+
+*/
 #+build js
 #+vet explicit-allocators shadowing unused
 package raven_platform
@@ -5,12 +15,7 @@ package raven_platform
 import "../base"
 import "core:sys/wasm/js"
 
-// // NOTE: frame loop is done by the odin.js repeatedly calling `step`.
-// @(private="file", export)
-// step :: proc(dt: f32) -> bool {
-//     frame(dt)
-//     return true
-// }
+#assert(BACKEND == BACKEND_JS)
 
 _CANVAS_ID :: "#raven-canvas"
 
@@ -26,7 +31,6 @@ _Barrier :: struct { _: u8 }
 _Thread :: struct { _: u8 }
 _Window :: struct { _: u8 }
 _Module :: struct { _: u8 }
-
 
 
 
@@ -621,7 +625,7 @@ _js_event_callbacks := [js.Event_Kind]_JS_Event_Callback {
     .Scroll = proc(e: js.Event) {
         assert(e.kind == .Scroll)
         event: Event_Scroll
-        event.delta = {f32(e.scroll.delta.x), f32(e.scroll.delta.y)}
+        event.delta = {f32(e.scroll.delta.x), -f32(e.scroll.delta.y)}
         _event_queue_push(event)
     },
 
@@ -629,7 +633,7 @@ _js_event_callbacks := [js.Event_Kind]_JS_Event_Callback {
         assert(e.kind == .Wheel)
         event: Event_Scroll
         // TODO: e.wheel.delta_mode
-        event.delta = {f32(e.wheel.delta.x), f32(e.wheel.delta.y)}
+        event.delta = {f32(e.wheel.delta.x), -f32(e.wheel.delta.y)}
         _event_queue_push(event)
     },
 

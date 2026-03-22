@@ -38,7 +38,7 @@ _init :: proc() {
 
     life_hlsl := #load("gpu_compute_life.hlsl", string)
 
-    cs_bin := shader_compiler.compile("life.hlsl", life_hlsl, {target = .D3D11, stage = .Compute}) or_else panic("Shader compile")
+    cs_bin := shader_compiler.compile("life.hlsl", life_hlsl, {target = .DXBC, stage = .Compute}) or_else panic("Shader compile")
     state.cs = gpu.create_shader("life", cs_bin, .Compute) or_else panic("Shader")
 
     pixels := make([][4]u8, SIZE * SIZE, context.temp_allocator)

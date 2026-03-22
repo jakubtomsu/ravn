@@ -43,28 +43,12 @@ compile_hot :: proc(pkg: string, pkg_name: string, index: int) {
     exec(ufmt.tprintf("%s build %s -out:%s -debug -build-mode:dll", ODIN_EXE, pkg, path))
 }
 
-find_last_slash :: proc(str: string) -> int {
-    a := strings.last_index_byte(str,'\\')
-    b := strings.last_index_byte(str,'/')
-    return max(a, b)
-}
-
 clean_hot :: proc(pkg: string) {
     remove_all(ufmt.tprintf("%s*.dll", pkg))
     remove_all(ufmt.tprintf("%s*.pdb", pkg))
     remove_all(ufmt.tprintf("%s*.exp", pkg))
     remove_all(ufmt.tprintf("%s*.lib", pkg))
     remove_all(ufmt.tprintf("%s*.rdi", pkg))
-}
-
-remove_all :: proc(pattern: string) {
-    base.log_info("Removing all '%s'", pattern)
-
-    iter: platform.Directory_Iter
-    for path in platform.iter_directory(&iter, pattern, context.temp_allocator) {
-        base.log_info("removing '%s'", path)
-        platform.delete_file(path)
-    }
 }
 
 hotreload_find_latest_dll :: proc(pkg_name: string) -> (result: Hotreload_File, ok: bool) {

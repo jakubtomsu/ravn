@@ -442,7 +442,9 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
         val := _extract_int(value.data, v.base.size)
         for enum_val, i in v.values {
             if val == u64(enum_val) {
-                append_elem(buf, '.')
+                if depth > 0 {
+                    append_elem(buf, '.')
+                }
                 append_elem_string(buf, v.names[i])
                 break
             }
@@ -530,6 +532,10 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
     case runtime.Type_Info_Dynamic_Array:
         raw := (transmute(^runtime.Raw_Dynamic_Array)value.data)^
         _append_slice(buf, raw.data, raw.len, v.elem_size, v.elem.id, pretty = pretty, depth = depth)
+
+    case runtime.Type_Info_Fixed_Capacity_Dynamic_Array:
+        length := (cast(^int)(uintptr(value.data) + v.len_offset))^
+        _append_slice(buf, value.data, length, v.elem_size, v.elem.id, pretty = pretty, depth = depth)
 
     case runtime.Type_Info_Any:
         _append_any(buf, (cast(^any)value.data)^, pretty = pretty, depth = depth)

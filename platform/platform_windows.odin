@@ -7,7 +7,7 @@ import "base:intrinsics"
 import "base:runtime"
 import "core:sys/windows"
 
-// Vet
+_ :: base
 _ :: intrinsics
 _ :: runtime
 _ :: windows
@@ -768,7 +768,7 @@ when BACKEND == BACKEND_WINDOWS {
             dwDesiredAccess = windows.FILE_GENERIC_WRITE,
             dwShareMode = windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE,
             lpSecurityAttributes = nil,
-            dwCreationDisposition = windows.OPEN_ALWAYS,
+            dwCreationDisposition = windows.CREATE_ALWAYS,
             dwFlagsAndAttributes = windows.FILE_ATTRIBUTE_NORMAL | windows.FILE_FLAG_BACKUP_SEMANTICS,
             hTemplateFile = nil,
         )

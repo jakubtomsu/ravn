@@ -26,7 +26,11 @@ log_debug :: proc(format: string, args: ..any, loc := #caller_location) {
 }
 
 log_dump :: proc(arg: any, expr := #caller_expression(arg), loc := #caller_location) {
-    log(.Debug, format = "%s = %v", args = {expr, arg}, loc = loc)
+    if type_info_of(arg.id).size <= 16 {
+        log(.Debug, format = "%s = %v", args = {expr, arg}, loc = loc)
+    } else {
+        log(.Debug, format = "%s = %#", args = {expr, arg}, loc = loc)
+    }
 }
 
 
@@ -43,14 +47,21 @@ log :: proc(level: Log_Level, format: string, args: ..any, loc := #caller_locati
     context.logger.procedure(logger.data, level, str, logger.options, location = loc)
 }
 
-create_logger :: proc() -> runtime.Logger {
+make_logger :: proc() -> runtime.Logger {
     return {
         procedure = _logger_proc,
         data = nil,
+        options = {.Terminal_Color},
     }
 }
 
-_logger_proc :: proc(logger_data: rawptr, level: runtime.Logger_Level, text: string, options: bit_set[runtime.Logger_Option], loc := #caller_location) {
+_logger_proc :: proc(
+    logger_data:    rawptr,
+    level:          runtime.Logger_Level,
+    text:           string,
+    options:        bit_set[runtime.Logger_Option],
+    loc             := #caller_location,
+) {
     ESC :: "\e"
     CSI :: ESC + "["
     SGR :: "m"
@@ -71,31 +82,18 @@ _logger_proc :: proc(logger_data: rawptr, level: runtime.Logger_Level, text: str
     if .Terminal_Color in options {
         end_col = CSI + RESET + SGR
         switch level {
-        case .Debug:
-            begin_col = CSI + FG_BLACK + SGR
-        case .Info:
-            begin_col = CSI + FG_CYAN + SGR
-        case .Warning:
-            begin_col = CSI + FG_YELLOW + SGR
-        case .Error:
-            begin_col = CSI + FG_RED + SGR
-        case .Fatal:
-            begin_col = CSI + FG_RED + SGR
+        case .Debug:    begin_col = CSI + FG_BLACK + SGR
+        case .Info:     begin_col = CSI + FG_CYAN + SGR
+        case .Warning:  begin_col = CSI + FG_YELLOW + SGR
+        case .Error:    begin_col = CSI + FG_RED + SGR
+        case .Fatal:    begin_col = CSI + FG_RED + SGR
         }
     }
 
-    if begin_col != "" {
-        ufmt.eprintf("%s", begin_col)
-    }
-
-    ufmt.eprintf(_logger_prefix[level])
-
-    if end_col != "" {
-        ufmt.eprintf("%s", end_col)
-    }
-
-    // TODO: time, flags, color?
-    ufmt.eprintfln("%s(%i:%i) %s: %s",
+    ufmt.eprintfln("%s%s%s%s(%i:%i) %s: %s",
+        begin_col,
+        _logger_prefix[level],
+        end_col,
         loc.file_path,
         loc.line,
         loc.column,

@@ -461,10 +461,7 @@ Draw_Global_Constants :: struct #all_or_none #align(16) {
     frame:          u32,
     resolution:     [2]i32,
     rand_seed:      u32,
-    param0:         u32,
-    param1:         u32,
-    param2:         u32,
-    param3:         u32,
+    param:          [4]u32, // user params
 }
 
 Draw_Layer_Constants :: struct #all_or_none #align(16) {
@@ -623,6 +620,7 @@ when ODIN_OS == .JS {
 
 
 // Default runner for a raven app.
+//
 // Calling this does nothing when compiling as a DLL, it's the responsibility
 // of whoever loaded the DLL (e.g. hotreload runner) to call the app.
 // NOTE: Things like reload never get called in this mode.
@@ -827,7 +825,9 @@ init_state :: proc(allocator := context.allocator) {
         panic("Failed to initialize GPU")
     }
 
-    shader_compiler.init(&_state.shader_compiler_state)
+    when !RELEASE {
+        shader_compiler.init(&_state.shader_compiler_state)
+    }
 
     if ODIN_OS != .JS {
         assert(gpu.is_init_done())
@@ -1328,24 +1328,23 @@ _load_builtin_assets :: proc() {
     default_vs: []byte
     default_ps: []byte
 
-    // switch gpu.BACKEND {
-    // case gpu.BACKEND_D3D11:
+    when !RELEASE {
+        default_sprite_vs = #load("data/default_sprite.vs.hlsl")
+        default_vs = #load("data/default.vs.hlsl")
+        default_ps = #load("data/default.ps.hlsl")
+    } else when gpu.BACKEND ==  gpu.BACKEND_D3D11 {
+        default_sprite_vs = #load("data/default_sprite.vs.hlsl.dxbc")
+        default_vs = #load("data/default.vs.hlsl.dxbc")
+        default_ps = #load("data/default.ps.hlsl.dxbc")
 
-    default_sprite_vs = #load("data/default_sprite.vs.hlsl")
-    default_vs = #load("data/default.vs.hlsl")
-    default_ps = #load("data/default.ps.hlsl")
+    } else when gpu.BACKEND == gpu.BACKEND_WGPU {
+        default_sprite_vs = #load("data/default_sprite.vs.hlsl.wgsl")
+        default_vs = #load("data/default.vs.hlsl.wgsl")
+        default_ps = #load("data/default.ps.hlsl.wgsl")
+    } else {
+        #panic("GPU backend not supported")
+    }
 
-    // case gpu.BACKEND_WGPU:
-
-    //     INCL :: #load("data/raven.wgsl", string)
-
-    //     default_sprite_vs = transmute([]byte)(INCL + #load("data/default_sprite.vs.wgsl", string))
-    //     default_vs = transmute([]byte)(INCL + #load("data/default.vs.wgsl", string))
-    //     default_ps = transmute([]byte)(INCL + #load("data/default.ps.wgsl", string))
-
-    // case:
-    //     panic("GPU backend not supported or unknown")
-    // }
 
     _state.builtin_vertex_shader = {
         .Default = create_vertex_shader("default", default_vs) or_else panic("Failed to load default vertex shader"),
@@ -2711,7 +2710,7 @@ _shader_include_proc :: proc(path: string, user: rawptr) -> (result: string, ok:
 }
 
 when gpu.BACKEND == gpu.BACKEND_D3D11 {
-    SHADER_COMPILER_TARGET :: shader_compiler.Target.DXIL
+    SHADER_COMPILER_TARGET :: shader_compiler.Target.DXBC
 } else when gpu.BACKEND == gpu.BACKEND_WGPU {
     SHADER_COMPILER_TARGET :: shader_compiler.Target.WGSL
 } else {
@@ -2720,8 +2719,10 @@ when gpu.BACKEND == gpu.BACKEND_D3D11 {
 
 @(require_results)
 create_vertex_shader :: proc(name: string, data: []byte) -> (result: Vertex_Shader_Handle, ok: bool) {
-    compiled := data
-    when !RELEASE {
+    compiled: []byte
+    when RELEASE {
+        compiled = data
+    } else {
         compiled, ok = shader_compiler.compile(
             name = name,
             source = string(data),
@@ -2754,8 +2755,10 @@ create_vertex_shader :: proc(name: string, data: []byte) -> (result: Vertex_Shad
 
 @(require_results)
 create_pixel_shader :: proc(name: string, data: []byte) -> (result: Pixel_Shader_Handle, ok: bool) {
-    compiled := data
-    when !RELEASE {
+    compiled: []byte
+    when RELEASE {
+        compiled = data
+    } else {
         compiled, ok = shader_compiler.compile(
             name = name,
             source = string(data),
@@ -3244,8 +3247,8 @@ draw_sprite :: proc(
     scaling:    Sprite_Scaling = .Pixel,
     param:      u32 = 0,
 ) {
-    validate_vec(pos)
-    validate_vec(scale)
+    validate_vec3(pos)
+    validate_vec2(scale)
     validate_quat(rot)
 
     if col.a < 0.01 || abs(scale.x * scale.y) < 0.0001 {
@@ -3475,8 +3478,8 @@ draw_mesh :: proc(
     add_col:    Vec4 = 0,
     param:      u32 = 0,
 ) {
-    validate_vec(pos)
-    validate_vec(scale)
+    validate_vec3(pos)
+    validate_vec3(scale)
     validate_quat(rot)
 
     mesh, mesh_ok := get_internal_mesh(handle)
@@ -3583,10 +3586,10 @@ draw_triangles :: proc(
     add_col:    Vec4 = 0,
     param:      u32 = 0,
 ) {
-    validate_vec(pos)
+    validate_vec3(pos)
     validate_quat(rot)
-    validate_vec(col)
-    validate_vec(add_col)
+    validate_vec4(col)
+    validate_vec4(add_col)
     validate(len(verts) % 3 == 0)
 
     if len(verts) == 0 {
@@ -3639,10 +3642,10 @@ draw_lines :: proc(
     param:      u32 = 0,
 ) {
     validate(len(verts) % 2 == 0)
-    validate_vec(pos)
+    validate_vec3(pos)
     validate_quat(rot)
-    validate_vec(col)
-    validate_vec(add_col)
+    validate_vec4(col)
+    validate_vec4(add_col)
 
     if len(verts) == 0 {
         return
@@ -3692,9 +3695,9 @@ draw_triangle :: proc(
     add_col:    Vec4 = BLACK,
     normals:    Maybe([3]Vec3) = nil,
 ) {
-    validate_vec(pos[0])
-    validate_vec(pos[1])
-    validate_vec(pos[2])
+    validate_vec3(pos[0])
+    validate_vec3(pos[1])
+    validate_vec3(pos[2])
 
     norm, norm_ok := normals.?
     if !norm_ok {
@@ -3722,8 +3725,8 @@ draw_line :: proc(
     add_col:    Vec4 = BLACK,
     normals:    Maybe([2]Vec3) = nil,
 ) {
-    validate_vec(pos[0])
-    validate_vec(pos[1])
+    validate_vec3(pos[0])
+    validate_vec3(pos[1])
 
     norm, norm_ok := normals.?
     if !norm_ok {
@@ -3883,6 +3886,32 @@ draw_line_circle :: proc(
     draw_lines(..verts)
 }
 
+draw_line_sphere :: proc(
+    pos:        Vec3,
+    mat:        Mat3 = 1,
+    col         := WHITE,
+    segments    := 12,
+) {
+    if col.a < 0.01 do return
+
+    circle := _calc_circle_points(segments)
+
+    verts := make([]Vertex, segments * 2 * 3, context.temp_allocator)
+    p0 := circle[len(circle) - 1]
+    for p1, i in circle {
+        // XY, YZ, ZX
+        verts[i * 6 + 0] = pack_vertex(pos + mat[0] * p0.x + mat[1] * p0.y, col = col)
+        verts[i * 6 + 1] = pack_vertex(pos + mat[0] * p1.x + mat[1] * p1.y, col = col)
+        verts[i * 6 + 2] = pack_vertex(pos + mat[1] * p0.x + mat[2] * p0.y, col = col)
+        verts[i * 6 + 3] = pack_vertex(pos + mat[1] * p1.x + mat[2] * p1.y, col = col)
+        verts[i * 6 + 4] = pack_vertex(pos + mat[2] * p0.x + mat[0] * p0.y, col = col)
+        verts[i * 6 + 5] = pack_vertex(pos + mat[2] * p1.x + mat[0] * p1.y, col = col)
+        p0 = p1
+    }
+
+    draw_lines(..verts)
+}
+
 draw_line_cylinder :: proc(pos: [2]Vec3, rad: f32 = 1.0, col := WHITE, segments := 12) {
     if col.a < 0.01 do return
 
@@ -3911,6 +3940,37 @@ draw_line_cylinder :: proc(pos: [2]Vec3, rad: f32 = 1.0, col := WHITE, segments 
     }
 
     draw_lines(..verts)
+}
+
+// The axis vectors determine a single cell size.
+// Segments are the number of lines in ONE QUADRANT.
+draw_line_grid :: proc(
+    pos:        Vec3 = 0,
+    axis_a:     Vec3 = {1, 0, 0},
+    axis_b:     Vec3 = {0, 0, 1},
+    col         := WHITE,
+    segments:   [2]i32 = 5,
+) {
+    buf := make([]Vertex,  (segments.x * 2 + 1 + segments.y * 2 + 1) * 2, context.temp_allocator)
+    index := 0
+
+    for i in -segments.x..=segments.x {
+        c := i == 0 ? col + 0.1 : col * 0.8
+        offs := axis_a * f32(i)
+        buf[index + 0] = pack_vertex(pos + offs - axis_b * f32(segments.y), col = c)
+        buf[index + 1] = pack_vertex(pos + offs + axis_b * f32(segments.y), col = c)
+        index += 2
+    }
+
+    for i in -segments.y..=segments.y {
+        c := i == 0 ? col + 0.1 : col * 0.8
+        offs := axis_b * f32(i)
+        buf[index + 0] = pack_vertex(pos + offs - axis_a * f32(segments.x), col = c)
+        buf[index + 1] = pack_vertex(pos + offs + axis_a * f32(segments.x), col = c)
+        index += 2
+    }
+
+    draw_lines(..buf)
 }
 
 _draw_line_box_corners :: proc(corners: [8]Vec3, col: Vec4) {
@@ -3986,18 +4046,23 @@ _upload_gpu_global_constants :: proc() {
         frame = u32(get_frame_index()),
         resolution = _state.screen_size,
         rand_seed = 0,
-        param0 = 0,
-        param1 = 0,
-        param2 = 0,
-        param3 = 0,
+        param = 0,
     }))
+}
+
+_draw_layer_no_instances :: proc(layer: Draw_Layer) -> bool {
+    return \
+        len(layer.sprites) == 0 &&
+        len(layer.meshes) == 0 &&
+        len(layer.triangles) == 0 &&
+        len(layer.lines) == 0
 }
 
 _upload_gpu_layer_constants :: proc() {
     consts_buf: [MAX_DRAW_LAYERS]Draw_Layer_Constants
 
     for &layer, i in _state.draw_layers {
-        if len(layer.sprites) == 0 && len(layer.meshes) == 0 {
+        if _draw_layer_no_instances(layer) {
             continue
         }
 
@@ -4893,6 +4958,10 @@ screen_to_world_ray :: proc(pos: Vec2, cam: Camera) -> Vec3 {
 // MARK: Sounds
 //
 
+// play sound
+create_sound :: audio.create_sound
+destroy_sound :: audio.destroy_sound
+
 load_sound_resource :: proc(path: string) -> (result: Sound_Resource_Handle, ok: bool) #optional_ok {
     name := strip_path_name(path)
     // TODO: register the resource internally for hot-reload
@@ -4907,7 +4976,7 @@ load_sound_resource :: proc(path: string) -> (result: Sound_Resource_Handle, ok:
 create_sound_resource_encoded :: proc(name: string, data: []byte) -> (result: Sound_Resource_Handle, ok: bool) #optional_ok {
     base.log_info("Creating sound resource '%s' with size %i bytes", name, len(data))
 
-    res := audio.create_resource_encoded(data) or_return
+    res := audio.create_resource(.WAV, data) or_return
 
     if !insert_sound_resource_by_hash(name, res) {
         // NOTE: currently this can continue running somewhat correctly, the result is valid.
@@ -4930,58 +4999,6 @@ insert_sound_resource_by_hash :: proc(name: string, handle: Sound_Resource_Handl
     index, _ := _table_insert_hash(&_state.sound_resources_hash, hash) or_return
     _state.sound_resources[index] = handle
     return true
-}
-
-play_sound :: proc(
-    resource:       Sound_Resource_Handle,
-    start           := true,
-    loop            := false,
-    delay:          f32 = 0,
-    volume:         f32 = 1,
-    pitch:          f32 = 1,
-    pos:            Maybe([3]f32) = nil,
-    async_decode    := false,
-) -> (result: audio.Sound_Handle, ok: bool) #optional_ok {
-    validate(resource != {})
-
-    // base.log_info("Playing sound %v", resource)
-
-    result, ok = audio.create_sound(resource_handle = resource, group_handle = {}, async_decode = async_decode)
-    if !ok {
-        base.log_err("Failed to play sound", resource)
-        return {}, false
-    }
-
-    if delay > 0 {
-        audio.set_sound_start_delay(result, delay, .Seconds)
-    }
-
-    if start {
-        audio.set_sound_playing(result, start)
-    }
-
-    if loop {
-        audio.set_sound_looping(result, loop)
-    }
-
-    if volume != 1 {
-        audio.set_sound_volume(result, volume)
-    }
-
-    if pitch != 1 {
-        audio.set_sound_pitch(result, pitch)
-    }
-
-    if p, p_ok := pos.?; p_ok {
-        audio.set_sound_spatialization(result, true)
-        audio.set_sound_position(result, p)
-    }
-
-    return result, true
-}
-
-destroy_sound :: proc(handle: Sound_Handle) {
-    audio.destroy_sound(handle)
 }
 
 
@@ -5052,6 +5069,11 @@ strip_path_name :: proc "contextless" (str: string) -> (result: string) {
     result = str[max(back_index, forw_index) + 1:]
     dot_index := bytes.index_byte(transmute([]byte)result, '.')
     return result[:dot_index]
+}
+
+@(deferred_out = runtime.default_temp_allocator_temp_end)
+temp_allocator_guard :: proc(loc := #caller_location) -> (temp: runtime.Arena_Temp, location: runtime.Source_Code_Location) {
+    return runtime.default_temp_allocator_temp_begin(loc), loc
 }
 
 @(require_results)
@@ -5406,12 +5428,25 @@ validate_f32 :: #force_inline proc(x: f32, loc := #caller_location) {
 }
 
 
+@(disabled = !VALIDATION)
+validate_vec2 :: proc(v: [2]f32, loc := #caller_location) {
+    validate_f32(v.x, loc)
+    validate_f32(v.y, loc)
+}
 
 @(disabled = !VALIDATION)
-validate_vec :: proc(v: [$N]f32, loc := #caller_location) {
-    for x in v {
-        validate_f32(x, loc)
-    }
+validate_vec3 :: proc(v: [3]f32, loc := #caller_location) {
+    validate_f32(v.x, loc)
+    validate_f32(v.y, loc)
+    validate_f32(v.z, loc)
+}
+
+@(disabled = !VALIDATION)
+validate_vec4 :: proc(v: [4]f32, loc := #caller_location) {
+    validate_f32(v.x, loc)
+    validate_f32(v.y, loc)
+    validate_f32(v.z, loc)
+    validate_f32(v.w, loc)
 }
 
 @(disabled = !VALIDATION)
@@ -5424,29 +5459,29 @@ validate_quat :: proc(q: quaternion128, loc := #caller_location) {
 
 @(disabled = !VALIDATION)
 validate_mat2 :: proc(m: Mat2, loc := #caller_location) {
-    validate_vec(m[0], loc)
-    validate_vec(m[1], loc)
+    validate_vec2(m[0], loc)
+    validate_vec2(m[1], loc)
 }
 
 @(disabled = !VALIDATION)
 validate_mat3 :: proc(m: Mat3, loc := #caller_location) {
-    validate_vec(m[0], loc)
-    validate_vec(m[1], loc)
-    validate_vec(m[2], loc)
+    validate_vec3(m[0], loc)
+    validate_vec3(m[1], loc)
+    validate_vec3(m[2], loc)
 }
 
 @(disabled = !VALIDATION)
 validate_mat4 :: proc(m: Mat4, loc := #caller_location) {
-    validate_vec(m[0], loc)
-    validate_vec(m[1], loc)
-    validate_vec(m[2], loc)
-    validate_vec(m[3], loc)
+    validate_vec4(m[0], loc)
+    validate_vec4(m[1], loc)
+    validate_vec4(m[2], loc)
+    validate_vec4(m[3], loc)
 }
 
 @(disabled = !VALIDATION)
 validate_rect :: proc(v: Rect, loc := #caller_location) {
-    validate_vec(v.min)
-    validate_vec(v.max)
+    validate_vec2(v.min)
+    validate_vec2(v.max)
 }
 
 @(disabled = !VALIDATION)
@@ -5454,6 +5489,11 @@ validate_draw_sort_key :: proc(key: Draw_Sort_Key) {
     validate(key.texture != {} || key.texture_mode != .Non_Pooled)
     validate(key.ps != {})
     validate(key.vs != {})
+    // switch key.texture_mode {
+    // case .Non_Pooled:
+    // case .Pooled:
+    // case .Render_Texture:
+    // }
 }
 
 

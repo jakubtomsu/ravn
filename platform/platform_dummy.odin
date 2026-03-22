@@ -103,7 +103,7 @@ when BACKEND == BACKEND_DUMMY {
     @(require_results) _write_file_by_path :: proc(path: string, data: []u8) -> bool { dummy() }
     @(require_results) _file_exists :: proc(path: string) -> bool { dummy() }
     @(require_results) _clone_file :: proc(path: string, new_path: string, fail_if_exists := true) -> bool { dummy() }
-    @(require_results) _read_file_by_path_async :: proc(path: string, allocator := context.allocator) -> (file: Async_File, ok: bool) { dummy() }
+    @(require_results) _read_file_by_path_async :: proc(file: ^Async_File, path: string, allocator := context.allocator) -> bool { dummy() }
     @(require_results) _async_file_wait :: proc(file: ^Async_File) -> (buffer: []byte, ok: bool) { dummy() }
     @(require_results) _create_directory :: proc(path: string) -> bool { dummy() }
     @(require_results) _is_file :: proc(path: string) -> bool { dummy() }

@@ -1,3 +1,4 @@
+#+test
 package qoa
 
 import "core:mem"

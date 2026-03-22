@@ -10,6 +10,8 @@ when ODIN_OS == .Windows {
     foreign import lib "libslang.dylib"
 } else when ODIN_OS == .Linux {
     foreign import lib "libslang.so"
+} else {
+    #panic("Slang is not supported on this platform")
 }
 
 CapabilityID :: distinct i32
@@ -442,7 +444,7 @@ CompilerOptionName :: enum i32 {
     Obfuscate,    // bool
 
     VulkanBindShift, // intValue0 (higher 8 bits): kind; intValue0(lower bits): set; intValue1:
-                    // shift
+                    // shift. Kind is HLSLToVulkanLayoutBindingKind
     VulkanBindGlobals,       // intValue0: index; intValue1: set
     VulkanInvertY,           // bool
     VulkanUseDxPositionW,    // bool
@@ -685,6 +687,36 @@ ParameterCategory :: enum u32 {
     FRAGMENT_OUTPUT = VARYING_OUTPUT,
     COUNT_V1 = SUBPASS,
 }
+
+// https://github.com/shader-slang/slang/blob/e40b35c3984d0f2b0b890972f927fc3264d3a955/source/slang/slang-hlsl-to-vulkan-layout-options.h#L43
+HLSLToVulkanLayoutBindingKind :: enum i32 {
+    Invalid = -1,
+
+    /// Unordered access view (u)
+    ///
+    /// RWByteAddressBuffer/RWStructuredBuffer
+    /// Append/ConsumeStructuredBuffer
+    /// RWBuffer
+    /// RWTextureXD/Array
+    UnorderedAccess = 0,
+
+    /// Sampler (s)
+    ///
+    /// SamplerXD
+    /// SamplerState/SamplerComparisonState
+    Sampler,
+
+    /// Shader Resource (t)
+    ///
+    /// TextureXD/Array
+    /// ByteAddressBuffer/StructuredBuffer/Buffer/TBuffer
+    ShaderResource,
+
+    /// Constant buffer (b)
+    ///
+    /// ConstantBufferViews, CBuffer
+    ConstantBuffer,
+};
 
 LayoutRules :: enum u32 {
     DEFAULT,

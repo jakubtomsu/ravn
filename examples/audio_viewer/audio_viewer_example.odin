@@ -1,12 +1,12 @@
 package raven_audio_viewer_example
 
+import "core:math/rand"
 import "core:math"
 import rv "../.."
 import "../../base"
 import "../../base/ufmt"
 import "../../audio"
 import "../../audio/wav"
-import "../../audio/qoa"
 
 state: ^State
 
@@ -17,6 +17,7 @@ State :: struct {
     step:   f32,
     header: wav.Header,
     sound_res:  rv.Sound_Resource_Handle,
+    sound_res2: rv.Sound_Resource_Handle,
     sound: rv.Sound_Handle,
     samples: []f32,
 }
@@ -38,11 +39,10 @@ _init :: proc() {
 
     header, wav_data, ok := wav.decode_header(file_data)
     assert(ok)
-    assert(header.format.bits_per_sample == 8)
     state.samples = wav.decode_samples(header.format, wav_data)
     assert(len(state.samples) > 0)
 
-    state.sound_res = rv.create_sound_resource_encoded("emerald", file_data) or_else panic("foo")
+    state.sound_res = rv.create_sound_resource_encoded("wave", file_data) or_else panic("foo")
     state.header = header
 }
 
@@ -106,15 +106,19 @@ _update :: proc(_: rawptr) -> rawptr {
     }
 
     if rv.key_pressed(.Space) {
-        state.sound = rv.play_sound(state.sound_res)
+        state.sound = rv.create_sound(state.sound_res,
+            pitch = rand.float32_range(0.05, 2),
+            volume = 2,
+            pan = rand.float32_range(-1, 1),
+        )
     }
 
-    smp := audio.get_sound_time(state.sound, .Samples)
+    smp := audio.get_sound_time(state.sound, .Frames)
 
     rv.draw_sprite(
         {sample_to_pixel(smp), rv.get_screen_size().y * 0.5, 0.7},
         scale = {4, 1200.0},
-        col = audio.is_sound_playing(state.sound) ? rv.GREEN : rv.DARK_GREEN,
+        col = audio.get_sound_playing(state.sound) ? rv.GREEN : rv.DARK_GREEN,
         scaling = .Absolute,
     )
 

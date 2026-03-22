@@ -1,7 +1,6 @@
 package raven_snake_planet_example
 
 import "core:math/rand"
-import "core:log"
 import "core:math/linalg"
 import "core:math"
 import rv "../.."
@@ -85,7 +84,7 @@ _init :: proc() {
 
     state.death_sound = rv.create_sound_resource_encoded("death", #load("../data/snake_death_sound.wav")) or_else panic("load")
     state.berry_sound = rv.create_sound_resource_encoded("berry", #load("../data/snake_powerup_sound.wav")) or_else panic("load")
-    state.music_res = rv.create_sound_resource_encoded("music", #load("../data/Emerald.ogg")) or_else panic("load")
+    // state.music_res = rv.create_sound_resource_encoded("music", #load("../data/Emerald.ogg")) or_else panic("load")
 
     state.screen = .Menu
 }
@@ -122,7 +121,7 @@ new_game :: proc() {
     state.snake.pos = repel_from_obstacles(state.snake.pos, 0.3)
 
     rv.destroy_sound(state.music)
-    state.music = rv.play_sound(state.music_res, loop = true, async_decode = true)
+    state.music = rv.create_sound(state.music_res, flags = {.Loop})
 
     spawn_berry()
 }
@@ -136,7 +135,7 @@ spawn_berry :: proc() {
         state.berry.pos = repel_from_obstacles(state.berry.pos, 0.5)
     }
 
-    rv.play_sound(state.berry_sound, pitch = rand.float32_range(0.9, 1.2))
+    rv.create_sound(state.berry_sound, pitch = rand.float32_range(0.9, 1.2))
 }
 
 rand_dir :: proc() -> rv.Vec3 {
@@ -260,7 +259,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state.cam_fov = rv.lexp(state.cam_fov, rv.deg(65 + rv.remap_clamped(state.berry_timer, 0, 0.5, 7, 0)), delta * 15)
 
         if die {
-            rv.play_sound(state.death_sound, pitch = rand.float32_range(0.9, 1.2))
+            rv.create_sound(state.death_sound, pitch = rand.float32_range(0.9, 1.2))
             rv.destroy_sound(state.music)
             state.music = {}
             state.screen = .Death

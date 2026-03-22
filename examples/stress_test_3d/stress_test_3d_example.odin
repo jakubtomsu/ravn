@@ -1,7 +1,6 @@
 package raven_simple_3d_example
 
 import "core:fmt"
-import "core:log"
 import "core:math/linalg"
 import "core:math"
 import rv "../.."

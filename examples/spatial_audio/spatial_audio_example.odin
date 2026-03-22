@@ -1,7 +1,10 @@
-package raven_draw_3d_example
+package raven_spatial_audio_example
+
+// TODO: Add the music back in once the audio engine supports QOA
 
 import rv "../.."
 import "../../platform"
+import "../../audio"
 
 import "core:math/linalg"
 import "core:math"
@@ -11,7 +14,10 @@ state: ^State
 State :: struct {
     cam_pos:    rv.Vec3,
     cam_ang:    rv.Vec3,
-    shader:     rv.Pixel_Shader_Handle,
+    res0:       rv.Sound_Resource_Handle,
+    res1:       rv.Sound_Resource_Handle,
+    sound:      rv.Sound_Handle,
+    sound_x:    f32,
 }
 
 @export _module_desc := rv.Module_Desc {
@@ -25,6 +31,8 @@ main :: proc() {
     rv.run_main_loop(_module_desc)
 }
 
+ATTENUATION_RANGE :: [2]f32{1, 40}
+
 _init :: proc() {
     state = new(State)
 
@@ -32,12 +40,15 @@ _init :: proc() {
     platform.set_mouse_relative(rv.get_window(), true)
     platform.set_mouse_visible(false)
 
-    rv.register_file_data("test_shader.ps.hlsl", #load("../data/test_shader.ps.hlsl"))
-
-    state.shader = rv.load_pixel_shader("test_shader.ps.hlsl")
-
     state.cam_pos = {1.5, 3, -8}
     state.cam_ang = {0.3, 0, 0}
+
+    state.res0 = rv.create_sound_resource_encoded("sound", #load("../data/snake_death_sound.wav"))
+    state.res1 = rv.create_sound_resource_encoded("sound", #load("../data/snake_powerup_sound.wav"))
+    state.sound = rv.create_sound(state.res1,
+        flags = {.Loop, .Spatial},
+        attenuation_range = ATTENUATION_RANGE,
+    )
 }
 
 _shutdown :: proc() {
@@ -71,16 +82,18 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     cam_rot := rv.euler_rot(state.cam_ang)
     mat := linalg.matrix3_from_quaternion_f32(cam_rot)
 
-    speed: f32 = 1.0
+    speed: f32 = 2.0
     if rv.key_down(.Left_Shift) {
         speed *= 10
     } else if rv.key_down(.Left_Control) {
         speed *= 0.1
     }
 
-    state.cam_pos += mat[0] * move.x * delta * speed
-    state.cam_pos += mat[2] * move.z * delta * speed
-    state.cam_pos.y += move.y * delta * speed
+    cam_vel: rv.Vec3
+    cam_vel += mat[0] * move.x * speed
+    cam_vel += mat[2] * move.z * speed
+    cam_vel.y += move.y * speed
+    state.cam_pos += cam_vel * delta
 
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
     rv.set_layer_params(1, rv.make_screen_camera())
@@ -88,56 +101,32 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.bind_depth_test(true)
     rv.bind_depth_write(true)
 
+    audio.set_listener(state.cam_pos, cam_vel, forw = mat[2], right = mat[0])
+
+    sound_vel := math.cos_f32(rv.get_time() * 2) * 10
+    state.sound_x += sound_vel * delta
+    sound_pos := rv.Vec3{state.sound_x, 1, 0}
+
+    audio.set_sound_transform(state.sound, sound_pos, {sound_vel, 0, 0})
+
+    if rv.key_pressed(.Space) {
+        sound := rv.create_sound(state.res0, pitch = 2)
+        audio.set_sound_param(sound, .Pitch, 0.1, 3.0)
+    }
+
     if rv.scope_binds() {
         rv.bind_texture(rv.get_builtin_texture(.Default))
         rv.bind_blend(.Alpha)
         rv.bind_fill(.Front)
 
-        // Meshes
+        rv.draw_line_grid(col = rv.WHITE * 0.7)
 
-        rv.draw_mesh(rv.get_mesh("Disk"), {-3, 0, 0}, col = rv.YELLOW)
-        rv.draw_mesh(rv.get_mesh("Plane"), {0, 0, 0}, col = rv.GREEN)
-        rv.draw_mesh(rv.get_mesh("Cube"), {3, 0, 0}, rv.quat_angle_axis(rv.get_time(), {0, 1, 0}), col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), sound_pos, scale = 0.5, col = rv.ORANGE)
+        rv.draw_line_sphere(sound_pos, ATTENUATION_RANGE[0], rv.ORANGE * rv.fade(0.5))
+        rv.draw_line_sphere(sound_pos, ATTENUATION_RANGE[1], rv.ORANGE * rv.fade(0.5))
 
-        rv.bind_depth_write(false)
-        rv.draw_mesh(rv.get_mesh("Icosphere"), {6, 0, 0}, col = rv.CYAN * rv.fade(0.5))
-        rv.bind_depth_write(true)
-
-        rv.draw_mesh(rv.get_mesh("Cylinder"), {9, 0, 0}, scale = {1, 0.1 + rv.nsin(rv.get_time() * 0.5), 1}, col = rv.GRAY)
-
-        rv.bind_fill(.All)
-
-        // Custom triangles
-
-        rv.draw_triangle(
-            pos = {
-                rv.Vec3{-0.5, 0, 0} + {-6, 0, 0},
-                rv.Vec3{ 0, 0.7, 0} + {-6, 0, 0},
-                rv.Vec3{ 0.5, 0, 0} + {-6, 0, 0},
-            },
-            col = {rv.RED, rv.BLUE, rv.GREEN},
-        )
-
-        rv.draw_triangle(
-            pos = {
-                rv.Vec3{-0.5, 0, 0} + {-6, 0, 0},
-                rv.Vec3{ 0, -0.7, 0} + {-6, 0, 0},
-                rv.Vec3{ 0.5, 0, 0} + {-6, 0, 0},
-            },
-            col = {rv.RED, rv.GREEN, rv.CYAN},
-        )
-
-        // Line shapes
-
-        rv.draw_line({{-3, 0, 5}, {-3, 1, 5}}, col = rv.YELLOW)
-        rv.draw_line_mat3({-2, 0, 5})
-        rv.draw_line_box({1, 0, 5}, 1, rv.GRAY)
-        rv.draw_line_circle({4, 0, 5}, col = rv.ORANGE)
-        rv.draw_line_cylinder({{6, -1, 5}, {6, 1, 5}}, rad = 0.5)
-        rv.draw_line_sphere({8, 0, 5}, mat = 0.7)
-
-        rv.bind_pixel_shader(state.shader)
-        rv.draw_mesh(rv.get_mesh("Cube"), {3, -5, 0}, rv.quat_angle_axis(rv.get_time(), {0, 1, 0}), col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
+        rv.draw_mesh(rv.get_builtin_mesh(.Cube), {2, 1, 3}, col = rv.oklerp(rv.GRAY, rv.BLUE, 0.5))
+        rv.draw_mesh(rv.get_builtin_mesh(.Cube), {0, 2, -2}, scale = {1, 2, 1}, col = rv.oklerp(rv.GRAY, rv.DARK_GREEN, 0.5))
     }
 
     rv.bind_layer(1)
