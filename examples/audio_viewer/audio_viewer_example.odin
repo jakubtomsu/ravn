@@ -7,12 +7,10 @@ import "../../base"
 import "../../base/ufmt"
 import "../../audio"
 import "../../audio/wav"
-import "../../audio/qoa"
 
 state: ^State
 
 file_data := #load("../data/snake_death_sound.wav")
-// file_data := #load("../data/162493__tasmanianpower__vinyl-rewind.wav")
 
 State :: struct {
     offset: f32,

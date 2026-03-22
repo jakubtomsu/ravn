@@ -40,5 +40,5 @@ exit /b 0
 
 :err
 @echo off
-echo Checks failed!
+echo Check failed with exit code: %errorlevel%
 exit /b 1

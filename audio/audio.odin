@@ -538,6 +538,7 @@ set_sound_playing :: proc(handle: Sound_Handle, playing: bool) -> bool {
     return true
 }
 
+// Dur determines the time (in seconds) it takes to interpolate to the new value.
 set_sound_param :: proc(handle: Sound_Handle, kind: Sound_Param_Kind, value: f32, dur: f32 = 0) -> bool {
     sound := _get_sound(handle) or_return
     intrinsics.atomic_store_explicit(&sound.params[kind].target, value, .Release)
@@ -547,15 +548,9 @@ set_sound_param :: proc(handle: Sound_Handle, kind: Sound_Param_Kind, value: f32
 
 set_group_sound_param :: proc(#any_int index: int, kind: Sound_Param_Kind, value: f32, dur: f32 = 0) -> bool {
     group := _get_group(index) or_return
-
     intrinsics.atomic_store_explicit(&group.sound_params[kind].target, value, .Release)
     intrinsics.atomic_store_explicit(&group.sound_params[kind].delta, _duration_delta(dur), .Release)
-
     return true
-
-    _duration_delta :: proc(dur: f32) -> f32 {
-        return dur < 0.01 ? 1e6 : 1.0 / dur
-    }
 }
 
 _duration_delta :: proc(dur: f32) -> f32 {

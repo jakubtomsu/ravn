@@ -1,5 +1,7 @@
 package raven_spatial_audio_example
 
+// TODO: Add the music back in once the audio engine supports QOA
+
 import rv "../.."
 import "../../platform"
 import "../../audio"
@@ -105,11 +107,11 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     state.sound_x += sound_vel * delta
     sound_pos := rv.Vec3{state.sound_x, 1, 0}
 
-    audio.set_sound_spatial(state.sound, sound_pos, {sound_vel, 0, 0})
+    audio.set_sound_transform(state.sound, sound_pos, {sound_vel, 0, 0})
 
     if rv.key_pressed(.Space) {
         sound := rv.create_sound(state.res0, pitch = 2)
-        audio.set_sound_pitch(sound, 0.1, 3.0)
+        audio.set_sound_param(sound, .Pitch, 0.1, 3.0)
     }
 
     if rv.scope_binds() {
