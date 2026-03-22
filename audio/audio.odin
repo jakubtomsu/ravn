@@ -34,8 +34,11 @@ when ODIN_OS == .Windows {
 // Has no effect on some backends.
 SINGLE_THREAD :: #config(AUDIO_SINGLE_THREAD, false)
 
-MAX_SOUNDS :: #config(AUDIO_MAX_SOUNDS, 1024)
-MAX_RESOURCES :: #config(AUDIO_MAX_RESOURCE, 512)
+MAX_SOUNDS :: #config(AUDIO_MAX_SOUNDS, 512)
+MAX_RESOURCES :: #config(AUDIO_MAX_RESOURCE, 256)
+NUM_GROUPS :: 8
+SCRATCH_FRAMES :: 1024 * 2
+SPEED_OF_SOUND :: 343 // m/s, dry air at around 20C
 
 Handle_Index :: u16
 Handle_Gen :: u8
@@ -71,6 +74,8 @@ State :: struct #align(64) {
     sounds_state:       [MAX_SOUNDS]Slot_State,
     sounds_gen:         [MAX_SOUNDS]Handle_Gen,
     sounds:             [MAX_SOUNDS]Sound,
+
+    groups:             [NUM_GROUPS]Group,
 }
 
 Generator_Proc :: #type proc(frames: [][2]f32, frame_rate: int)
@@ -80,6 +85,26 @@ Slot_State :: enum u32 {
     Free = 0,
     Used,
     Request_Free, // Always handled by audio thread
+}
+
+Group :: struct {
+    sound_params:   [Sound_Param_Kind]Param,
+}
+
+GROUP_DEFAULT :: Group {
+    sound_params = {
+        // Scale params (Multiplicative)
+        .Volume             = {1, 1, 1},
+        .Pitch              = {1, 1, 1},
+        .Doppler_Factor     = {1, 1, 1},
+        .Attenuation_Min    = {1, 1, 1},
+        .Attenuation_Max    = {1, 1, 1},
+
+        // Offset params (Additive)
+        .Pan                = {0, 0, 1},
+        .Lowpass            = {0, 0, 1},
+        .Highpass           = {0, 0, 1},
+    },
 }
 
 // Represents the sample data.
@@ -110,33 +135,12 @@ Sound :: struct {
     end_frame:          u32,
     resource:           Resource_Handle,
     flags:              bit_set[Sound_Flag],
+    group_index:        u8,
 
     // Constant parameters
-    attenuation_range:  [2]f32,
-    doppler_factor:     f32,
-
     playing:            b32,
 
-    // Linear gain.
-    //  0 = muted
-    //  1 = default
-    // >1 = louder
-    volume:             Param,
-    // -1 = hard left
-    //  0 = centered
-    //  1 = hard right
-    pan:                Param,
-    // Raw speed factor.
-    // Pitch of 2 will play the signal 2x faster.
-    pitch:              Param,
-    // Muffles the sound.
-    // Value of 0 means no filtering.
-    // Alpha factor value in 0..1 range. One-pole filter.
-    lowpass:            Param,
-    // Sharpens the sound.
-    // Value of 0 means no filtering.
-    // Alpha factor value in 0..1 range. One-pole filter.
-    highpass:           Param,
+    params:             [Sound_Param_Kind]Param,
 
     pos_curr:           [3]f32,
     pos_prev:           [3]f32,
@@ -150,6 +154,42 @@ Sound :: struct {
 Sound_Flag :: enum u8 {
     Loop,
     Spatial,
+}
+
+Sound_Param_Kind :: enum u8 {
+    // Linear gain.
+    //  0 = muted
+    //  1 = default
+    // >1 = louder
+    Volume,
+
+    // Raw speed factor.
+    // Pitch of 2 will play the signal 2x faster.
+    Pitch,
+
+    // Shift sounds left/right
+    //  0 = centered
+    // -1 = hard left
+    //  1 = hard right
+    Pan,
+
+    // Attenuation determines how sound volume chagnes with distance.
+    Attenuation_Min,
+    Attenuation_Max,
+
+    // Muffles the sound.
+    // Value of 0 means no filtering.
+    // Alpha factor value in 0..1 range.
+    Lowpass,
+
+    // Sharpens the sound.
+    // Value of 0 means no filtering.
+    // Alpha factor value in 0..1 range.
+    Highpass,
+
+    // Doppler factor determines pitch change based on relative listener/sound velocity.
+    // 1.0 is default
+    Doppler_Factor,
 }
 
 // Smoothly updated parameter
@@ -174,7 +214,9 @@ Unit :: enum u8 {
 
 
 
-// MARK: Core
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Common
+//
 
 set_state_ptr :: proc(state: ^State) {
     _state = state
@@ -203,6 +245,8 @@ init :: proc(state: ^State) -> bool {
     }
 
     set_master_mixer(default_master_mixer)
+
+    _state.groups = GROUP_DEFAULT
 
     if !_init() {
         return false
@@ -249,7 +293,10 @@ set_listener :: proc(
 }
 
 
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Sounds
+//
 
 create_resource :: proc(
     format:         Resource_Format,
@@ -336,6 +383,14 @@ create_resource :: proc(
     return result, true
 }
 
+destroy_resource :: proc(handle: Resource_Handle) -> bool {
+    if !is_resource_valid(handle) {
+        return false
+    }
+    intrinsics.atomic_store(&_state.resources_state[handle.index], .Request_Free)
+    return true
+}
+
 // NOTE: created sound is stopped by default
 create_sound :: proc(
     resource_handle:    Resource_Handle,
@@ -348,7 +403,11 @@ create_sound :: proc(
     doppler_factor:     f32 = 1.0,
     lowpass:            f32 = 0.0,
     highpass:           f32 = 0.0,
+    #any_int group_index:    int = 0,
 ) -> (result: Sound_Handle, ok: bool) #optional_ok {
+    assert(group_index >= 0)
+    assert(group_index < NUM_GROUPS)
+
     index, index_ok := spsc_pop(&_state.sounds_free)
     if !index_ok {
         base.log_err("No free sound slots")
@@ -370,30 +429,34 @@ create_sound :: proc(
 
     sound := &_state.sounds[index]
     sound^ = {
+        group_index = u8(group_index),
         resource = resource_handle,
         flags = flags,
         playing = b32(playing),
-        pitch = {target = pitch, curr = pitch, delta = 1},
         end_frame = res.frame_num,
-        volume = {target = volume, curr = volume, delta = 1},
-        pan = {target = pan, curr = pan, delta = 1},
-        attenuation_range = attenuation_range,
-        doppler_factor = doppler_factor,
-        lowpass = {target = lowpass, curr = lowpass, delta = 1},
-        highpass = {target = highpass, curr = highpass, delta = 1},
+        params = {
+            .Pitch             = _param(pitch),
+            .Volume            = _param(volume),
+            .Pan               = _param(pan),
+            .Attenuation_Min   = _param(attenuation_range[0]),
+            .Attenuation_Max   = _param(attenuation_range[1]),
+            .Doppler_Factor    = _param(doppler_factor),
+            .Lowpass           = _param(lowpass),
+            .Highpass          = _param(highpass),
+        },
     }
 
     intrinsics.atomic_store(&_state.sounds_state[index], .Used)
 
     return result, true
-}
 
-destroy_resource :: proc(handle: Resource_Handle) -> bool {
-    if !is_resource_valid(handle) {
-        return false
+    _param :: proc(p: f32) -> Param {
+        return {
+            target = p,
+            curr = p,
+            delta = 1,
+        }
     }
-    intrinsics.atomic_store(&_state.resources_state[handle.index], .Request_Free)
-    return true
 }
 
 destroy_sound :: proc(handle: Sound_Handle) -> bool {
@@ -412,7 +475,7 @@ get_sound_time :: proc(handle: Sound_Handle, unit: Unit = .Seconds) -> f32 {
     return f32(sound.frame)
 }
 
-is_sound_playing :: proc(handle: Sound_Handle) -> bool {
+get_sound_playing :: proc(handle: Sound_Handle) -> bool {
     sound, ok := _get_sound(handle)
     if !ok {
         return false
@@ -426,53 +489,37 @@ set_sound_playing :: proc(handle: Sound_Handle, playing: bool) -> bool {
     return true
 }
 
-set_sound_volume :: proc(handle: Sound_Handle, value: f32, dur: f32 = 0) -> bool {
+set_sound_param :: proc(handle: Sound_Handle, kind: Sound_Param_Kind, value: f32, dur: f32 = 0) -> bool {
     sound := _get_sound(handle) or_return
-    intrinsics.atomic_store_explicit(&sound.volume.target, value, .Release)
-    intrinsics.atomic_store_explicit(&sound.volume.delta, _duration_delta(dur), .Release)
+    intrinsics.atomic_store_explicit(&sound.params[kind].target, value, .Release)
+    intrinsics.atomic_store_explicit(&sound.params[kind].delta, _duration_delta(dur), .Release)
     return true
 }
 
-set_sound_pan :: proc(handle: Sound_Handle, value: f32, dur: f32 = 0) -> bool {
-    sound := _get_sound(handle) or_return
-    intrinsics.atomic_store_explicit(&sound.pan.target, value, .Release)
-    intrinsics.atomic_store_explicit(&sound.pan.delta, _duration_delta(dur), .Release)
-    return true
-}
+set_group_sound_param :: proc(#any_int index: int, kind: Sound_Param_Kind, value: f32, dur: f32 = 0) -> bool {
+    group := _get_group(index) or_return
 
-set_sound_pitch :: proc(handle: Sound_Handle, value: f32, dur: f32 = 0) -> bool {
-    sound := _get_sound(handle) or_return
-    intrinsics.atomic_store_explicit(&sound.pitch.target, value, .Release)
-    intrinsics.atomic_store_explicit(&sound.pitch.delta, _duration_delta(dur), .Release)
-    return true
-}
+    intrinsics.atomic_store_explicit(&group.sound_params[kind].target, value, .Release)
+    intrinsics.atomic_store_explicit(&group.sound_params[kind].delta, _duration_delta(dur), .Release)
 
-set_sound_lowpass :: proc(handle: Sound_Handle, value: f32, dur: f32 = 0) -> bool {
-    sound := _get_sound(handle) or_return
-    intrinsics.atomic_store_explicit(&sound.lowpass.target, value, .Release)
-    intrinsics.atomic_store_explicit(&sound.lowpass.delta, _duration_delta(dur), .Release)
     return true
-}
 
-set_sound_highpass :: proc(handle: Sound_Handle, value: f32, dur: f32 = 0) -> bool {
-    sound := _get_sound(handle) or_return
-    intrinsics.atomic_store_explicit(&sound.highpass.target, value, .Release)
-    intrinsics.atomic_store_explicit(&sound.highpass.delta, _duration_delta(dur), .Release)
-    return true
+    _duration_delta :: proc(dur: f32) -> f32 {
+        return dur < 0.01 ? 1e6 : 1.0 / dur
+    }
 }
 
 _duration_delta :: proc(dur: f32) -> f32 {
     return dur < 0.01 ? 1e6 : 1.0 / dur
 }
 
-set_sound_spatial :: proc(handle: Sound_Handle, pos: [3]f32, vel: [3]f32) {
+set_sound_transform :: proc(handle: Sound_Handle, pos: [3]f32, vel: [3]f32) {
     sound, ok := _get_sound(handle)
     if !ok {
         return
     }
     atomic_store_components_release_vec(&sound.pos_curr, pos)
     atomic_store_components_release_vec(&sound.vel_curr, vel)
-    sound.flags += {.Spatial}
 }
 
 is_resource_valid :: proc(handle: Resource_Handle) -> bool {
@@ -507,6 +554,10 @@ is_sound_valid :: proc(handle: Sound_Handle) -> bool {
     return true
 }
 
+is_group_valid :: proc(#any_int index: int) -> bool {
+    return index >= 0 && index < NUM_GROUPS
+}
+
 _get_resource :: proc(handle: Resource_Handle) -> (^Resource, bool) {
     if !is_resource_valid(handle) {
         return nil, false
@@ -521,22 +572,24 @@ _get_sound :: proc(handle: Sound_Handle) -> (^Sound, bool) {
     return &_state.sounds[handle.index], true
 }
 
+_get_group :: proc(#any_int index: int) -> (^Group, bool) {
+    if !is_group_valid(index) {
+        return nil, false
+    }
+    return &_state.groups[index], true
+}
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Mixer
 //
 
-LANES :: 16
-SCRATCH_BUFFER_SIZE :: 1024 * 2
-
-SPEED_OF_SOUND :: 343 // m/s, dry air at around 20C
-
 default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
     assert(_state.frame_rate >= 8000)
     assert(_state.frame_rate <= 192000)
 
-    _scratch: [SCRATCH_BUFFER_SIZE][2]f32
+    _scratch: [SCRATCH_FRAMES][2]f32
     scratch := _scratch[:len(frame_buf)]
 
     listener_prev := _state.listener_prev
@@ -554,7 +607,18 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
     listener_up := normalize(cross(listener_forw, listener_right))
     listener_prev_up := normalize(cross(listener_prev.forw, listener_prev.right))
 
+    group_delta_seconds := f32(len(frame_buf)) / f32(_state.frame_rate)
+
+    group_param_range: [NUM_GROUPS][Sound_Param_Kind][2]f32
+    for &group, i in _state.groups {
+        for &param, kind in group.sound_params {
+            group_param_range[i][kind] = update_param(&param, group_delta_seconds)
+        }
+    }
+
     sound_loop: for sound_index in 1..<MAX_SOUNDS {
+        sound := &_state.sounds[sound_index]
+
         switch intrinsics.atomic_load_explicit(&_state.sounds_state[sound_index], .Acquire) {
         case .Request_Free:
             _free_sound(sound_index)
@@ -565,8 +629,6 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
         case .Used:
         }
 
-        sound := &_state.sounds[sound_index]
-
         if !sound.playing {
             continue
         }
@@ -576,31 +638,24 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
 
         destroy := false
 
-        // Dynamic pitch
-        // Doppler pitch
-        // Lowpass muddy filter (one pole)
-        // Delay, Convolution?
-        // Cone filter spatialization
-        // Panning
-
-        // - fill scratch with base signal & pitch
-        // - apply filters one by one
-        // - final mix (pan, volume)
-
-        // num_buf_frames := len(frame_buf)
-        // smooth_delta := f32(num_buf_frames) / f32(frame_rate)
-        // volume := intrinsics.atomic_load(&sound.params[.Volume].curr)
-        // volume_target := intrinsics.atomic_load(&sound.params[.Volume].target)
-        // volume_delta := smooth_delta * intrinsics.atomic_load(&sound.params[.Volume].delta)
-        // intrinsics.atomic_store(&sound.params[.Volume].curr, volume)
-
         delta_seconds := f32(resource.frame_rate) / f32(frame_rate)
 
-        pitch_range := update_param(&sound.pitch, delta_seconds)
-        volume_range := update_param(&sound.volume, delta_seconds)
-        pan_range := update_param(&sound.pan, delta_seconds)
-        lpf_range := update_param(&sound.lowpass, delta_seconds)
-        hpf_range := update_param(&sound.highpass, delta_seconds)
+        group_params := group_param_range[sound.group_index]
+
+        params: [Sound_Param_Kind][2]f32
+        for &param, kind in sound.params {
+            params[kind] = update_param(&param, delta_seconds)
+        }
+
+        volume_range := params[.Volume] * group_params[.Volume]
+        pitch_range := params[.Pitch] * group_params[.Pitch]
+        doppler_factor := params[.Doppler_Factor] * group_params[.Doppler_Factor]
+        attenuation_min := params[.Attenuation_Min] * group_params[.Attenuation_Min]
+        attenuation_max := params[.Attenuation_Max] * group_params[.Attenuation_Max]
+
+        pan_range := params[.Pan] + group_params[.Pan]
+        lpf_range := params[.Lowpass]  + group_params[.Lowpass]
+        hpf_range := params[.Highpass] + group_params[.Highpass]
 
         vel_range := [2][3]f32{
             sound.vel_prev,
@@ -630,8 +685,8 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
             }
 
             attenuation := [2]f32{
-                linear_attenuation(dists[0], sound.attenuation_range),
-                linear_attenuation(dists[1], sound.attenuation_range),
+                linear_attenuation(dists[0], {attenuation_min[0], attenuation_max[0]}),
+                linear_attenuation(dists[1], {attenuation_min[1], attenuation_max[1]}),
             }
 
             volume_range *= attenuation
@@ -651,8 +706,8 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
             }
 
             doppler = {
-                lerp(f32(1.0), doppler[0], sound.doppler_factor),
-                lerp(f32(1.0), doppler[1], sound.doppler_factor),
+                lerp(f32(1.0), doppler[0], doppler_factor[0]),
+                lerp(f32(1.0), doppler[1], doppler_factor[1]),
             }
 
             pitch_range *= doppler
@@ -727,7 +782,6 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
             destroy = true
         }
 
-
         // Recursive filters
         // One-pole HPF and LPF
         // TODO: 2nd-order filtering?
@@ -773,7 +827,6 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
             sound.hpf_prev = hpf_prev
         }
 
-
         // Final output
 
         for frame, i in scratch {
@@ -810,6 +863,7 @@ default_master_mixer :: proc(frame_buf: [][2]f32, frame_rate: int) {
         spsc_push(&_state.sounds_free, Handle_Index(sound_index))
     }
 }
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -914,7 +968,7 @@ sample_base_signal :: proc(
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Misc
+// MARK: Util
 //
 
 atomic_load_components_acquire :: proc {

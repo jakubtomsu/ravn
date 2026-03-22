@@ -137,7 +137,7 @@ Code can be hot reloaded by running `odin run build -- run_hot my_package`.
 
 You can run the following command to export your game to web:
 ```
-odin run build -- export_web my_package
+odin run build -- export-web my_package
 ```
 
 To run the app locally, you must also create a tiny HTTP file server (to fetch the WASM) due to CORS policy. Something like this works:

@@ -77,7 +77,9 @@ when BACKEND == BACKEND_SDL3 {
             frame_num := min(frames_left, len(frame_buf))
 
             mixer_proc := intrinsics.atomic_load(&_state.master_mixer_proc)
-            mixer_proc(frame_buf[:frame_num], frame_rate = int(_state.frame_rate))
+            if mixer_proc != nil {
+                mixer_proc(frame_buf[:frame_num], frame_rate = int(_state.frame_rate))
+            }
 
             sdl.PutAudioStreamData(stream, &frame_buf, frame_num * size_of([2]f32))
             frames_left -= frame_num

@@ -41,7 +41,9 @@ _render :: proc() {
         buffer: [_WEBAUDIO_BUFFER_FRAMES][2]f32
 
         mixer_proc := _state.master_mixer_proc
-        mixer_proc(buffer[:], frame_rate = int(_state.frame_rate))
+        if mixer_proc != nil {
+            mixer_proc(buffer[:], frame_rate = int(_state.frame_rate))
+        }
 
         // de-interleave in WASM land
 

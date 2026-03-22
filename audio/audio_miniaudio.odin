@@ -69,7 +69,9 @@ when BACKEND == BACKEND_MINIAUDIO {
         assert(0 == runtime.memory_compare_zero(pOutput, size_of(f32) * 2 * int(frameCount)))
 
         mixer_proc := intrinsics.atomic_load(&_state.master_mixer_proc)
-        mixer_proc(frame_buf, frame_rate = int(_state.frame_rate))
+        if mixer_proc != nil {
+            mixer_proc(frame_buf, frame_rate = int(_state.frame_rate))
+        }
     }
 
 }

@@ -19,6 +19,8 @@ main :: proc() {
     assert(res0_ok)
     assert(res1_ok)
 
+    audio.set_group_sound_param(0, .Lowpass, 0.9)
+
     audio.set_listener(
         pos = 0,
         vel = 0,

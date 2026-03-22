@@ -138,11 +138,12 @@ when BACKEND == BACKEND_WASAPI {
         _wasapi_check(_state.render_client->GetBuffer(frames_available, &data_ptr))
 
         frame_buf := (cast([^][2]f32)data_ptr)[:frames_available]
-        mixer_proc := intrinsics.atomic_load(&_state.master_mixer_proc)
-
         intrinsics.mem_zero(raw_data(frame_buf), len(frame_buf) * size_of([2]f32))
 
-        mixer_proc(frame_buf, frame_rate = int(_state.frame_rate))
+        mixer_proc := intrinsics.atomic_load(&_state.master_mixer_proc)
+        if mixer_proc != nil {
+            mixer_proc(frame_buf, frame_rate = int(_state.frame_rate))
+        }
 
         _wasapi_check(_state.render_client->ReleaseBuffer(frames_available, 0))
     }

@@ -171,7 +171,7 @@ init_header :: proc(header: ^Header, sample_rate: u32, num_channels: u16, sample
         riff = RIFF_Chunk{
             chunk = {
                 id = RIFF_CHUNK_ID,
-                size = len(data) - size_of(Chunk),
+                size = u32(len(data)) - size_of(Chunk),
             },
             file_format_id = FILE_FORMAT_ID,
         },
@@ -180,17 +180,17 @@ init_header :: proc(header: ^Header, sample_rate: u32, num_channels: u16, sample
                 id = FORMAT_CHUNK_ID,
                 size = size_of(Format_Chunk) - size_of(Chunk),
             },
-            format = format,
+            format = sample_format,
             num_channels = num_channels,
             sample_rate = sample_rate,
             byte_per_sec = u32(sample_rate) * sample_size,
-            byte_per_bloc = u32(num_channels) * sample_size,
-            bits_per_sample = sample_size * 8,
+            byte_per_bloc = u16(num_channels) * u16(sample_size),
+            bits_per_sample = u16(sample_size * 8),
         },
         data = Data_Chunk{
             chunk = {
                 id = DATA_CHUNK_ID,
-                size = len(data),
+                size = u32(len(data)),
             },
         },
     }
