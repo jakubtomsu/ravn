@@ -146,8 +146,6 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.bind_depth_write(true)
     rv.draw_text("Use WASD and QE to move, mouse to look", {20, 20, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
-    rv.draw_counter(.CPU_Frame_Ns, {20, 100, 0.1}, scale = 2, unit = 1e-6, col = rv.GREEN)
-
     rv.submit_layers()
     rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
     rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)

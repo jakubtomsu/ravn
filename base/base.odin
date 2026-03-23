@@ -3,7 +3,9 @@ package raven_base
 import "base:runtime"
 import "ufmt"
 
-
+eprintf :: ufmt.eprintf
+eprintfln :: ufmt.eprintfln
+tprintf :: ufmt.tprintf
 
 // MARK: Log
 
@@ -32,7 +34,6 @@ log_dump :: proc(arg: any, expr := #caller_expression(arg), loc := #caller_locat
         log(.Debug, format = "%s = %#", args = {expr, arg}, loc = loc)
     }
 }
-
 
 log :: proc(level: Log_Level, format: string, args: ..any, loc := #caller_location) {
     logger := context.logger
@@ -90,6 +91,8 @@ _logger_proc :: proc(
         }
     }
 
+    // NOTE: it's important for this to remain a single call to eprintfln.
+    // This way multithreaded logging should behave nicer.
     ufmt.eprintfln("%s%s%s%s(%i:%i) %s: %s",
         begin_col,
         _logger_prefix[level],

@@ -16,19 +16,24 @@ NOTE: curly braces don't need to be doubled ({{ and }}) like in `core:fmt`
 By Jakub Tomšů
 Read https://jakubtomsu.github.io/posts/odin_comp_speed/ for more info.
 */
+#+no-instrumentation
 package ufmt
 
 import "base:runtime"
 
 INDENT :: "  "
 
-eprintf :: proc(format: string, args: ..any) {
-    runtime.print_string(tprintf(format = format, args = args))
+eprintf :: proc(format: string, args: ..any) -> int {
+    str := tprintf(format = format, args = args)
+    runtime.print_string(str)
+    return len(str)
 }
 
-eprintfln :: proc(format: string, args: ..any) {
-    runtime.print_string(tprintf(format = format, args = args))
+eprintfln :: proc(format: string, args: ..any) -> int {
+    str := tprintf(format = format, args = args)
+    runtime.print_string(str)
     runtime.print_byte('\n')
+    return len(str)
 }
 
 tprintf :: proc(format: string, args: ..any) -> string {

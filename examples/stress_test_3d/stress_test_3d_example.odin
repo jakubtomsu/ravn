@@ -1,5 +1,6 @@
 package raven_simple_3d_example
 
+import "core:math/rand"
 import "core:fmt"
 import "core:math/linalg"
 import "core:math"
@@ -11,6 +12,9 @@ state: ^State
 State :: struct {
     cam_pos:    rv.Vec3,
     cam_ang:    rv.Vec3,
+
+    death_sound: rv.Sound_Resource_Handle,
+    berry_sound: rv.Sound_Resource_Handle,
 }
 
 @export _module_desc := rv.Module_Desc {
@@ -33,6 +37,9 @@ _init :: proc() {
 
     state.cam_pos = {25, 5, -25}
     state.cam_ang = {0.5, 0, 0}
+
+    state.death_sound = rv.create_sound_resource_encoded("death", #load("../data/snake_death_sound.wav")) or_else panic("load")
+    state.berry_sound = rv.create_sound_resource_encoded("berry", #load("../data/snake_powerup_sound.wav")) or_else panic("load")
 }
 
 _shutdown :: proc() {
@@ -84,6 +91,14 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.bind_depth_test(true)
     rv.bind_depth_write(true)
 
+    // Sound stress test
+    for i in 0..<10 {
+        rv.create_sound(
+            rand.float32() > 0.5 ? state.death_sound : state.berry_sound,
+            {.Spatial}, volume = 0.05, pitch = rand.float32() + 1,
+        )
+    }
+
     if rv.scope_binds() {
         rv.bind_texture("default")
         rv.bind_layer(0)
@@ -123,14 +138,18 @@ _update :: proc(hot_state: rawptr) -> rawptr {
                 for texh in tex {
                     rv.bind_texture(texh)
 
-                    // stress_draw(rv.get_mesh("Circle"), offs)
+                    anim := rv.Vec3{0, rv.nsin(rv.get_time() + (offs.x + offs.y + offs.z) * 0.03), 0}
+
+                    // stress_draw(rv.get_mesh("Disk"), offs + anim)
                     // offs += {5, 0, 0}
 
-                    stress_draw(rv.get_builtin_mesh(.Cylinder), offs)
+                    stress_draw(rv.get_builtin_mesh(.Cylinder), offs + anim)
                     offs += {5, 0, 0}
 
-                    // stress_draw(rv.get_mesh("Icosphere"), offs)
-                    // offs += {5, 0, 0}
+                    stress_draw(rv.get_builtin_mesh(.Icosphere), offs + anim)
+                    offs += {5, 0, 0}
+
+
                 }
             }
         }
@@ -142,9 +161,12 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.bind_depth_write(true)
     rv.draw_text("Use WASD and QE to move, mouse to look", {200, 14, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
-    rv.draw_counter(.CPU_Frame_Ns, {10, 50, 0.2}, scale = 2, unit = 1e-6, col = rv.DARK_GREEN)
-    rv.draw_counter(.CPU_Frame_Work_Ns, {10, 50, 0.1}, scale = 2, unit = 1e-6, col = rv.GREEN, show_text = false)
-    rv.draw_counter(.Num_Draw_Calls, {10, 100, 0.1}, col = rv.ORANGE)
+    rv.draw_perf_scopes()
+    
+    rv.draw_perf_counter(.Frame_Time, {10, 500, 0.2}, scale = 2, col = rv.DARK_GREEN)
+    rv.draw_perf_counter(.Frame_Work_Time, {10, 500, 0.1}, scale = 2, col = rv.GREEN, show_text = false)
+    rv.draw_perf_counter(.Num_Draw_Calls, {10, 550, 0.1}, col = rv.ORANGE)
+    rv.draw_perf_counter(.Num_Total_Instances, {10, 600, 0.1}, scale = 0.001, col = rv.ORANGE)
 
     rv.submit_layers()
 
@@ -161,5 +183,7 @@ stress_draw :: proc(handle: rv.Mesh_Handle, pos: rv.Vec3, num: int = 256, col: r
             rot = rv.quat_angle_axis(f32(i) * 0.1 + rv.get_time(), {0, 0, 1}),
             col = col,
         )
+
+        // rv.draw_sprite(pos + {0, 0, f32(i) * 3}, scale = 0.01)
     }
 }

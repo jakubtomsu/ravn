@@ -400,8 +400,6 @@ create_resource :: proc(
     assert(resource.frame_rate != 0)
     assert(resource.frame_num != 0)
 
-    base.log_dump(resource^)
-
     intrinsics.atomic_store(&_state.resources_state[index], .Used)
 
     return result, true
@@ -428,6 +426,8 @@ create_sound :: proc(
     playing                 := true,
     chop:                   [2]f32 = {0, 1},
     start_delay:            f32 = 0,
+    pos:                    [3]f32 = 0,
+    vel:                    [3]f32 = 0,
     #any_int group_index:   int = 0,
 ) -> (result: Sound_Handle, ok: bool) #optional_ok {
     assert(group_index >= 0)
@@ -475,6 +475,10 @@ create_sound :: proc(
             .Lowpass           = _param(lowpass),
             .Highpass          = _param(highpass),
         },
+        pos_curr = pos,
+        pos_prev = pos,
+        vel_curr = vel,
+        vel_prev = vel,
     }
 
     intrinsics.atomic_store(&_state.sounds_state[index], .Used)
@@ -914,7 +918,8 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
 
     out_buf_simd := reinterpret_slice(#simd[8]f32, out_buf)
     for &vec in out_buf_simd {
-        vec = fast_tanh_simd(vec)
+        // FIXME
+        // vec = fast_tanh_simd(vec)
     }
 
     return

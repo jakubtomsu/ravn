@@ -41,6 +41,18 @@ import stbi "vendor:stb/image"
 // TODO: figure out file flushing and custom file data loop
 // TODO: all resources should return a handle if an identifier exists already
 
+// TODO: lowlevel optimizations, for both debug and release builds:
+//
+// Bottom-up:
+// - runtime bounds_check_error
+// - is_box_in_frustum
+// - smoothsort boundscheck
+// - runtime::_read/_write_bits
+// - pack_unorm8
+//
+// Top-down:
+// - new_frame possibly called twice?
+
 RELEASE :: #config(RAVEN_RELEASE, false)
 VALIDATION :: #config(RAVEN_VALIDATION, !RELEASE)
 
@@ -62,7 +74,7 @@ MAX_SHADERS :: 64
 MAX_FILES :: 1024
 MAX_SOUNDS :: 1024
 
-MAX_TOTAL_SPRITE_INSTANCES :: 1024 * 32
+MAX_TOTAL_SPRITE_INSTANCES :: 1024 * 64
 MAX_TOTAL_MESH_INSTANCES :: 1024 * 64 // Shared between meshes, lines and triangles
 MAX_TOTAL_DYNAMIC_VERTS :: 1024 * 8 // Shared between triangles and lines
 
@@ -199,7 +211,7 @@ State :: struct #align(64) {
     draw_layers_consts:         gpu.Resource_Handle,
     draw_batch_consts:          gpu.Resource_Handle,
 
-    counters:                   [Counter_Kind]Counter_State,
+    perf_counters:              [Perf_Counter_Kind]Perf_Counter_State,
 
     watched_dirs_num:           i32,
     watched_dirs:               [MAX_WATCHED_DIRS]Watched_Dir,
@@ -575,17 +587,10 @@ draw_sort_key_equal :: proc(key_a, key_b: Draw_Sort_Key) -> bool {
     return a == b
 }
 
-DEFAULT_SAMPLERS :: [2]gpu.Sampler_Desc{
-    0 = {
-        filter = .Unfiltered,
-        bounds = {.Wrap, .Wrap, .Wrap},
-        mip_max = 10,
-    },
-    // 1 = {
-    //     filter = .Filtered,
-    //     bounds = .Wrap,
-    //     mip_max = 10,
-    // },
+DEFAULT_SAMPLER :: gpu.Sampler_Desc{
+    filter = .Unfiltered,
+    bounds = {.Wrap, .Wrap, .Wrap},
+    mip_max = 10,
 }
 
 
@@ -810,9 +815,9 @@ init_state :: proc(allocator := context.allocator) {
         panic("Failed to initialize audio")
     }
 
-    for &counter in _state.counters {
+    for &counter in _state.perf_counters {
         counter.total_min = max(u64)
-        counter.accum = max(u64)
+        counter.total_num = -20 // warmup period
     }
 
     base.log_info("Creating Window...")
@@ -917,46 +922,63 @@ shutdown_state :: proc() {
     if !_state.ended_frame {
         end_frame(false)
     }
-
+    
     _print_stats_report()
 
     audio.shutdown()
     gpu.shutdown()
     platform.shutdown()
-
+    
+    delete(_perf_scopes)
     free(_state, _state.allocator)
     _state = nil
 }
 
 _print_stats_report :: proc() {
-    ufmt.eprintfln("Stats Report:")
+    ufmt.eprintfln("\nStats Report:\n")
 
     {
-        c := _state.counters[.CPU_Frame_Ns]
-        ufmt.eprintfln("CPU Frame time (ms):          avg %f, min %f, max %f",
-            f64(c.total_sum) * 1e-6 / f64(c.total_num),
-            f64(c.total_min) * 1e-6,
-            f64(c.total_max) * 1e-6,
-        )
+        offs := 0
+        offs += ufmt.eprintf("Perf Counter")
+        
+        _align(&offs, 30)
+        offs += ufmt.eprintf("Average")
+        
+        _align(&offs, 60)
+        offs += ufmt.eprintf("Min")
+        
+        _align(&offs, 90)
+        offs += ufmt.eprintf("Max")
+        
+        ufmt.eprintfln("")
     }
 
-    {
-        tot := _state.counters[.Num_Total_Instances]
-        upl := _state.counters[.Num_Uploaded_Instances]
-        ufmt.eprintfln("Per Frame Draw Instances:     avg total %f, avg uploaded %f",
-            f64(tot.total_sum) / f64(tot.total_num),
-            f64(upl.total_sum) / f64(upl.total_num),
-        )
+    for c, kind in _state.perf_counters {
+        name := ufmt.tprintf("%v", kind)
+        for &b in transmute([]byte)name {
+            if b == '_' {
+                b = ' '
+            }
+        }
+        
+        unit := _perf_counter_display_scale[kind]
+        
+        offs := 0
+        offs += ufmt.eprintf("%s:", name)
+        
+        _align(&offs, 30)
+        offs += ufmt.eprintf("%v", f64(c.total_sum) * unit / f64(c.total_num))
+        
+        _align(&offs, 60)
+        offs += ufmt.eprintf("%v", f64(c.total_min) * unit)
+        
+        _align(&offs, 90)
+        offs += ufmt.eprintf("%v", f64(c.total_max) * unit)
+        
+        ufmt.eprintfln("")
     }
-
-    {
-        c := _state.counters[.Num_Draw_Calls]
-        ufmt.eprintfln("Draw Calls:                   avg %f, min %i, max %i",
-            f64(c.total_sum) / f64(c.total_num),
-            c.total_min,
-            c.total_max,
-        )
-    }
+    
+    ufmt.eprintfln("")
 
     {
         tr := _state.context_state.tracking
@@ -996,12 +1018,20 @@ _print_stats_report :: proc() {
         ufmt.eprintfln("Peak memory:                  %i bytes (%f MB) ", peak_mem, f64(peak_mem) / (1024 * 1024))
     }
 
-
+    _align :: proc(offs: ^int, col: int) {
+        val := offs^
+        for ; val < col; val += 1 {
+            ufmt.eprintf(" ")
+        }
+        offs^ = val
+    }
 }
 
 begin_frame :: proc() -> (keep_running: bool) {
+    perf_scope()
+    
     assert(_state != nil)
-
+    
     free_all(context.temp_allocator)
     // In case big file allocations happened...
     defer free_all(context.temp_allocator)
@@ -1009,6 +1039,8 @@ begin_frame :: proc() -> (keep_running: bool) {
     if _state.frame_index == 0 {
         base.log_info("Time to first frame: %f ms", f32((platform.get_time_ns() - _state.start_time) / 1e3) * 1e-3)
     }
+
+    assert(_state.bind_states_len == 0, "Looks like you forgot pop_binds() somewhere")
 
     keep_running = true
 
@@ -1036,8 +1068,8 @@ begin_frame :: proc() -> (keep_running: bool) {
 
     assert(_state.render_textures[DEFAULT_RENDER_TEXTURE.index].color != {})
 
-    for &counter in _state.counters {
-        _counter_flush(&counter)
+    for &counter in _state.perf_counters {
+        _perf_counter_flush(&counter)
     }
 
     gpu_can_begin_frame := gpu.begin_frame()
@@ -1045,22 +1077,15 @@ begin_frame :: proc() -> (keep_running: bool) {
 
     audio.update()
 
-    assert(_state.bind_states_len == 0, "Looks like you forgot pop_binds() somewhere")
     _state.frame_index += 1
     _state.submitted_layers = false
 
     time_ns := platform.get_time_ns()
     _state.curr_time = time_ns
-
     _state.frame_dur_ns = time_ns - _state.last_time
-
     _state.last_time = time_ns
 
-    if _state.frame_index > 10 {
-        _counter_add(.CPU_Frame_Ns, _state.frame_dur_ns)
-    } else {
-        _counter_add(.CPU_Frame_Ns, max(u64))
-    }
+    _perf_counter_add(.Frame_Time, _state.frame_dur_ns)
 
     _clear_draw_layers()
 
@@ -1228,18 +1253,14 @@ begin_frame :: proc() -> (keep_running: bool) {
 }
 
 end_frame :: proc(vsync := true) {
+    perf_scope()
+    
     validate(!_state.ended_frame)
 
     _state.ended_frame = true
     curr_time := platform.get_time_ns()
 
-    frame_work_dur_ns := curr_time - _state.last_time
-
-    if _state.frame_index > 10 {
-        _counter_add(.CPU_Frame_Work_Ns, frame_work_dur_ns)
-    } else {
-        _counter_add(.CPU_Frame_Work_Ns, max(u64))
-    }
+    _perf_counter_add(.Frame_Work_Time, curr_time - _state.last_time)
 
     gpu.end_frame(sync = vsync)
 }
@@ -3248,6 +3269,8 @@ draw_sprite :: proc(
     scaling:    Sprite_Scaling = .Pixel,
     param:      u32 = 0,
 ) {
+    perf_scope()
+    
     validate_vec3(pos)
     validate_vec2(scale)
     validate_quat(rot)
@@ -3284,8 +3307,8 @@ draw_sprite :: proc(
     }
 
     center := pos
-    center += mat[0] * anchor.x * size.x
-    center += mat[1] * anchor.y * size.y
+    center -= mat[0] * anchor.x * size.x
+    center -= mat[1] * anchor.y * size.y
 
     rect_size_sign := Vec2{
         math.sign_f32(rect_size.x),
@@ -3374,6 +3397,8 @@ draw_text :: proc(
     col:        Vec4 = 1,
     rot:        Quat = 1,
 ) -> []Sprite_Inst {
+    perf_scope()
+    
     char_size := IVec2{
         i32(_state.bind_state.texture_size.x) / 16,
         i32(_state.bind_state.texture_size.y) / 16,
@@ -3479,6 +3504,8 @@ draw_mesh :: proc(
     add_col:    Vec4 = 0,
     param:      u32 = 0,
 ) {
+    perf_scope()
+    
     validate_vec3(pos)
     validate_vec3(scale)
     validate_quat(rot)
@@ -3587,6 +3614,8 @@ draw_triangles :: proc(
     add_col:    Vec4 = 0,
     param:      u32 = 0,
 ) {
+    perf_scope()
+    
     validate_vec3(pos)
     validate_quat(rot)
     validate_vec4(col)
@@ -3642,6 +3671,8 @@ draw_lines :: proc(
     add_col:    Vec4 = 0,
     param:      u32 = 0,
 ) {
+    perf_scope()
+    
     validate(len(verts) % 2 == 0)
     validate_vec3(pos)
     validate_quat(rot)
@@ -4041,6 +4072,8 @@ _calc_circle_points :: proc(segments: int) -> []Vec2 {
 //
 
 _upload_gpu_global_constants :: proc() {
+    perf_scope()
+    
     gpu.update_constants(_state.global_consts, gpu.ptr_bytes(&Draw_Global_Constants{
         time = get_time(),
         delta_time = get_delta_time(),
@@ -4060,6 +4093,8 @@ _draw_layer_no_instances :: proc(layer: Draw_Layer) -> bool {
 }
 
 _upload_gpu_layer_constants :: proc() {
+    perf_scope()
+    
     consts_buf: [MAX_DRAW_LAYERS]Draw_Layer_Constants
 
     for &layer, i in _state.draw_layers {
@@ -4087,6 +4122,8 @@ submit_layers :: proc() {
     assert(!_state.submitted_layers)
     _state.submitted_layers = true
 
+    perf_scope()
+
     _upload_gpu_global_constants()
 
     _upload_gpu_layer_constants()
@@ -4099,7 +4136,7 @@ submit_layers :: proc() {
     batcher: Batcher_State
 
     for layer in _state.draw_layers {
-        _counter_add(.Num_Total_Instances, u64(
+        _perf_counter_add(.Num_Total_Instances, u64(
             len(layer.sprites) +
             len(layer.meshes) +
             len(layer.triangles) +
@@ -4109,6 +4146,8 @@ submit_layers :: proc() {
 
     // Dynamic Verts
     {
+        perf_scope("submit_layers dynverts")
+        
         total_dynamic_verts := 0
         for layer in _state.draw_layers {
             total_dynamic_verts += len(layer.dynamic_verts)
@@ -4138,8 +4177,10 @@ submit_layers :: proc() {
     }
 
 
-    // Prepare sprites
+    // Sprites
     {
+        perf_scope("submit_layers sprites")
+        
         total_sprite_instances := 0
 
         for &layer, _ in _state.draw_layers {
@@ -4219,6 +4260,8 @@ submit_layers :: proc() {
 
     // Upload mesh-like data
     {
+        perf_scope("submit_layers meshes")
+        
         total_mesh_instances := 0
         total_triangle_instances := 0
         total_line_instances := 0
@@ -4235,6 +4278,8 @@ submit_layers :: proc() {
             }
 
             if .No_Cull not_in layer.flags {
+                perf_scope("submit_layers mesh cull")
+                
                 frustum := calc_camera_frustum(layer.camera)
                 far_plane := frustum.planes[FRUSTUM_FAR_PLANE_INDEX]
                 mesh_dist_factor := f32(MAX_DRAW_SORT_KEY_DIST) / far_plane.w
@@ -4267,6 +4312,8 @@ submit_layers :: proc() {
             instances := layer.meshes.inst[:len(layer.meshes)]
 
             if .No_Reorder not_in layer.flags {
+                perf_scope("submit_layers mesh reorder")
+                
                 keys := layer.meshes.key[:len(layer.meshes)]
                 indices := slice.sort_with_indices(transmute([]Draw_Sort_Key_Backing)keys, context.temp_allocator)
                 slice.sort_from_permutation_indices(instances, indices)
@@ -4327,6 +4374,7 @@ submit_layers :: proc() {
             mesh_upload_offs += uploaded_num
         }
 
+        perf_scope("submit_layers mesh upload")
 
         gpu.update_buffer(
             _state.mesh_inst_buf,
@@ -4390,7 +4438,7 @@ submit_layers :: proc() {
 
 
     for layer in _state.draw_layers {
-        _counter_add(.Num_Uploaded_Instances, u64(
+        _perf_counter_add(.Num_Uploaded_Instances, u64(
             len(layer.sprites) +
             len(layer.meshes) +
             len(layer.triangles),
@@ -4424,12 +4472,14 @@ submit_layers :: proc() {
         keys:           []Draw_Sort_Key,
         inst_offs_base: u32,
     ) {
+        perf_scope()
+        
         if len(keys) == 0 {
             return
         }
 
         assert(dst_batches^ == nil)
-        dst_batches^ = make([dynamic]Draw_Batch, 0, 256, context.temp_allocator)
+        dst_batches^ = make([dynamic]Draw_Batch, 0, 1024, context.temp_allocator)
 
         curr_key := keys[0]
 
@@ -4506,6 +4556,8 @@ render_layer :: proc(
     user_resources:         []gpu.Resource_Handle = nil,
 ) {
     assert(ren_tex_handle != {})
+    
+    perf_scope()
 
     if !_state.submitted_layers {
         submit_layers()
@@ -4551,10 +4603,9 @@ render_layer :: proc(
             1 = _state.draw_layers_consts,
             2 = _state.draw_batch_consts,
         },
-    }
-
-    for smp, i in DEFAULT_SAMPLERS {
-        pip_desc.samplers[i] = smp
+        samplers = {
+            0 = DEFAULT_SAMPLER,
+        },
     }
 
     copy(pip_desc.samplers[GPU_SAMPLER_SLOTS:], user_samplers)
@@ -4570,6 +4621,8 @@ render_layer :: proc(
 }
 
 _render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    perf_scope()
+    
     pip_desc := pip_desc
 
     layer := _state.draw_layers[layer_index]
@@ -4596,7 +4649,7 @@ _render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.bind_pipeline(pipeline)
 
-        _counter_add(.Num_Draw_Calls, 1)
+        _perf_counter_add(.Num_Draw_Calls, 1)
 
         gpu.draw_indexed(
             index_num = 6,
@@ -4612,6 +4665,8 @@ _render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 }
 
 _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    perf_scope()
+    
     pip_desc := pip_desc
 
     layer := _state.draw_layers[layer_index]
@@ -4640,7 +4695,7 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.bind_pipeline(pipeline)
 
-        _counter_add(.Num_Draw_Calls, 1)
+        _perf_counter_add(.Num_Draw_Calls, 1)
 
         mesh := _state.meshes[batch.key.asset_index]
 
@@ -4658,6 +4713,8 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 }
 
 _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    perf_scope()
+    
     pip_desc := pip_desc
 
     layer := _state.draw_layers[layer_index]
@@ -4684,7 +4741,7 @@ _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.bind_pipeline(pipeline)
 
-        _counter_add(.Num_Draw_Calls, 1)
+        _perf_counter_add(.Num_Draw_Calls, 1)
 
         gpu.draw_non_indexed(
             vertex_num = batch.key.asset_index,
@@ -4699,6 +4756,8 @@ _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 }
 
 _render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    perf_scope()
+    
     pip_desc := pip_desc
 
     layer := _state.draw_layers[layer_index]
@@ -4726,7 +4785,7 @@ _render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.bind_pipeline(pipeline)
 
-        _counter_add(.Num_Draw_Calls, 1)
+        _perf_counter_add(.Num_Draw_Calls, 1)
 
         gpu.draw_non_indexed(
             vertex_num = batch.key.asset_index,
@@ -5225,7 +5284,6 @@ unpack_unorm16 :: proc "contextless" (val: [2]u16) -> [2]f32 {
     }
 }
 
-
 // Special packing to allow -2..2 range
 @(require_results)
 pack_signed_color_unorm8 :: proc "contextless" (val: [4]f32) -> [4]u8 {
@@ -5318,60 +5376,72 @@ pack_vertex :: proc(
     }
 }
 
+bit_field_get :: proc(f: $T) -> u64 where intrinsics.type_is_bit_field(T) {
+    res := intrinsics.type_field_type(T, "dist")
+    return offset_of_member()
+}
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Counters
+// MARK: Perf
 //
 // A lightweight way to measure stats and report them to the outside world.
 //
 
-COUNTER_HISTORY :: 64
+PERF_COUNTER_HISTORY :: 64
 
-Counter_State :: struct {
+Perf_Counter_State :: struct {
     accum:      u64,
-    vals:       [COUNTER_HISTORY]u64,
-    total_num:  u64,
+    vals:       [PERF_COUNTER_HISTORY]u64,
+    total_num:  i64,
     total_min:  u64,
     total_max:  u64,
     total_sum:  u64,
 }
 
-Counter_Kind :: enum u8 {
-    CPU_Frame_Ns,
-    CPU_Frame_Work_Ns,
+Perf_Counter_Kind :: enum u8 {
     Num_Draw_Calls,
     Num_Total_Instances,
     Num_Uploaded_Instances, // non-culled
+
+    Frame_Time,
+    Frame_Work_Time,
+
     // TODO:
-    // GPU_Frame_Ns
-    // Upload_Ns,
-    // Total_Draw_Layer_Ns,
     // Temp_Allocs,
     // Temp_Bytes,
 }
 
-_counter_add :: proc(kind: Counter_Kind, value: u64) {
-    _state.counters[kind].accum = intrinsics.saturating_add(_state.counters[kind].accum, value)
+@(rodata)
+_perf_counter_display_scale := [Perf_Counter_Kind]f64{
+    .Num_Draw_Calls = 1,
+    .Num_Total_Instances = 1,
+    .Num_Uploaded_Instances = 1,
+    .Frame_Time = 1e-6,
+    .Frame_Work_Time = 1e-6,
 }
 
-_counter_flush :: proc(counter: ^Counter_State) {
-    value := counter.accum
-    counter.accum = 0
-    if value == max(u64) {
+_perf_counter_add :: proc(kind: Perf_Counter_Kind, value: u64 = 1) {
+    _state.perf_counters[kind].accum += value
+}
+
+_perf_counter_flush :: proc(perf_counter: ^Perf_Counter_State) {
+    perf_counter.total_num += 1
+    if perf_counter.total_num <= 0 {
         return
     }
-    counter.total_num += 1
-    counter.vals[counter.total_num % COUNTER_HISTORY] = value
-    counter.total_min = min(counter.total_min, value)
-    counter.total_max = max(counter.total_max, value)
-    counter.total_sum += value
+    value := perf_counter.accum
+    perf_counter.accum = 0
+    perf_counter.vals[perf_counter.total_num % PERF_COUNTER_HISTORY] = value
+    perf_counter.total_min = min(perf_counter.total_min, value)
+    perf_counter.total_max = max(perf_counter.total_max, value)
+    perf_counter.total_sum += value
 }
 
 // Displays max of the recent history and a graph.
 // Assumes screenspace camera.
 // 'unit' is for converting e.g. nanoseconds into a reasonable range.
-draw_counter :: proc(kind: Counter_Kind, pos: Vec3, scale: f32 = 1, unit: f32 = 1, col: Vec4 = 1, show_text := true) {
+draw_perf_counter :: proc(kind: Perf_Counter_Kind, pos: Vec3, scale: f32 = 1, col: Vec4 = 1, show_text := true) {
     scope_binds()
     bind_texture_by_handle(_state.builtin_texture[.CGA8x8thick])
     bind_blend(.Alpha)
@@ -5384,23 +5454,25 @@ draw_counter :: proc(kind: Counter_Kind, pos: Vec3, scale: f32 = 1, unit: f32 = 
         min = {0, 1 - 1.0/128.0},
         max = {0 + 1.0/128.0, 1},
     }
+    
+    unit := f32(_perf_counter_display_scale[kind])
 
-    counter := _state.counters[kind]
-    for i in 0..<COUNTER_HISTORY {
-        index := (int(counter.total_num) - i) %% COUNTER_HISTORY
-        val := counter.vals[index]
+    perf_counter := _state.perf_counters[kind]
+    for i in 0..<PERF_COUNTER_HISTORY {
+        index := (int(perf_counter.total_num) - i) %% PERF_COUNTER_HISTORY
+        val := perf_counter.vals[index]
 
-        height := -scale * unit * f32(val)
+        height := -1 * scale * unit * f32(val)
 
         draw_sprite(
-            pos = pos + {COUNTER_HISTORY - f32(i), height * 0.5, 0},
+            pos = pos + {PERF_COUNTER_HISTORY - f32(i), height * 0.5, 0},
             rect = rect,
             scale = {1, height},
             col = col,
         )
 
         draw_sprite(
-            pos = pos + {COUNTER_HISTORY - f32(i), height * 0.5, 0.01},
+            pos = pos + {PERF_COUNTER_HISTORY - f32(i), height * 0.5, 0.01},
             rect = rect,
             scale = {3, height + 2},
             col = BLACK,
@@ -5410,7 +5482,7 @@ draw_counter :: proc(kind: Counter_Kind, pos: Vec3, scale: f32 = 1, unit: f32 = 
     }
 
     if show_text {
-        // last := counter.vals[counter.total_num % COUNTER_HISTORY]
+        // last := perf_counter.vals[perf_counter.total_num % PERF_COUNTER_HISTORY]
         text: string
         if unit == 1 {
             text = ufmt.tprintf("%i", max_val)
@@ -5423,6 +5495,71 @@ draw_counter :: proc(kind: Counter_Kind, pos: Vec3, scale: f32 = 1, unit: f32 = 
         draw_text(text, pos + {64 + 16 + 1, 1, 0.01}, col = BLACK, scale = math.ceil_f32(_state.dpi_scale), anchor = {-1, 1})
     }
 }
+
+// Lives for only the current frame. Measures sum nanoseconds.
+_perf_scopes: map[string]u64
+
+@(deferred_in_out = _perf_scope_add)
+perf_scope :: proc(name: string = "", loc := #caller_location) -> u64 {
+    return platform.get_time_ns()
+}
+
+_perf_scope_add :: proc(name: string, loc: runtime.Source_Code_Location, start: u64) {
+    str := name == "" ? loc.procedure : name
+    prev := _perf_scopes[str]
+    _perf_scopes[str] = prev + (platform.get_time_ns() - start)
+}
+
+draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
+    scope_binds()
+    bind_texture(get_builtin_texture(.CGA8x8thick))
+    bind_depth_test(true)
+    bind_depth_write(true)
+    
+    Scope :: struct {
+        name:   string,
+        dur:    u64,
+    }
+    
+    scopes := make([]Scope, len(_perf_scopes), context.temp_allocator)
+    _scope_counter := 0
+    for name, scope in _perf_scopes {
+        scopes[_scope_counter] = {name, scope}
+        _scope_counter += 1
+    }
+    
+    // Flush
+    if _perf_scopes != nil {
+        delete(_perf_scopes)
+        _perf_scopes = {}
+    }
+    
+    slice.sort_by(scopes, proc(a, b: Scope) -> bool {
+        return a.name > b.name
+    })
+    
+    rect := Rect{
+        min = {0, 1 - 1.0/128.0},
+        max = {0 + 1.0/128.0, 1},
+    }
+
+    FRAME_TIME :: 1.0 / 60.0
+    
+    for scope, i in scopes {
+        p := pos + Vec3{0, f32(i) * 16, 0}
+        
+        ms := f32(scope.dur) * 1e-6
+        width := max(1, clamp(ms, 0, 16) * 10)
+        
+        text := base.tprintf("%s: %f ms", scope.name, ms)
+        draw_text(text, p)
+        draw_text(text, p + {1, 1, 0.001}, col = BLACK)
+        draw_sprite(p + {-5, 5, 0.01}, rect, {width, 16}, anchor = {-1, 0},
+            col = ms > 16.1 ? RED : (ms < 1 ? GREEN : ORANGE),
+        )
+    }
+}
+
 
 
 

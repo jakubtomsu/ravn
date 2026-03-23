@@ -223,6 +223,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_text(ufmt.tprintf("speed: %v, vel: %v", linalg.length(state.vel), state.vel),
         {14, 64, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
+    rv.draw_perf_scopes()
+
     rv.submit_layers()
     rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
     rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)

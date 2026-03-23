@@ -164,6 +164,8 @@ add_snake_segment :: proc() {
 }
 
 _update :: proc(hot_state: rawptr) -> rawptr {
+    rv.perf_scope()
+    
     if hot_state != nil {
         state = cast(^State)hot_state
     }
@@ -360,9 +362,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         }
     }
 
-
-    rv.draw_counter(.CPU_Frame_Ns, {10, 50, 0.2}, scale = 2, unit = 1e-6, col = rv.DARK_GREEN)
-    rv.draw_counter(.CPU_Frame_Work_Ns, {10, 50, 0.1}, scale = 2, unit = 1e-6, col = rv.GREEN, show_text = false)
+    rv.draw_perf_scopes()
 
     rv.submit_layers()
     rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0.05, 0.1, 0.2}, true)
