@@ -88,16 +88,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
-
-    // Sound stress test
-    for i in 0..<10 {
-        rv.create_sound(
-            rand.float32() > 0.5 ? state.death_sound : state.berry_sound,
-            {.Spatial}, volume = 0.05, pitch = rand.float32() + 1,
-        )
-    }
+    rv.bind_depth(.Depth)
 
     if rv.scope_binds() {
         rv.bind_texture("default")
@@ -109,13 +100,6 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             rv.get_texture("white"),
             rv.get_texture("error"),
             rv.get_texture("uv_tex"),
-        }
-
-        depth := [4][2]bool{
-            {false, false},
-            {true, false},
-            {false, true},
-            {true, true},
         }
 
         offs: rv.Vec3
@@ -157,8 +141,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.bind_layer(1)
     rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
+    rv.bind_depth(.Depth)
     rv.draw_text("Use WASD and QE to move, mouse to look", {200, 14, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
     rv.draw_perf_scopes()
@@ -166,7 +149,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_perf_counter(.Frame_Time, {10, 500, 0.2}, scale = 2, col = rv.DARK_GREEN)
     rv.draw_perf_counter(.Frame_Work_Time, {10, 500, 0.1}, scale = 2, col = rv.GREEN, show_text = false)
     rv.draw_perf_counter(.Num_Draw_Calls, {10, 550, 0.1}, col = rv.ORANGE)
-    rv.draw_perf_counter(.Num_Total_Instances, {10, 600, 0.1}, scale = 0.001, col = rv.ORANGE)
+    // rv.draw_perf_counter(.Num_Total_Instances, {10, 600, 0.1}, scale = 0.001, col = rv.ORANGE)
 
     rv.submit_layers()
 

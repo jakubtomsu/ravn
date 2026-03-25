@@ -85,8 +85,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
+    rv.bind_depth(.Depth)
 
     if rv.scope_binds() {
         rv.bind_texture(rv.get_builtin_texture(.Default))
@@ -95,13 +94,15 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         // Meshes
 
-        rv.draw_mesh(rv.get_mesh("Disk"), {-3, 0, 0}, col = rv.YELLOW)
+        for i in 0..<f32(10) {
+            rv.draw_mesh(rv.get_mesh("Disk"), {-3, 0, f32(i)}, col = rv.YELLOW)
+        }
         rv.draw_mesh(rv.get_mesh("Plane"), {0, 0, 0}, col = rv.GREEN)
         rv.draw_mesh(rv.get_mesh("Cube"), {3, 0, 0}, rv.quat_angle_axis(rv.get_time(), {0, 1, 0}), col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
 
-        rv.bind_depth_write(false)
+        rv.bind_depth(.Only_Test)
         rv.draw_mesh(rv.get_mesh("Icosphere"), {6, 0, 0}, col = rv.CYAN * rv.fade(0.5))
-        rv.bind_depth_write(true)
+        rv.bind_depth(.Depth)
 
         rv.draw_mesh(rv.get_mesh("Cylinder"), {9, 0, 0}, scale = {1, 0.1 + rv.nsin(rv.get_time() * 0.5), 1}, col = rv.GRAY)
 
@@ -109,41 +110,40 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         // Custom triangles
 
-        rv.draw_triangle(
-            pos = {
-                rv.Vec3{-0.5, 0, 0} + {-6, 0, 0},
-                rv.Vec3{ 0, 0.7, 0} + {-6, 0, 0},
-                rv.Vec3{ 0.5, 0, 0} + {-6, 0, 0},
-            },
-            col = {rv.RED, rv.BLUE, rv.GREEN},
-        )
+        // rv.draw_triangle(
+        //     pos = {
+        //         rv.Vec3{-0.5, 0, 0} + {-6, 0, 0},
+        //         rv.Vec3{ 0, 0.7, 0} + {-6, 0, 0},
+        //         rv.Vec3{ 0.5, 0, 0} + {-6, 0, 0},
+        //     },
+        //     col = {rv.RED, rv.BLUE, rv.GREEN},
+        // )
 
-        rv.draw_triangle(
-            pos = {
-                rv.Vec3{-0.5, 0, 0} + {-6, 0, 0},
-                rv.Vec3{ 0, -0.7, 0} + {-6, 0, 0},
-                rv.Vec3{ 0.5, 0, 0} + {-6, 0, 0},
-            },
-            col = {rv.RED, rv.GREEN, rv.CYAN},
-        )
+        // rv.draw_triangle(
+        //     pos = {
+        //         rv.Vec3{-0.5, 0, 0} + {-6, 0, 0},
+        //         rv.Vec3{ 0, -0.7, 0} + {-6, 0, 0},
+        //         rv.Vec3{ 0.5, 0, 0} + {-6, 0, 0},
+        //     },
+        //     col = {rv.RED, rv.GREEN, rv.CYAN},
+        // )
 
-        // Line shapes
+        // // Line shapes
 
-        rv.draw_line({{-3, 0, 5}, {-3, 1, 5}}, col = rv.YELLOW)
-        rv.draw_line_mat3({-2, 0, 5})
-        rv.draw_line_box({1, 0, 5}, 1, rv.GRAY)
-        rv.draw_line_circle({4, 0, 5}, col = rv.ORANGE)
-        rv.draw_line_cylinder({{6, -1, 5}, {6, 1, 5}}, rad = 0.5)
-        rv.draw_line_sphere({8, 0, 5}, mat = 0.7)
+        // rv.draw_line({{-3, 0, 5}, {-3, 1, 5}}, col = rv.YELLOW)
+        // rv.draw_line_mat3({-2, 0, 5})
+        // rv.draw_line_box({1, 0, 5}, 1, rv.GRAY)
+        // rv.draw_line_circle({4, 0, 5}, col = rv.ORANGE)
+        // rv.draw_line_cylinder({{6, -1, 5}, {6, 1, 5}}, rad = 0.5)
+        // rv.draw_line_sphere({8, 0, 5}, mat = 0.7)
 
-        rv.bind_pixel_shader(state.shader)
-        rv.draw_mesh(rv.get_mesh("Cube"), {3, -5, 0}, rv.quat_angle_axis(rv.get_time(), {0, 1, 0}), col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
+        // rv.bind_pixel_shader(state.shader)
+        // rv.draw_mesh(rv.get_mesh("Cube"), {3, -5, 0}, rv.quat_angle_axis(rv.get_time(), {0, 1, 0}), col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
     }
 
     rv.bind_layer(1)
     rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
+    rv.bind_depth(.Depth)
     rv.draw_text("Use WASD and QE to move, mouse to look", {20, 20, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
     rv.submit_layers()

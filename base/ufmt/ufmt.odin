@@ -440,7 +440,7 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
         append_elem(buf, '}')
 
     case runtime.Type_Info_Bit_Field:
-        unimplemented()
+        append_elem_string(buf, "bit_field")
 
     case runtime.Type_Info_Enum:
         _ = v.base.variant.(runtime.Type_Info_Integer)
