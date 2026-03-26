@@ -1313,7 +1313,7 @@ end_frame :: proc(vsync := true) {
 
     _perf_counter_add(.Frame_Work_Time, curr_time - _state.last_time)
     
-    _perf_scope_add("FRAME", start = _state.start_time)
+    _perf_scope_add("FRAME", start = _state.last_time)
 
     gpu.end_frame(sync = vsync)
 }
@@ -3371,7 +3371,8 @@ draw_sprite :: proc(
     key := _bind_state_batch_key(_state.bind_state)
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
-    _push_sprite_draw(_state.bind_state.draw_layer, key, inst)
+    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
+    _draw_batch_table_push(&draw_layer.sprites, key, inst)
 }
 
 draw_rect :: proc(
@@ -3382,10 +3383,6 @@ draw_rect :: proc(
     add_col:    Vec4 = 0,
     param:      u32 = 0,
 ) {
-    validate_rect(rect)
-    validate_rect(tex_rect)
-    validate_f32(z)
-
     center := rect_center(rect)
     size := rect_full_size(rect)
 
@@ -3409,7 +3406,8 @@ draw_rect :: proc(
     key := _bind_state_batch_key(_state.bind_state)
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
-    _push_sprite_draw(_state.bind_state.draw_layer, key, inst)
+    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
+    _draw_batch_table_push(&draw_layer.sprites, key, inst)
 }
 
 
@@ -3554,13 +3552,9 @@ draw_mesh :: proc(
     perf_scope()
     
     validate_vec3(pos)
-    validate_vec3(scale)
-    validate_quat(rot)
 
     mesh, mesh_ok := get_internal_mesh(handle)
     if !mesh_ok {
-        // TODO: draw "error mesh" instead
-        base.log_err("Trying to draw a mesh with invalid handle")
         return
     }
 
@@ -3588,7 +3582,8 @@ draw_mesh :: proc(
         add_col = add_col,
     )
 
-    _push_mesh_draw(_state.bind_state.draw_layer, key, inst)
+    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
+    _draw_batch_table_push(&draw_layer.meshes, key, inst)
 }
 
 draw_triangles :: proc(
@@ -3631,7 +3626,7 @@ draw_triangles :: proc(
         add_col = add_col,
     )
 
-    _push_triangle_draw(_state.bind_state.draw_layer, key, inst)
+    _draw_batch_table_push(&draw_layer.triangles, key, inst)
 }
 
 draw_lines :: proc(
@@ -3674,7 +3669,7 @@ draw_lines :: proc(
         add_col = add_col,
     )
 
-    _push_line_draw(_state.bind_state.draw_layer, key, inst)
+    _draw_batch_table_push(&draw_layer.lines, key, inst)
 }
 
 // Prefer draw_triangles if you need to efficiently draw many triangles.
@@ -3747,29 +3742,6 @@ _init_draw_array :: #force_inline proc(arr: ^$T/#soa[dynamic]$V, #any_int last_l
         )
     }
     assert(arr.allocator == context.temp_allocator)
-}
-
-_push_sprite_draw :: proc(#any_int layer_index: int, key: Draw_Batch_Key, inst: Sprite_Inst) {
-    // draw_layer := &_state.draw_layers[layer_index]
-    // _init_draw_array(&draw_layer.sprites, draw_layer.last_sprites_len)
-    // non_zero_append_soa_elem(&draw_layer.sprites, draw)
-}
-
-_push_mesh_draw :: proc(#any_int layer_index: int, key: Draw_Batch_Key, inst: Mesh_Inst) {
-    draw_layer := &_state.draw_layers[layer_index]
-    _draw_batch_table_push(&draw_layer.meshes, key, inst)
-}
-
-_push_triangle_draw :: proc(#any_int layer_index: int, key: Draw_Batch_Key, inst: Mesh_Inst) {
-    // draw_layer := &_state.draw_layers[layer_index]
-    // _init_draw_array(&draw_layer.triangles, draw_layer.last_triangles_len)
-    // non_zero_append_soa_elem(&draw_layer.triangles, draw)
-}
-
-_push_line_draw :: proc(#any_int layer_index: int, key: Draw_Batch_Key, inst: Mesh_Inst) {
-    // draw_layer := &_state.draw_layers[layer_index]
-    // _init_draw_array(&draw_layer.lines, draw_layer.last_lines_len)
-    // non_zero_append_soa_elem(&draw_layer.lines, draw)
 }
 
 _push_draw_dynamic_verts :: proc(#any_int layer_index: int, verts: []Vertex) -> int {
@@ -4397,7 +4369,7 @@ render_layer :: proc(
     copy(pip_desc.constants[GPU_CONSTANT_SLOTS:], user_constants)
     copy(pip_desc.resources[GPU_RESOURCE_SLOTS:], user_resources)
 
-    // _render_layer_sprites(layer_index, pip_desc)
+    _render_layer_sprites(layer_index, pip_desc)
     _render_layer_meshes(layer_index, pip_desc)
     // _render_layer_triangles(layer_index, pip_desc)
     // _render_layer_lines(layer_index, pip_desc)
@@ -5370,39 +5342,34 @@ validate :: proc(cond: bool, msg := #caller_expression(cond), loc := #caller_loc
 }
 
 
-@(disabled = !VALIDATION)
-validate_f32 :: #force_inline proc(x: f32, loc := #caller_location) {
-    validate(x == x && (x * 0.5 != x || x == 0), "Value is NaN or Inf", loc = loc)
+_is_nan_or_inf_f32 :: #force_inline proc(x: f32) -> bool {
+    // Fast NaN or Inf check
+    return x == x && (x * 0.5 != x || x == 0)
 }
 
+@(disabled = !VALIDATION)
+validate_f32 :: proc(x: f32, loc := #caller_location) {
+    validate(_is_nan_or_inf_f32(x), loc = loc)
+}
 
 @(disabled = !VALIDATION)
 validate_vec2 :: proc(v: [2]f32, loc := #caller_location) {
-    validate_f32(v.x, loc)
-    validate_f32(v.y, loc)
+    validate(_is_nan_or_inf_f32(v.x) || _is_nan_or_inf_f32(v.y), loc = loc)
 }
 
 @(disabled = !VALIDATION)
 validate_vec3 :: proc(v: [3]f32, loc := #caller_location) {
-    validate_f32(v.x, loc)
-    validate_f32(v.y, loc)
-    validate_f32(v.z, loc)
+    validate(_is_nan_or_inf_f32(v.x) || _is_nan_or_inf_f32(v.y) || _is_nan_or_inf_f32(v.z), loc = loc)
 }
 
 @(disabled = !VALIDATION)
 validate_vec4 :: proc(v: [4]f32, loc := #caller_location) {
-    validate_f32(v.x, loc)
-    validate_f32(v.y, loc)
-    validate_f32(v.z, loc)
-    validate_f32(v.w, loc)
+    validate(_is_nan_or_inf_f32(v.x) || _is_nan_or_inf_f32(v.y) || _is_nan_or_inf_f32(v.z) || _is_nan_or_inf_f32(v.w), loc = loc)
 }
 
 @(disabled = !VALIDATION)
 validate_quat :: proc(q: quaternion128, loc := #caller_location) {
-    validate_f32(q.x, loc)
-    validate_f32(q.y, loc)
-    validate_f32(q.z, loc)
-    validate_f32(q.w, loc)
+    validate(_is_nan_or_inf_f32(q.x) || _is_nan_or_inf_f32(q.y) || _is_nan_or_inf_f32(q.z) || _is_nan_or_inf_f32(q.w), loc = loc)
 }
 
 @(disabled = !VALIDATION)
@@ -5424,12 +5391,6 @@ validate_mat4 :: proc(m: Mat4, loc := #caller_location) {
     validate_vec4(m[1], loc)
     validate_vec4(m[2], loc)
     validate_vec4(m[3], loc)
-}
-
-@(disabled = !VALIDATION)
-validate_rect :: proc(v: Rect, loc := #caller_location) {
-    validate_vec2(v.min)
-    validate_vec2(v.max)
 }
 
 

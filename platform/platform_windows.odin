@@ -327,13 +327,7 @@ when BACKEND == BACKEND_WINDOWS {
         qpc: windows.LARGE_INTEGER
         windows.QueryPerformanceCounter(&qpc)
         counter := u64(qpc) - u64(_state.perf_counter_start)
-
-        freq := u64(_state.perf_counter_freq)
-        assert(freq != 0)
-        sec := counter / freq
-        rem := counter % freq
-
-        return sec * 1e9 + (rem * 1e9) / freq
+        return u64(f64(counter) * 1e9 / f64(_state.perf_counter_freq))
     }
 
     _set_current_directory :: proc(path: string) -> bool {
