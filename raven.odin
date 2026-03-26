@@ -77,7 +77,7 @@ MAX_SOUNDS :: 1024
 
 MAX_TOTAL_SPRITE_INSTANCES :: 1024 * 64
 MAX_TOTAL_MESH_INSTANCES :: 1024 * 64 // Shared between meshes, lines and triangles
-MAX_TOTAL_DYNAMIC_VERTS :: 1024 * 8 // Shared between triangles and lines
+MAX_TOTAL_DYNAMIC_VERTS :: 1024 * 64 // Shared between triangles and lines
 
 MAX_TEXTURE_POOLS :: 8
 MAX_TEXTURE_POOL_SLICES :: 64
@@ -209,6 +209,9 @@ State :: struct #align(64) {
     sprite_inst_buf:            gpu.Resource_Handle,
     mesh_inst_buf:              gpu.Resource_Handle,
     dynamic_vert_buf:           gpu.Resource_Handle,
+
+    dynamic_vert_upload_buf:    []Vertex,
+    dynamic_vert_upload_offs:   u32,
 
     global_consts:              gpu.Resource_Handle,
     draw_layers_consts:         gpu.Resource_Handle,
@@ -447,8 +450,6 @@ Draw_Layer :: struct {
     meshes:                 Draw_Batch_Table(Mesh_Inst),
     triangles:              Draw_Batch_Table(Mesh_Inst),
     lines:                  Draw_Batch_Table(Mesh_Inst),
-
-    dynamic_verts:          [dynamic]Vertex,
 }
 
 DRAW_BATCH_TABLE_LOOKUP :: 512
@@ -864,6 +865,8 @@ _post_gpu_init :: proc() {
         usage = .Dynamic,
     ) or_else panic("gpu")
 
+    _state.dynamic_vert_upload_buf = make([]Vertex, MAX_TOTAL_DYNAMIC_VERTS, context.allocator)
+
     _state.mesh_inst_buf = gpu.create_buffer("rv-mesh-inst-buf",
         stride = size_of(Mesh_Inst),
         size = size_of(Mesh_Inst) * MAX_TOTAL_MESH_INSTANCES,
@@ -1081,6 +1084,8 @@ begin_frame :: proc() -> (keep_running: bool) {
 
     _clear_draw_layers()
 
+    _state.dynamic_vert_upload_offs = 0
+
     _state.dpi_scale = platform.get_window_dpi_scale(_state.window)
     // base.log_info("DPI scale: ", _state.dpi_scale)
 
@@ -1265,8 +1270,6 @@ _clear_draw_layers :: proc() {
         _draw_batch_table_init(&layer.meshes)
         _draw_batch_table_init(&layer.triangles)
         _draw_batch_table_init(&layer.lines)
-
-        layer.dynamic_verts = {}
     }
 }
 
@@ -1607,9 +1610,11 @@ load_scene_from_data :: proc(txt: string, bin: []byte, dst_group: Group_Handle) 
 
             mesh.bounds_min = max(f32)
             mesh.bounds_max = min(f32)
+            mesh.bounds_rad = 0.001
             for vert in verts {
                 mesh.bounds_min = linalg.min(mesh.bounds_min, vert.pos)
                 mesh.bounds_max = linalg.max(mesh.bounds_max, vert.pos)
+                mesh.bounds_rad = max(mesh.bounds_rad, linalg.length(vert.pos))
             }
 
             handle, handle_ok := insert_mesh_by_name(v.name, mesh)
@@ -3495,13 +3500,15 @@ draw_mesh :: proc(
     validate_vec3(pos)
 
     mesh, mesh_ok := get_internal_mesh(handle)
-    if !mesh_ok {
-        return
-    }
+    validate(mesh_ok)
 
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
-    key := _bind_state_batch_key(_state.bind_state, u16(handle.index), u8(mesh.group.index))
+    key := _bind_state_batch_key(
+        _state.bind_state,
+        asset_index = u16(handle.index),
+        group_index = u8(mesh.group.index),
+    )
 
     if linalg.matrix3x3_determinant(mat) < 0 {
         switch key.fill_mode {
@@ -3524,7 +3531,7 @@ draw_mesh :: proc(
     )
 
     draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
-    _draw_batch_table_push(&draw_layer.meshes, key, inst, mesh.bounds_rad)
+    _draw_batch_table_push(&draw_layer.meshes, key, inst, mesh.bounds_rad * max(scale.x, scale.y, scale.z))
 }
 
 draw_triangles :: proc(
@@ -3549,8 +3556,7 @@ draw_triangles :: proc(
     }
 
     draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
-    offset := len(draw_layer.dynamic_verts)
-    num := _push_draw_dynamic_verts(_state.bind_state.draw_layer, verts)
+    offset, num := _push_draw_dynamic_verts(verts)
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
     key := _bind_state_batch_key(_state.bind_state, int_cast(u16, num))
@@ -3592,8 +3598,7 @@ draw_lines :: proc(
     }
 
     draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
-    offset := len(draw_layer.dynamic_verts)
-    num := _push_draw_dynamic_verts(_state.bind_state.draw_layer, verts)
+    offset, num := _push_draw_dynamic_verts(verts)
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
     key := _bind_state_batch_key(_state.bind_state, int_cast(u16, num))
@@ -3685,20 +3690,14 @@ _init_draw_array :: #force_inline proc(arr: ^$T/#soa[dynamic]$V, #any_int last_l
     assert(arr.allocator == context.temp_allocator)
 }
 
-_push_draw_dynamic_verts :: proc(#any_int layer_index: int, verts: []Vertex) -> int {
-    draw_layer := &_state.draw_layers[layer_index]
-    if len(draw_layer.dynamic_verts) == 0 {
-        // TODO: nuke this
-        // write to a shared buffer directly
-        draw_layer.dynamic_verts = make_dynamic_array_len_cap(
-            [dynamic]Vertex,
-            0,
-            256,
-            context.temp_allocator,
-        )
-    }
-    assert(draw_layer.dynamic_verts.allocator == context.temp_allocator)
-    return non_zero_append_elems(&draw_layer.dynamic_verts, ..verts) or_else 0
+_push_draw_dynamic_verts :: proc(verts: []Vertex) -> (offset: int, length: int) {
+    offset = int(_state.dynamic_vert_upload_offs)
+    length = min(len(verts), len(_state.dynamic_vert_upload_buf) - offset)
+
+    _state.dynamic_vert_upload_offs += u32(length)
+    intrinsics.mem_copy_non_overlapping(raw_data(_state.dynamic_vert_upload_buf[offset:]), raw_data(verts), length * size_of(Vertex))
+
+    return offset, length
 }
 
 
@@ -3959,11 +3958,6 @@ _draw_batch_table_init :: proc(table: ^$T/Draw_Batch_Table($Inst)) {
     }
 }
 
-
-align_up :: proc(x: u32, align: u32) -> u32 {
-    return (x + align - 1) & ~(align - 1)
-}
-
 _draw_batch_table_push :: proc(
     table:      ^$T/Draw_Batch_Table($Inst),
     key:        Draw_Batch_Key,
@@ -4012,8 +4006,6 @@ _draw_batch_table_push :: proc(
         table.lookup[lookup_index] = u16(index)
 
         table.len += 1
-
-        return
     }
 
     ELEM_SIZE :: size_of(Inst)
@@ -4024,8 +4016,8 @@ _draw_batch_table_push :: proc(
     // as we're tracking the last frame "waterline".
     if batch.len >= batch.cap {
         batch.cap = max(256 + batch.last_len, batch.cap * 2)
-        new_inst := make([^]Inst, batch.cap * ELEM_SIZE, context.temp_allocator)
-        new_cull := cast([^]Draw_Cull_Group)&new_inst[batch.cap]
+        new_inst := make([^]Inst, batch.cap, context.temp_allocator)
+        new_cull := make([^]Draw_Cull_Group, batch.cap, context.temp_allocator)
 
         intrinsics.mem_copy_non_overlapping(rawptr(new_inst), batch.inst_data, batch.len * size_of(Inst))
         intrinsics.mem_copy_non_overlapping(rawptr(new_cull), batch.cull_data, batch.len * size_of(Draw_Cull_Group))
@@ -4038,13 +4030,12 @@ _draw_batch_table_push :: proc(
         batch.cull_data = new_cull
     }
 
-
     batch.inst_data[batch.len] = inst
 
-    lane_id := batch.len %% LANES
+    lane_id := batch.len % LANES
     batch.cull_data[batch.len / LANES].pos_scalar.x[lane_id] = inst.pos.x
-    batch.cull_data[batch.len / LANES].pos_scalar.x[lane_id] = inst.pos.y
-    batch.cull_data[batch.len / LANES].pos_scalar.x[lane_id] = inst.pos.z
+    batch.cull_data[batch.len / LANES].pos_scalar.y[lane_id] = inst.pos.y
+    batch.cull_data[batch.len / LANES].pos_scalar.z[lane_id] = inst.pos.z
     batch.cull_data[batch.len / LANES].rad_scalar[lane_id] = inst.pos.z
 
     batch.len += 1
@@ -4057,14 +4048,14 @@ _cull_draw_batch :: proc(
     fru_planes: [6][4]#simd[LANES]f32,
 ) {
     culled_insts := make([]Inst, batch.len, context.temp_allocator)
-    culled_offs := 0
+    culled_len := 0
 
-    num_lane_groups := align_up(batch.len, LANES)
+    num_lane_groups := (batch.len + LANES - 1) / LANES
 
     for group_index in 0..<num_lane_groups {
         batch_cull := batch.cull_data[group_index]
 
-        mask_vec := is_sphere_in_frustum_simd(
+        mask_vec := #force_inline is_sphere_in_frustum_simd(
             fru_pos = fru_pos,
             fru_rad = fru_rad,
             fru_planes = fru_planes,
@@ -4072,20 +4063,24 @@ _cull_draw_batch :: proc(
             rad = batch_cull.rad,
         )
 
+
         mask := transmute([LANES]b32)mask_vec
 
-        for lane_index in 0..<LANES {
-            if mask[lane_index] {
-                culled_insts[culled_offs] = batch.inst_data[group_index * LANES + lane_index]
-                culled_offs += 1
+        for lane_index in 0..<u32(LANES) {
+            read_index := group_index * LANES + lane_index
+            if mask[lane_index] && read_index < batch.len {
+                culled_insts[culled_len] = batch.inst_data[read_index]
+                culled_len += 1
             }
         }
     }
 
-    // Re-map the data to a new buffer just for rendering.
+    // Re-map the data to a new final buffer just for rendering.
     // From this point it cannot be pushed to!
     batch.cull_data = nil
     batch.inst_data = raw_data(culled_insts)
+    batch.cap = 0
+    batch.len = u32(culled_len)
 }
 
 
@@ -4135,6 +4130,43 @@ submit_layers :: proc() {
 
     perf_scope()
 
+    for &layer in _state.draw_layers {
+        pre_cull_num := 0
+        post_cull_num := 0
+        for &batch in layer.meshes.batches[:layer.meshes.len] {
+            pre_cull_num += int(batch.len)
+        }
+
+        if pre_cull_num == 0 {
+            continue
+        }
+
+        fru := calc_camera_frustum(layer.camera)
+
+        fru_pos_vec := (fru.bounds_min + fru.bounds_max) * 0.5
+        fru_rad_vec := (fru.bounds_max - fru.bounds_min) * 0.5
+
+        fru_pos: [3]#simd[LANES]f32 = {fru_pos_vec.x, fru_pos_vec.y, fru_pos_vec.z}
+        fru_rad: [3]#simd[LANES]f32 = {fru_rad_vec.x, fru_rad_vec.y, fru_rad_vec.z}
+        fru_planes: [6][4]#simd[LANES]f32
+        for &pl, i in fru_planes {
+            pl = {fru.planes[i].x, fru.planes[i].y, fru.planes[i].z, fru.planes[i].w}
+        }
+
+        for &batch in layer.meshes.batches[:layer.meshes.len] {
+            #force_inline _cull_draw_batch(
+                batch = &batch,
+                fru_pos = fru_pos,
+                fru_rad = fru_rad,
+                fru_planes = fru_planes,
+            )
+
+            post_cull_num += int(batch.len)
+        }
+
+        base.log_debug("Precull/postcull: %i/%i (%f culled)", pre_cull_num, post_cull_num, f32(pre_cull_num - post_cull_num) * 100.0 / f32(pre_cull_num))
+    }
+
     _upload_gpu_global_constants()
 
     _upload_gpu_layer_constants()
@@ -4152,158 +4184,12 @@ submit_layers :: proc() {
     {
         perf_scope("submit_layers dynverts")
 
-        vert_upload_bufs := make([dynamic][]byte, 0, 256, context.temp_allocator)
-
-        for layer in _state.draw_layers {
-            if len(layer.dynamic_verts) > 0 {
-                append(&vert_upload_bufs, gpu.slice_bytes(layer.dynamic_verts[:]))
-            }
-        }
-
         gpu.update_buffer(
             _state.dynamic_vert_buf,
             offset = 0,
-            buffers = vert_upload_bufs[:],
+            buffers = {gpu.slice_bytes(_state.dynamic_vert_upload_buf[:_state.dynamic_vert_upload_offs])},
         )
     }
-
-
-    // // Sprites
-    // {
-    //     perf_scope("submit_layers sprites")
-
-    //     total_sprite_instances := 0
-
-    //     for &layer, _ in _state.draw_layers {
-    //         if len(layer.sprites) == 0 {
-    //             continue
-    //         }
-
-    //         if .No_Cull not_in layer.flags {
-    //             frustum := calc_camera_frustum(layer.camera)
-
-    //             far_plane := frustum.planes[FRUSTUM_FAR_PLANE_INDEX]
-
-    //             sprite_dist_factor := f32(MAX_DRAW_SORT_KEY_DIST) / far_plane.w
-
-    //             forw := linalg.quaternion128_mul_vector3(layer.camera.rot, Vec3{0, 0, 1})
-
-    //             for sprite_index := len(layer.sprites) - 1; sprite_index >= 0; sprite_index -= 1 {
-    //                 inst := layer.sprites.inst[sprite_index]
-    //                 key := &layer.sprites.key[sprite_index]
-
-    //                 bounds_rad :=
-    //                     linalg.abs(inst.mat_x) +
-    //                     linalg.abs(inst.mat_y)
-
-    //                 if key.blend != .Opaque {
-    //                     dist := linalg.dot(forw, inst.pos - layer.camera.pos)
-    //                     key.dist = ~u16(dist * sprite_dist_factor)
-    //                 }
-
-    //                 if !is_box_in_frustum(frustum, inst.pos, bounds_rad) {
-    //                     unordered_remove_soa(&layer.sprites, sprite_index)
-    //                 }
-    //             }
-    //         }
-
-    //         instances := layer.sprites.inst[:len(layer.sprites)]
-
-    //         if .No_Reorder not_in layer.flags {
-    //             keys := layer.sprites.key[:len(layer.sprites)]
-
-    //             indices := slice.sort_with_indices(transmute([]Draw_Sort_Key_Backing)keys, context.temp_allocator)
-    //             slice.sort_from_permutation_indices(instances, indices)
-    //         }
-
-    //         total_sprite_instances += len(layer.sprites)
-    //     }
-
-    //     // GPU Upload sprites
-
-    //     sprite_upload_buf, sprite_upload_err := runtime.mem_alloc_non_zeroed(size_of(Sprite_Inst) * total_sprite_instances, alignment = 256, allocator = context.temp_allocator)
-    //     sprite_upload_offs := 0
-
-    //     assert(sprite_upload_err == nil)
-
-    //     for &layer, _ in _state.draw_layers {
-    //         if len(layer.sprites) == 0 {
-    //             continue
-    //         }
-
-    //         assert(sprite_upload_offs < len(sprite_upload_buf))
-
-    //         instances := layer.sprites.inst[:len(layer.sprites)]
-
-    //         uploaded_bytes := copy_slice(sprite_upload_buf[sprite_upload_offs:], gpu.slice_bytes(instances))
-    //         total_bytes := size_of(Sprite_Inst) * len(layer.sprites)
-
-    //         layer.sprite_insts_base = u32(sprite_upload_offs) / size_of(Sprite_Inst)
-
-    //         assert(uploaded_bytes == total_bytes)
-    //         sprite_upload_offs += uploaded_bytes
-    //     }
-
-    //     gpu.update_buffer(_state.sprite_inst_buf, sprite_upload_buf)
-    // }
-
-        // NOTE: no culling for lines and tris
-    // for &layer in _state.draw_layers {
-    //     total_triangle_instances += len(layer.triangles)
-    //     total_line_instances += len(layer.lines)
-    // }
-
-    // for &layer in _state.draw_layers {
-    //     if len(layer.meshes) == 0 {
-    //         continue
-    //     }
-
-    //     if .No_Cull not_in layer.flags {
-    //         perf_scope("submit_layers mesh cull")
-
-    //         frustum := calc_camera_frustum(layer.camera)
-    //         far_plane := frustum.planes[FRUSTUM_FAR_PLANE_INDEX]
-    //         mesh_dist_factor := f32(MAX_DRAW_SORT_KEY_DIST) / far_plane.w
-    //         forw := linalg.quaternion128_mul_vector3(layer.camera.rot, Vec3{0, 0, 1})
-
-    //         for mesh_index := len(layer.meshes) - 1; mesh_index >= 0; mesh_index -= 1 {
-    //             inst := layer.meshes.inst[mesh_index]
-    //             key := &layer.meshes.key[mesh_index]
-
-    //             mesh := _state.meshes[key.asset_index]
-
-    //             box_rad :=
-    //                 (linalg.abs(inst.mat_x) * max(abs(mesh.bounds_min.x), abs(mesh.bounds_max.x))) +
-    //                 (linalg.abs(inst.mat_y) * max(abs(mesh.bounds_min.y), abs(mesh.bounds_max.y))) +
-    //                 (linalg.abs(inst.mat_z) * max(abs(mesh.bounds_min.z), abs(mesh.bounds_max.z)))
-
-    //             if key.blend != .Opaque {
-    //                 dist := linalg.dot(forw, inst.pos - layer.camera.pos)
-    //                 // NOTE: should this get inverted for opaque meshes to minimize overdraw?
-    //                 // What about Z prepass?
-    //                 key.dist = ~u16(dist * mesh_dist_factor) // invert
-    //             }
-
-    //             if !is_box_in_frustum(frustum, inst.pos, box_rad) {
-    //                 unordered_remove_soa(&layer.meshes, mesh_index)
-    //             }
-    //         }
-    //     }
-
-    //     instances := layer.meshes.inst[:len(layer.meshes)]
-
-    //     if .No_Reorder not_in layer.flags {
-    //         perf_scope("submit_layers mesh reorder")
-
-    //         keys := layer.meshes.key[:len(layer.meshes)]
-    //         indices := slice.sort_with_indices(transmute([]Draw_Sort_Key_Backing)keys, context.temp_allocator)
-    //         slice.sort_from_permutation_indices(instances, indices)
-    //     }
-
-    //     total_mesh_instances += len(layer.meshes)
-    // }
-
-
 
     // Generate upload ranges for sprite data
     sprite_upload_offs := 0
@@ -4321,7 +4207,6 @@ submit_layers :: proc() {
         offset = 0,
         buffers = sprite_upload_bufs[:],
     )
-
 
     // Generate upload ranges for mesh-like data
     mesh_upload_offs := 0
@@ -4351,8 +4236,6 @@ submit_layers :: proc() {
         offset = 0,
         buffers = mesh_upload_bufs[:],
     )
-
-    // Upload actual batch consts for all draws
 
     gpu.update_constants(
         _state.draw_batch_consts,
@@ -4463,8 +4346,8 @@ render_layer :: proc(
 
     _render_layer_sprites(layer_index, pip_desc)
     _render_layer_meshes(layer_index, pip_desc)
-    // _render_layer_triangles(layer_index, pip_desc)
-    // _render_layer_lines(layer_index, pip_desc)
+    _render_layer_triangles(layer_index, pip_desc)
+    _render_layer_lines(layer_index, pip_desc)
 
     return
 }
@@ -4568,11 +4451,6 @@ _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
     layer := _state.draw_layers[layer_index]
 
-    pip_desc.index = {
-        resource = {},
-        format = .U16,
-    }
-
     pip_desc.index = {}
     pip_desc.resources = {
         0 = _state.mesh_inst_buf,
@@ -4613,12 +4491,9 @@ _render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     layer := _state.draw_layers[layer_index]
 
     pip_desc.topo = .Lines
-    pip_desc.index = {
-        resource = {},
-        format = .U16,
-    }
 
     pip_desc.index = {}
+
     pip_desc.resources = {
         0 = _state.mesh_inst_buf,
         1 = _state.dynamic_vert_buf,
@@ -4889,12 +4764,12 @@ is_sphere_in_frustum_simd :: proc(
     EPS :: 1
 
     r := fru_rad + rad
-    xin := intrinsics.simd_lanes_le(intrinsics.simd_abs(pos.x - fru_pos.x), r.x)
-    yin := intrinsics.simd_lanes_le(intrinsics.simd_abs(pos.y - fru_pos.y), r.y)
-    zin := intrinsics.simd_lanes_le(intrinsics.simd_abs(pos.z - fru_pos.z), r.z)
+    xin := intrinsics.simd_lanes_lt(intrinsics.simd_abs(pos.x - fru_pos.x), r.x)
+    yin := intrinsics.simd_lanes_lt(intrinsics.simd_abs(pos.y - fru_pos.y), r.y)
+    zin := intrinsics.simd_lanes_lt(intrinsics.simd_abs(pos.z - fru_pos.z), r.z)
     result = intrinsics.simd_bit_and(xin, intrinsics.simd_bit_and(yin, zin))
 
-    if result == max(u32) {
+    if result == 0 {
         return result
     }
 
@@ -4903,9 +4778,9 @@ is_sphere_in_frustum_simd :: proc(
             fru_planes[i].x * pos.x +
             fru_planes[i].y * pos.y +
             fru_planes[i].z * pos.z +
-            fru_planes[i].w - rad
+            -fru_planes[i].w - rad
 
-        planes_in := intrinsics.simd_lanes_ge(dists, 1)
+        planes_in := intrinsics.simd_lanes_lt(dists, 1)
         result = intrinsics.simd_bit_and(result, planes_in)
     }
 
@@ -5272,6 +5147,10 @@ hash_splittable64 :: proc "contextless" (x: u64) -> u64 {
     x *= 0x94d049bb133111eb
     x ~= x >> 31
     return x
+}
+
+align_up :: proc(x: u32, align: u32) -> u32 {
+    return (x + align - 1) & ~(align - 1)
 }
 
 

@@ -1142,7 +1142,7 @@ when BACKEND == BACKEND_D3D11 {
 
         case .Default:
             temp := _combine_buffer_writes_temp(buffers)
-        
+
             _state.device_context->UpdateSubresource(
                 pDstResource = res.buf,
                 DstSubresource = 0,

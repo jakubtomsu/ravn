@@ -145,7 +145,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_text("Use WASD and QE to move, mouse to look", {200, 14, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
     rv.draw_perf_scopes()
-    
+
     rv.draw_perf_counter(.Frame_Time, {10, 500, 0.2}, scale = 2, col = rv.DARK_GREEN)
     rv.draw_perf_counter(.Frame_Work_Time, {10, 500, 0.1}, scale = 2, col = rv.GREEN, show_text = false)
     rv.draw_perf_counter(.Num_Draw_Calls, {10, 550, 0.1}, col = rv.ORANGE)
