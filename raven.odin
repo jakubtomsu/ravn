@@ -96,6 +96,8 @@ HASH_ALG :: "fnv64a"
 
 UV_EPS :: (1.0 / 4096.0)
 
+LANES :: 8
+
 Vec2 :: [2]f32
 Vec3 :: [3]f32
 Vec4 :: [4]f32
@@ -350,6 +352,7 @@ Mesh :: struct {
 
     bounds_min:     Vec3,
     bounds_max:     Vec3,
+    bounds_rad:     f32, // Centered sphere
 }
 
 Spline :: struct {
@@ -462,103 +465,25 @@ Draw_Batch_Table :: struct($T: typeid) {
 // TODO: rename to batch something idk
 // TODO: #simd[4]f32 cull sphere
 // TODO: Sort key?
-Draw_Batch :: struct($T: typeid) {
+Draw_Batch :: struct($Instance: typeid) {
     consts_offset:  u32,
     last_len:       u32,
     len:            u32,
     cap:            u32,
-    inst_data:      [^]T,
+    inst_data:      [^]Instance,
+    cull_data:      [^]Draw_Cull_Group,
 }
 
-_draw_batch_table_init :: proc(table: ^$T/Draw_Batch_Table($E)) {
-    table.len = 0
-    for &lookup in table.lookup {
-        lookup = max(u16)
-    }
-
-    for &batch in table.batches[:table.len] {
-        batch.last_len = batch.len
-        batch.inst_data = nil
-    }
-}
-
-_draw_batch_table_push :: proc(
-    table:    ^$T/Draw_Batch_Table($E),
-    key:        Draw_Batch_Key,
-    inst:       E,
-) {
-    hash := hash_splittable64(transmute(u64)key)
-
-    lookup_index := int(hash % DRAW_BATCH_TABLE_LOOKUP)
-    index := -1
-    found := false
-
-    for _ in 0..<DRAW_BATCH_TABLE_MAX_PROBE {
-        batch_index := table.lookup[lookup_index]
-
-        if batch_index == max(u16) {
-            found = true
-            break
-        }
-
-        batch_key := table.keys[batch_index]
-
-        if batch_key == key {
-            index = int(batch_index)
-            found = true
-            break
-        }
-
-        lookup_index = (lookup_index + 1) %% DRAW_BATCH_TABLE_LOOKUP
-    }
-
-    if !found {
-        assert(false)
-        return
-    }
-
-    if index == -1 {
-        if table.len >= DRAW_BATCH_TABLE_BATCHES {
-            assert(false)
-            return
-        }
-
-        index = int(table.len)
-
-        table.batches[index] = {}
-        table.keys[index] = key
-        table.lookup[lookup_index] = u16(index)
-
-        table.len += 1
-
-        return
-    }
-
-    ELEM_SIZE :: size_of(E)
-
-    batch := &table.batches[index]
-
-    if batch.len >= batch.cap {
-        old_data := rawptr(batch.inst_data)
-        batch.cap = max(256, batch.cap * 2)
-        new_data := make([^]byte, batch.cap * ELEM_SIZE, context.temp_allocator)
-        intrinsics.mem_copy_non_overlapping(rawptr(new_data), old_data, batch.len * ELEM_SIZE)
-
-        batch.inst_data = cast([^]E)new_data
-    }
-
-    batch.inst_data[batch.len] = inst
-    batch.len += 1
-}
-
-hash_splittable64 :: proc "contextless" (x: u64) -> u64 {
-    x := x
-    x ~= x >> 30
-    x *= 0xbf58476d1ce4e5b9
-    x ~= x >> 27
-    x *= 0x94d049bb133111eb
-    x ~= x >> 31
-    return x
+// Per 8 instances
+Draw_Cull_Group :: struct #raw_union {
+    using _: struct {
+        pos:    [3]#simd[8]f32,
+        rad:    #simd[8]f32,
+    },
+    using _: struct {
+        pos_scalar: [3][8]f32,
+        rad_scalar: [8]f32,
+    },
 }
 
 Depth_Mode :: enum u8 {
@@ -3388,7 +3313,7 @@ draw_sprite :: proc(
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
     draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
-    _draw_batch_table_push(&draw_layer.sprites, key, inst)
+    _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
 }
 
 draw_rect :: proc(
@@ -3423,7 +3348,7 @@ draw_rect :: proc(
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
     draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
-    _draw_batch_table_push(&draw_layer.sprites, key, inst)
+    _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
 }
 
 
@@ -3599,7 +3524,7 @@ draw_mesh :: proc(
     )
 
     draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
-    _draw_batch_table_push(&draw_layer.meshes, key, inst)
+    _draw_batch_table_push(&draw_layer.meshes, key, inst, mesh.bounds_rad)
 }
 
 draw_triangles :: proc(
@@ -3642,7 +3567,7 @@ draw_triangles :: proc(
         add_col = add_col,
     )
 
-    _draw_batch_table_push(&draw_layer.triangles, key, inst)
+    _draw_batch_table_push(&draw_layer.triangles, key, inst, 0)
 }
 
 draw_lines :: proc(
@@ -3685,7 +3610,7 @@ draw_lines :: proc(
         add_col = add_col,
     )
 
-    _draw_batch_table_push(&draw_layer.lines, key, inst)
+    _draw_batch_table_push(&draw_layer.lines, key, inst, 0)
 }
 
 // Prefer draw_triangles if you need to efficiently draw many triangles.
@@ -4010,6 +3935,157 @@ _calc_circle_points :: proc(segments: int) -> []Vec2 {
         p = {math.cos_f32(t), math.sin_f32(t)}
     }
     return buf
+}
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Draw Batching
+//
+
+_draw_batch_table_init :: proc(table: ^$T/Draw_Batch_Table($Inst)) {
+    for &batch in table.batches[:table.len] {
+        batch.last_len = align_up(batch.len, LANES)
+
+        batch.inst_data = nil
+        batch.cull_data = nil
+        batch.cap = 0
+        batch.len = 0
+    }
+
+    table.len = 0
+    for &lookup in table.lookup {
+        lookup = max(u16)
+    }
+}
+
+
+align_up :: proc(x: u32, align: u32) -> u32 {
+    return (x + align - 1) & ~(align - 1)
+}
+
+_draw_batch_table_push :: proc(
+    table:      ^$T/Draw_Batch_Table($Inst),
+    key:        Draw_Batch_Key,
+    inst:       Inst,
+    cull_rad:   f32,
+) {
+    hash := hash_splittable64(transmute(u64)key)
+
+    lookup_index := int(hash % DRAW_BATCH_TABLE_LOOKUP)
+    index := -1
+    found := false
+
+    for _ in 0..<DRAW_BATCH_TABLE_MAX_PROBE {
+        batch_index := table.lookup[lookup_index]
+
+        if batch_index == max(u16) {
+            found = true
+            break
+        }
+
+        batch_key := table.keys[batch_index]
+
+        if batch_key == key {
+            index = int(batch_index)
+            found = true
+            break
+        }
+
+        lookup_index = (lookup_index + 1) %% DRAW_BATCH_TABLE_LOOKUP
+    }
+
+    if !found {
+        assert(false)
+        return
+    }
+
+    if index == -1 {
+        if table.len >= DRAW_BATCH_TABLE_BATCHES {
+            assert(false)
+            return
+        }
+
+        index = int(table.len)
+
+        table.keys[index] = key
+        table.lookup[lookup_index] = u16(index)
+
+        table.len += 1
+
+        return
+    }
+
+    ELEM_SIZE :: size_of(Inst)
+
+    batch := &table.batches[index]
+
+    // Note: the reallocation should be extremely infrequent,
+    // as we're tracking the last frame "waterline".
+    if batch.len >= batch.cap {
+        batch.cap = max(256 + batch.last_len, batch.cap * 2)
+        new_inst := make([^]Inst, batch.cap * ELEM_SIZE, context.temp_allocator)
+        new_cull := cast([^]Draw_Cull_Group)&new_inst[batch.cap]
+
+        intrinsics.mem_copy_non_overlapping(rawptr(new_inst), batch.inst_data, batch.len * size_of(Inst))
+        intrinsics.mem_copy_non_overlapping(rawptr(new_cull), batch.cull_data, batch.len * size_of(Draw_Cull_Group))
+
+        // if batch.inst_data != nil {
+        //     base.log_warn("REALLOC %x %i %i", uintptr(batch), batch.last_len, batch.cap)
+        // }
+
+        batch.inst_data = new_inst
+        batch.cull_data = new_cull
+    }
+
+
+    batch.inst_data[batch.len] = inst
+
+    lane_id := batch.len %% LANES
+    batch.cull_data[batch.len / LANES].pos_scalar.x[lane_id] = inst.pos.x
+    batch.cull_data[batch.len / LANES].pos_scalar.x[lane_id] = inst.pos.y
+    batch.cull_data[batch.len / LANES].pos_scalar.x[lane_id] = inst.pos.z
+    batch.cull_data[batch.len / LANES].rad_scalar[lane_id] = inst.pos.z
+
+    batch.len += 1
+}
+
+_cull_draw_batch :: proc(
+    batch:      ^Draw_Batch($Inst),
+    fru_pos:    [3]#simd[LANES]f32,
+    fru_rad:    [3]#simd[LANES]f32,
+    fru_planes: [6][4]#simd[LANES]f32,
+) {
+    culled_insts := make([]Inst, batch.len, context.temp_allocator)
+    culled_offs := 0
+
+    num_lane_groups := align_up(batch.len, LANES)
+
+    for group_index in 0..<num_lane_groups {
+        batch_cull := batch.cull_data[group_index]
+
+        mask_vec := is_sphere_in_frustum_simd(
+            fru_pos = fru_pos,
+            fru_rad = fru_rad,
+            fru_planes = fru_planes,
+            pos = batch_cull.pos,
+            rad = batch_cull.rad,
+        )
+
+        mask := transmute([LANES]b32)mask_vec
+
+        for lane_index in 0..<LANES {
+            if mask[lane_index] {
+                culled_insts[culled_offs] = batch.inst_data[group_index * LANES + lane_index]
+                culled_offs += 1
+            }
+        }
+    }
+
+    // Re-map the data to a new buffer just for rendering.
+    // From this point it cannot be pushed to!
+    batch.cull_data = nil
+    batch.inst_data = raw_data(culled_insts)
 }
 
 
@@ -4638,7 +4714,7 @@ Camera :: struct {
 FRUSTUM_FAR_PLANE_INDEX :: 5
 
 Frustum :: struct {
-    planes:     [6]Vec4, // xyz normal, w offset
+    planes:     [6][4]f32, // xyz normal, w offset
     corners:    [8]Vec3,
     bounds_min: Vec3,
     bounds_max: Vec3,
@@ -4780,21 +4856,61 @@ is_box_in_frustum :: proc(fru: Frustum, pos: Vec3, rad: Vec3) -> bool #no_bounds
     return true
 }
 
+is_sphere_in_frustum :: proc(fru: Frustum, pos: Vec3, rad: f32) -> bool #no_bounds_check {
+    EPS :: 1
 
-// world_to_screen :: proc(pos: Vec3, cam: Camera) -> Vec3 {
-//     cam_mvp := calc_camera_world_to_clip_matrix(cam)
+    if pos.x < fru.bounds_min.x - rad - EPS ||
+       pos.y < fru.bounds_min.y - rad - EPS ||
+       pos.z < fru.bounds_min.z - rad - EPS ||
+       pos.x > fru.bounds_max.x + rad + EPS ||
+       pos.y > fru.bounds_max.y + rad + EPS ||
+       pos.z > fru.bounds_max.z + rad + EPS
+    {
+        return false
+    }
 
-//     p := cam_mvp * Vec4{pos.x, pos.y, pos.z, 1.0}
-//     p.xyz /= p.w
+    for plane in fru.planes {
+        dist := linalg.dot(plane.xyz, pos) - plane.w - rad
+        if dist > EPS {
+            return false
+        }
+    }
 
-//     // p.x = (p.x / f32(get_screen_size().x)) * 2.0 - 1.0
-//     // p.y = 1.0 - 2.0 * (p.y / f32(get_screen_size().y))
+    return true
+}
 
-//     unimplemented()
+is_sphere_in_frustum_simd :: proc(
+    fru_pos:    [3]#simd[LANES]f32,
+    fru_rad:    [3]#simd[LANES]f32,
+    fru_planes: [6][4]#simd[LANES]f32,
+    pos:        [3]#simd[LANES]f32,
+    rad:        #simd[LANES]f32,
+) -> (result: #simd[LANES]u32) #no_bounds_check {
+    EPS :: 1
 
-//     // return p
-// }
+    r := fru_rad + rad
+    xin := intrinsics.simd_lanes_le(intrinsics.simd_abs(pos.x - fru_pos.x), r.x)
+    yin := intrinsics.simd_lanes_le(intrinsics.simd_abs(pos.y - fru_pos.y), r.y)
+    zin := intrinsics.simd_lanes_le(intrinsics.simd_abs(pos.z - fru_pos.z), r.z)
+    result = intrinsics.simd_bit_and(xin, intrinsics.simd_bit_and(yin, zin))
 
+    if result == max(u32) {
+        return result
+    }
+
+    for i in 0..<len(fru_planes) {
+        dists :=
+            fru_planes[i].x * pos.x +
+            fru_planes[i].y * pos.y +
+            fru_planes[i].z * pos.z +
+            fru_planes[i].w - rad
+
+        planes_in := intrinsics.simd_lanes_ge(dists, 1)
+        result = intrinsics.simd_bit_and(result, planes_in)
+    }
+
+    return result
+}
 
 // Returns the ray direction.
 screen_to_world_ray :: proc(pos: Vec2, cam: Camera) -> Vec3 {
@@ -5148,10 +5264,16 @@ pack_vertex :: proc(
     }
 }
 
-bit_field_get :: proc(f: $T) -> u64 where intrinsics.type_is_bit_field(T) {
-    res := intrinsics.type_field_type(T, "dist")
-    return offset_of_member()
+hash_splittable64 :: proc "contextless" (x: u64) -> u64 {
+    x := x
+    x ~= x >> 30
+    x *= 0xbf58476d1ce4e5b9
+    x ~= x >> 27
+    x *= 0x94d049bb133111eb
+    x ~= x >> 31
+    return x
 }
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
