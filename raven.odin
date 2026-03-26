@@ -203,7 +203,7 @@ State :: struct #align(64) {
     builtin_vertex_shader:      [Builtin_Vertex_Shader]Vertex_Shader_Handle,
 
     quad_ibuf:                  gpu.Resource_Handle,
-    
+
     sprite_inst_buf:            gpu.Resource_Handle,
     mesh_inst_buf:              gpu.Resource_Handle,
     dynamic_vert_buf:           gpu.Resource_Handle,
@@ -463,45 +463,52 @@ Draw_Batch_Table :: struct($T: typeid) {
 // TODO: #simd[4]f32 cull sphere
 // TODO: Sort key?
 Draw_Batch :: struct($T: typeid) {
-    consts_offset:   u32,
-    // TODO: replace this.
-    data:           [dynamic]T,
+    consts_offset:  u32,
+    last_len:       u32,
+    len:            u32,
+    cap:            u32,
+    inst_data:      [^]T,
 }
 
-_draw_batch_table_init :: proc(batcher: ^$T/Draw_Batch_Table($E)) {
-    batcher.len = 0
-    for &lookup in batcher.lookup {
+_draw_batch_table_init :: proc(table: ^$T/Draw_Batch_Table($E)) {
+    table.len = 0
+    for &lookup in table.lookup {
         lookup = max(u16)
+    }
+
+    for &batch in table.batches[:table.len] {
+        batch.last_len = batch.len
+        batch.inst_data = nil
     }
 }
 
 _draw_batch_table_push :: proc(
-    batcher:    ^$T/Draw_Batch_Table($E),
+    table:    ^$T/Draw_Batch_Table($E),
     key:        Draw_Batch_Key,
-    data:       E,
+    inst:       E,
 ) {
     hash := hash_splittable64(transmute(u64)key)
-    
+
     lookup_index := int(hash % DRAW_BATCH_TABLE_LOOKUP)
     index := -1
     found := false
-    
+
     for _ in 0..<DRAW_BATCH_TABLE_MAX_PROBE {
-        batch_index := batcher.lookup[lookup_index]
+        batch_index := table.lookup[lookup_index]
 
         if batch_index == max(u16) {
             found = true
             break
         }
-        
-        batch_key := batcher.keys[batch_index]
-        
+
+        batch_key := table.keys[batch_index]
+
         if batch_key == key {
             index = int(batch_index)
             found = true
             break
         }
-        
+
         lookup_index = (lookup_index + 1) %% DRAW_BATCH_TABLE_LOOKUP
     }
 
@@ -511,28 +518,37 @@ _draw_batch_table_push :: proc(
     }
 
     if index == -1 {
-        if batcher.len >= DRAW_BATCH_TABLE_BATCHES {
+        if table.len >= DRAW_BATCH_TABLE_BATCHES {
             assert(false)
             return
         }
-        
-        index = int(batcher.len)
-        
-        batcher.batches[index] = {}
-        batcher.keys[index] = key
-        batcher.lookup[lookup_index] = u16(index)
-        
-        batcher.len += 1
-    
+
+        index = int(table.len)
+
+        table.batches[index] = {}
+        table.keys[index] = key
+        table.lookup[lookup_index] = u16(index)
+
+        table.len += 1
+
         return
     }
 
-    bucket := &batcher.batches[index]
-    if bucket.data == nil {
-        bucket.data = make([dynamic]E, 0, 256, context.temp_allocator)
+    ELEM_SIZE :: size_of(E)
+
+    batch := &table.batches[index]
+
+    if batch.len >= batch.cap {
+        old_data := rawptr(batch.inst_data)
+        batch.cap = max(256, batch.cap * 2)
+        new_data := make([^]byte, batch.cap * ELEM_SIZE, context.temp_allocator)
+        intrinsics.mem_copy_non_overlapping(rawptr(new_data), old_data, batch.len * ELEM_SIZE)
+
+        batch.inst_data = cast([^]E)new_data
     }
-    
-    append(&bucket.data, data)
+
+    batch.inst_data[batch.len] = inst
+    batch.len += 1
 }
 
 hash_splittable64 :: proc "contextless" (x: u64) -> u64 {
@@ -973,13 +989,13 @@ shutdown_state :: proc() {
     if !_state.ended_frame {
         end_frame(false)
     }
-    
+
     _print_stats_report()
 
     audio.shutdown()
     gpu.shutdown()
     platform.shutdown()
-    
+
     delete(_perf_scopes)
     free(_state, _state.allocator)
     _state = nil
@@ -991,16 +1007,16 @@ _print_stats_report :: proc() {
     {
         offs := 0
         offs += ufmt.eprintf("Perf Counter")
-        
+
         _align(&offs, 30)
         offs += ufmt.eprintf("Average")
-        
+
         _align(&offs, 60)
         offs += ufmt.eprintf("Min")
-        
+
         _align(&offs, 90)
         offs += ufmt.eprintf("Max")
-        
+
         ufmt.eprintfln("")
     }
 
@@ -1011,24 +1027,24 @@ _print_stats_report :: proc() {
                 b = ' '
             }
         }
-        
+
         unit := _perf_counter_display_scale[kind]
-        
+
         offs := 0
         offs += ufmt.eprintf("%s:", name)
-        
+
         _align(&offs, 30)
         offs += ufmt.eprintf("%v", f64(c.total_sum) * unit / f64(c.total_num))
-        
+
         _align(&offs, 60)
         offs += ufmt.eprintf("%v", f64(c.total_min) * unit)
-        
+
         _align(&offs, 90)
         offs += ufmt.eprintf("%v", f64(c.total_max) * unit)
-        
+
         ufmt.eprintfln("")
     }
-    
+
     ufmt.eprintfln("")
 
     {
@@ -1080,9 +1096,9 @@ _print_stats_report :: proc() {
 
 begin_frame :: proc() -> (keep_running: bool) {
     perf_scope()
-    
+
     assert(_state != nil)
-    
+
     free_all(context.temp_allocator)
     // In case big file allocations happened...
     defer free_all(context.temp_allocator)
@@ -1305,14 +1321,14 @@ begin_frame :: proc() -> (keep_running: bool) {
 
 end_frame :: proc(vsync := true) {
     perf_scope()
-    
+
     validate(!_state.ended_frame)
 
     _state.ended_frame = true
     curr_time := platform.get_time_ns()
 
     _perf_counter_add(.Frame_Work_Time, curr_time - _state.last_time)
-    
+
     _perf_scope_add("FRAME", start = _state.last_time)
 
     gpu.end_frame(sync = vsync)
@@ -1324,7 +1340,7 @@ _clear_draw_layers :: proc() {
         _draw_batch_table_init(&layer.meshes)
         _draw_batch_table_init(&layer.triangles)
         _draw_batch_table_init(&layer.lines)
-        
+
         layer.dynamic_verts = {}
     }
 }
@@ -3311,7 +3327,7 @@ draw_sprite :: proc(
     param:      u32 = 0,
 ) {
     perf_scope()
-    
+
     validate_vec3(pos)
     validate_vec2(scale)
     validate_quat(rot)
@@ -3424,7 +3440,7 @@ draw_text :: proc(
     rot:        Quat = 1,
 ) -> []Sprite_Inst {
     perf_scope()
-    
+
     char_size := IVec2{
         i32(_state.bind_state.texture_size.x) / 16,
         i32(_state.bind_state.texture_size.y) / 16,
@@ -3550,7 +3566,7 @@ draw_mesh :: proc(
     param:      u32 = 0,
 ) {
     perf_scope()
-    
+
     validate_vec3(pos)
 
     mesh, mesh_ok := get_internal_mesh(handle)
@@ -3596,7 +3612,7 @@ draw_triangles :: proc(
     param:      u32 = 0,
 ) {
     perf_scope()
-    
+
     validate_vec3(pos)
     validate_quat(rot)
     validate_vec4(col)
@@ -3639,7 +3655,7 @@ draw_lines :: proc(
     param:      u32 = 0,
 ) {
     perf_scope()
-    
+
     validate(len(verts) % 2 == 0)
     validate_vec3(pos)
     validate_quat(rot)
@@ -3654,7 +3670,7 @@ draw_lines :: proc(
     offset := len(draw_layer.dynamic_verts)
     num := _push_draw_dynamic_verts(_state.bind_state.draw_layer, verts)
     mat := linalg.matrix3_from_quaternion_f32(rot)
-    
+
     key := _bind_state_batch_key(_state.bind_state, int_cast(u16, num))
 
     inst := pack_mesh_inst(
@@ -4004,7 +4020,7 @@ _calc_circle_points :: proc(segments: int) -> []Vec2 {
 
 _upload_gpu_global_constants :: proc() {
     perf_scope()
-    
+
     gpu.update_constants(_state.global_consts, gpu.ptr_bytes(&Draw_Global_Constants{
         time = get_time(),
         delta_time = get_delta_time(),
@@ -4017,7 +4033,7 @@ _upload_gpu_global_constants :: proc() {
 
 _upload_gpu_layer_constants :: proc() {
     perf_scope()
-    
+
     consts_buf: [MAX_DRAW_LAYERS]Draw_Layer_Constants
 
     for &layer, i in _state.draw_layers {
@@ -4079,7 +4095,7 @@ submit_layers :: proc() {
     // // Sprites
     // {
     //     perf_scope("submit_layers sprites")
-        
+
     //     total_sprite_instances := 0
 
     //     for &layer, _ in _state.draw_layers {
@@ -4154,7 +4170,7 @@ submit_layers :: proc() {
 
     //     gpu.update_buffer(_state.sprite_inst_buf, sprite_upload_buf)
     // }
-    
+
         // NOTE: no culling for lines and tris
     // for &layer in _state.draw_layers {
     //     total_triangle_instances += len(layer.triangles)
@@ -4168,7 +4184,7 @@ submit_layers :: proc() {
 
     //     if .No_Cull not_in layer.flags {
     //         perf_scope("submit_layers mesh cull")
-            
+
     //         frustum := calc_camera_frustum(layer.camera)
     //         far_plane := frustum.planes[FRUSTUM_FAR_PLANE_INDEX]
     //         mesh_dist_factor := f32(MAX_DRAW_SORT_KEY_DIST) / far_plane.w
@@ -4202,7 +4218,7 @@ submit_layers :: proc() {
 
     //     if .No_Reorder not_in layer.flags {
     //         perf_scope("submit_layers mesh reorder")
-            
+
     //         keys := layer.meshes.key[:len(layer.meshes)]
     //         indices := slice.sort_with_indices(transmute([]Draw_Sort_Key_Backing)keys, context.temp_allocator)
     //         slice.sort_from_permutation_indices(instances, indices)
@@ -4215,12 +4231,12 @@ submit_layers :: proc() {
 
     // Generate upload ranges for sprite data
     sprite_upload_offs := 0
-    sprite_upload_bufs := make([dynamic][]byte, 0, 256, context.temp_allocator)    
+    sprite_upload_bufs := make([dynamic][]byte, 0, 256, context.temp_allocator)
     for &layer in _state.draw_layers {
         for &batch in layer.sprites.batches[:layer.sprites.len] {
             batch.consts_offset = _batcher_consts_push(&batcher, sprite_upload_offs)
-            append(&sprite_upload_bufs, gpu.slice_bytes(batch.data[:]))
-            sprite_upload_offs += len(batch.data)
+            append(&sprite_upload_bufs, gpu.slice_bytes(batch.inst_data[:batch.len]))
+            sprite_upload_offs += int(batch.len)
         }
     }
 
@@ -4233,24 +4249,24 @@ submit_layers :: proc() {
 
     // Generate upload ranges for mesh-like data
     mesh_upload_offs := 0
-    mesh_upload_bufs := make([dynamic][]byte, 0, 256, context.temp_allocator)    
+    mesh_upload_bufs := make([dynamic][]byte, 0, 256, context.temp_allocator)
     for &layer in _state.draw_layers {
         for &batch in layer.meshes.batches[:layer.meshes.len] {
             batch.consts_offset = _batcher_consts_push(&batcher, mesh_upload_offs)
-            append(&mesh_upload_bufs, gpu.slice_bytes(batch.data[:]))
-            mesh_upload_offs += len(batch.data)
+            append(&mesh_upload_bufs, gpu.slice_bytes(batch.inst_data[:batch.len]))
+            mesh_upload_offs += int(batch.len)
         }
-    
+
         for &batch in layer.triangles.batches[:layer.triangles.len] {
             batch.consts_offset = _batcher_consts_push(&batcher, mesh_upload_offs)
-            append(&mesh_upload_bufs, gpu.slice_bytes(batch.data[:]))
-            mesh_upload_offs += len(batch.data)
+            append(&mesh_upload_bufs, gpu.slice_bytes(batch.inst_data[:batch.len]))
+            mesh_upload_offs += int(batch.len)
         }
-        
+
         for &batch in layer.lines.batches[:layer.lines.len] {
             batch.consts_offset = _batcher_consts_push(&batcher, mesh_upload_offs)
-            append(&mesh_upload_bufs, gpu.slice_bytes(batch.data[:]))
-            mesh_upload_offs += len(batch.data)
+            append(&mesh_upload_bufs, gpu.slice_bytes(batch.inst_data[:batch.len]))
+            mesh_upload_offs += int(batch.len)
         }
     }
 
@@ -4268,7 +4284,7 @@ submit_layers :: proc() {
     )
 
     return
-    
+
     _batcher_consts_push :: proc(batcher: ^Batcher_State, #any_int offset: u32) -> (result: u32) {
         assert(batcher.consts_num < len(batcher.consts))
         batcher.consts[batcher.consts_num] = {
@@ -4313,7 +4329,7 @@ render_layer :: proc(
     user_resources:         []gpu.Resource_Handle = nil,
 ) {
     assert(ren_tex_handle != {})
-    
+
     perf_scope()
 
     if !_state.submitted_layers {
@@ -4379,7 +4395,7 @@ render_layer :: proc(
 
 _render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     perf_scope()
-    
+
     pip_desc := pip_desc
 
     layer := _state.draw_layers[layer_index]
@@ -4396,7 +4412,7 @@ _render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     for batch_index in 0..<layer.sprites.len {
         key := layer.sprites.keys[batch_index]
         batch := layer.sprites.batches[batch_index]
-        
+
         _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
 
         pipeline, pipeline_ok := gpu.create_pipeline("sprite-pip", pip_desc)
@@ -4409,7 +4425,7 @@ _render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.draw_indexed(
             index_num = 6,
-            instance_num = len(batch.data),
+            instance_num = batch.len,
             index_offset = 0,
             const_offsets = {
                 0 = max(u32),
@@ -4422,7 +4438,7 @@ _render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
 _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     perf_scope()
-    
+
     pip_desc := pip_desc
 
     layer := _state.draw_layers[layer_index]
@@ -4443,7 +4459,7 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
         key := layer.meshes.keys[bucket_index]
         batch := layer.meshes.batches[bucket_index]
         _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
-        
+
         pip_desc.index.resource = _state.groups[key.group].ibuf
         pip_desc.resources[1] = _state.groups[key.group].vbuf
 
@@ -4458,7 +4474,7 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.draw_indexed(
             index_num = mesh.index_num,
-            instance_num = len(batch.data),
+            instance_num = batch.len,
             index_offset = mesh.index_offs,
             const_offsets = {
                 0 = max(u32),
@@ -4471,7 +4487,7 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
 _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     perf_scope()
-    
+
     pip_desc := pip_desc
 
     layer := _state.draw_layers[layer_index]
@@ -4490,7 +4506,7 @@ _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     for batch_index in 0..<layer.triangles.len {
         key := layer.triangles.keys[batch_index]
         batch := layer.triangles.batches[batch_index]
-        
+
         _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
 
         pipeline, pipeline_ok := gpu.create_pipeline("tri-pip", pip_desc)
@@ -4503,7 +4519,7 @@ _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.draw_non_indexed(
             vertex_num = key.asset_index,
-            instance_num = len(batch.data),
+            instance_num = batch.len,
             const_offsets = {
                 0 = max(u32),
                 1 = u32(layer_index),
@@ -4515,7 +4531,7 @@ _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
 _render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     perf_scope()
-    
+
     pip_desc := pip_desc
 
     layer := _state.draw_layers[layer_index]
@@ -4535,7 +4551,7 @@ _render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     for batch_index in 0..<layer.lines.len {
         key := layer.lines.keys[batch_index]
         batch := layer.lines.batches[batch_index]
-        
+
         _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
 
         pipeline, pipeline_ok := gpu.create_pipeline("line-pip", pip_desc)
@@ -4547,7 +4563,7 @@ _render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.draw_non_indexed(
             vertex_num = key.asset_index,
-            instance_num = len(batch.data),
+            instance_num = batch.len,
             const_offsets = {
                 0 = max(u32),
                 1 = u32(layer_index),
@@ -5205,7 +5221,7 @@ draw_perf_counter :: proc(kind: Perf_Counter_Kind, pos: Vec3, scale: f32 = 1, co
         min = {0, 1 - 1.0/128.0},
         max = {0 + 1.0/128.0, 1},
     }
-    
+
     unit := f32(_perf_counter_display_scale[kind])
 
     perf_counter := _state.perf_counters[kind]
@@ -5267,42 +5283,42 @@ draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
     scope_binds()
     bind_texture(get_builtin_texture(.CGA8x8thick))
     bind_depth(.Depth)
-    
+
     Scope :: struct {
         name:   string,
         dur:    u64,
     }
-    
+
     scopes := make([]Scope, len(_perf_scopes), context.temp_allocator)
     _scope_counter := 0
     for name, scope in _perf_scopes {
         scopes[_scope_counter] = {name, scope}
         _scope_counter += 1
     }
-    
+
     // Flush
     if _perf_scopes != nil {
         delete(_perf_scopes)
         _perf_scopes = {}
     }
-    
+
     slice.sort_by(scopes, proc(a, b: Scope) -> bool {
         return a.name > b.name
     })
-    
+
     rect := Rect{
         min = {0, 1 - 1.0/128.0},
         max = {0 + 1.0/128.0, 1},
     }
 
     FRAME_TIME :: 1.0 / 60.0
-    
+
     for scope, i in scopes {
         p := pos + Vec3{0, f32(i) * 16, 0}
-        
+
         ms := f32(scope.dur) * 1e-6
         width := max(1, clamp(ms, 0, 16) * 10)
-        
+
         text := base.tprintf("%s: %f ms", scope.name, ms)
         draw_text(text, p)
         draw_text(text, p + {1, 1, 0.001}, col = BLACK)
