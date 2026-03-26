@@ -1115,7 +1115,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
     }
 
-    _update_buffer :: proc(res: ^Resource_State, data: []byte, offset: int) {
+    _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]byte) {
         switch res.usage {
         case .Immutable:
             assert(false)
@@ -1132,23 +1132,29 @@ when BACKEND == BACKEND_D3D11 {
                 return
             }
 
-            runtime.mem_copy_non_overlapping(rawptr(uintptr(mapped.pData) + uintptr(offset)), raw_data(data), len(data))
+            write_ptr := uintptr(mapped.pData) + uintptr(offset)
+            for buf in buffers {
+                runtime.mem_copy_non_overlapping(rawptr(write_ptr), raw_data(buf), len(buf))
+                write_ptr += uintptr(len(buf))
+            }
 
             _state.device_context->Unmap(res.buf, 0)
 
         case .Default:
+            temp := _combine_buffer_writes_temp(buffers)
+        
             _state.device_context->UpdateSubresource(
                 pDstResource = res.buf,
                 DstSubresource = 0,
                 pDstBox = &d3d.BOX{
                     left    = u32(offset),
                     top     = 0,
-                    right   = u32(offset + len(data)),
+                    right   = u32(offset + len(temp)),
                     bottom  = 1,
                     front   = 0,
                     back    = 1,
                 },
-                pSrcData = raw_data(data),
+                pSrcData = raw_data(temp),
                 SrcRowPitch = 0,
                 SrcDepthPitch = 0,
             )

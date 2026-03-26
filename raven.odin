@@ -21,6 +21,7 @@ import stbi "vendor:stb/image"
 
 // TODO: go through all TODOs
 
+// TODO: try odin's new [dynamic; N]T arrays
 // TODO: fix triangles with pooled textures
 // TODO: actual 3d transform structure
 // TODO: objects in scene data
@@ -67,7 +68,7 @@ MAX_OBJECTS :: 1024
 MAX_SPLINES :: 1024
 
 MAX_WATCHED_DIRS :: 8
-MAX_DRAW_LAYERS :: 32
+MAX_DRAW_LAYERS :: 16
 MAX_RENDER_TEXTURES :: 64
 MAX_TEXTURE_RESOURCES :: 64
 MAX_SHADERS :: 64
@@ -184,11 +185,10 @@ State :: struct #align(64) {
     module_desc:                Module_Desc,
     module_data:                rawptr,
     shutdown_requested:         bool,
+    submitted_layers:           bool,
 
     debug_trace_ctx:            debug_trace.Context,
     context_state:              Context_State,
-
-    submitted_layers:         bool,
 
     input:                      Input,
 
@@ -202,10 +202,11 @@ State :: struct #align(64) {
     builtin_pixel_shader:       [Builtin_Pixel_Shader]Pixel_Shader_Handle,
     builtin_vertex_shader:      [Builtin_Vertex_Shader]Vertex_Shader_Handle,
 
+    quad_ibuf:                  gpu.Resource_Handle,
+    
     sprite_inst_buf:            gpu.Resource_Handle,
     mesh_inst_buf:              gpu.Resource_Handle,
     dynamic_vert_buf:           gpu.Resource_Handle,
-    quad_ibuf:                  gpu.Resource_Handle,
 
     global_consts:              gpu.Resource_Handle,
     draw_layers_consts:         gpu.Resource_Handle,
@@ -439,53 +440,53 @@ Draw_Layer :: struct {
     camera:                 Camera,
     flags:                  bit_set[Draw_Layer_Flag],
 
-    sprite_batcher:         Draw_Batcher(Sprite_Inst),
-    mesh_batcher:           Draw_Batcher(Mesh_Inst),
-    triangle_batcher:       Draw_Batcher(Mesh_Inst),
-    line_batcher:           Draw_Batcher(Mesh_Inst),
+    sprites:                Draw_Batch_Table(Sprite_Inst),
+    meshes:                 Draw_Batch_Table(Mesh_Inst),
+    triangles:              Draw_Batch_Table(Mesh_Inst),
+    lines:                  Draw_Batch_Table(Mesh_Inst),
 
     dynamic_verts:          [dynamic]Vertex,
 }
 
-DRAW_BUCKET_LOOKUP :: 512
-DRAW_BUCKETS :: 256 // this is limited by gpu.MAX_PIPELINES anyway.
-DRAW_LAYER_MAX_PROBE :: 32
+DRAW_BATCH_TABLE_LOOKUP :: 512
+DRAW_BATCH_TABLE_BATCHES :: 256 // this is limited by gpu.MAX_PIPELINES anyway.
+DRAW_BATCH_TABLE_MAX_PROBE :: 32
 
-Draw_Batcher :: struct($T: typeid) {
-    lookup:     [DRAW_BUCKET_LOOKUP]u16,
-    keys:       [DRAW_BUCKET_LOOKUP]Draw_Batch_Key,
-    buckets:    [DRAW_BUCKETS]Draw_Bucket(T),
+Draw_Batch_Table :: struct($T: typeid) {
+    lookup:     [DRAW_BATCH_TABLE_LOOKUP]u16,
+    keys:       [DRAW_BATCH_TABLE_LOOKUP]Draw_Batch_Key,
+    batches:    [DRAW_BATCH_TABLE_BATCHES]Draw_Batch(T),
     len:        u32,
 }
 
 // TODO: rename to batch something idk
 // TODO: #simd[4]f32 cull sphere
-// TODO: Sort key
-Draw_Bucket :: struct($T: typeid) {
+// TODO: Sort key?
+Draw_Batch :: struct($T: typeid) {
     consts_offset:   u32,
     // TODO: replace this.
     data:           [dynamic]T,
 }
 
-_draw_batcher_init :: proc(batcher: ^$T/Draw_Batcher($E)) {
+_draw_batch_table_init :: proc(batcher: ^$T/Draw_Batch_Table($E)) {
     batcher.len = 0
     for &lookup in batcher.lookup {
         lookup = max(u16)
     }
 }
 
-_draw_batcher_push :: proc(
-    batcher:    ^$T/Draw_Batcher($E),
+_draw_batch_table_push :: proc(
+    batcher:    ^$T/Draw_Batch_Table($E),
     key:        Draw_Batch_Key,
     data:       E,
 ) {
     hash := hash_splittable64(transmute(u64)key)
     
-    lookup_index := int(hash % DRAW_BUCKET_LOOKUP)
+    lookup_index := int(hash % DRAW_BATCH_TABLE_LOOKUP)
     index := -1
     found := false
     
-    for _ in 0..<DRAW_LAYER_MAX_PROBE {
+    for _ in 0..<DRAW_BATCH_TABLE_MAX_PROBE {
         batch_index := batcher.lookup[lookup_index]
 
         if batch_index == max(u16) {
@@ -501,7 +502,7 @@ _draw_batcher_push :: proc(
             break
         }
         
-        lookup_index = (lookup_index + 1) %% DRAW_BUCKET_LOOKUP
+        lookup_index = (lookup_index + 1) %% DRAW_BATCH_TABLE_LOOKUP
     }
 
     if !found {
@@ -510,14 +511,14 @@ _draw_batcher_push :: proc(
     }
 
     if index == -1 {
-        if batcher.len >= DRAW_BUCKETS {
+        if batcher.len >= DRAW_BATCH_TABLE_BATCHES {
             assert(false)
             return
         }
         
         index = int(batcher.len)
         
-        batcher.buckets[index] = {}
+        batcher.batches[index] = {}
         batcher.keys[index] = key
         batcher.lookup[lookup_index] = u16(index)
         
@@ -526,7 +527,7 @@ _draw_batcher_push :: proc(
         return
     }
 
-    bucket := &batcher.buckets[index]
+    bucket := &batcher.batches[index]
     if bucket.data == nil {
         bucket.data = make([dynamic]E, 0, 256, context.temp_allocator)
     }
@@ -1319,10 +1320,10 @@ end_frame :: proc(vsync := true) {
 
 _clear_draw_layers :: proc() {
     for &layer in _state.draw_layers {
-        _draw_batcher_init(&layer.sprite_batcher)
-        _draw_batcher_init(&layer.mesh_batcher)
-        _draw_batcher_init(&layer.triangle_batcher)
-        _draw_batcher_init(&layer.line_batcher)
+        _draw_batch_table_init(&layer.sprites)
+        _draw_batch_table_init(&layer.meshes)
+        _draw_batch_table_init(&layer.triangles)
+        _draw_batch_table_init(&layer.lines)
         
         layer.dynamic_verts = {}
     }
@@ -2490,8 +2491,8 @@ create_mesh_from_data :: proc(
         return {}, false
     }
 
-    gpu.update_buffer(group.vbuf, gpu.slice_bytes(vertices), offset = int(mesh.vert_offs) * size_of(Vertex))
-    gpu.update_buffer(group.ibuf, gpu.slice_bytes(indices), offset = int(mesh.index_offs) * size_of(Vertex_Index))
+    gpu.update_buffer(group.vbuf, int(mesh.vert_offs) * size_of(Vertex), gpu.slice_bytes(vertices))
+    gpu.update_buffer(group.ibuf, int(mesh.index_offs) * size_of(Vertex_Index), gpu.slice_bytes(indices))
 
     return handle, true
 }
@@ -3756,7 +3757,7 @@ _push_sprite_draw :: proc(#any_int layer_index: int, key: Draw_Batch_Key, inst: 
 
 _push_mesh_draw :: proc(#any_int layer_index: int, key: Draw_Batch_Key, inst: Mesh_Inst) {
     draw_layer := &_state.draw_layers[layer_index]
-    _draw_batcher_push(&draw_layer.mesh_batcher, key, inst)
+    _draw_batch_table_push(&draw_layer.meshes, key, inst)
 }
 
 _push_triangle_draw :: proc(#any_int layer_index: int, key: Draw_Batch_Key, inst: Mesh_Inst) {
@@ -4082,34 +4083,23 @@ submit_layers :: proc() {
     batcher: Batcher_State
 
     // Dynamic Verts
+    // TODO: the rendering code using this is actually broken once more layers have dyn verts.
+    // Draws somehow need to know the offset of the layer vert data.
     {
         perf_scope("submit_layers dynverts")
-        
-        total_dynamic_verts := 0
-        for layer in _state.draw_layers {
-            total_dynamic_verts += len(layer.dynamic_verts)
-        }
 
-        vert_upload_buf := alloc_slice_non_zeroed(Vertex, total_dynamic_verts, alignment = 256, allocator = context.temp_allocator)
-        vert_upload_offs := 0
+        vert_upload_bufs := make([dynamic][]byte, 0, 256, context.temp_allocator)
 
         for layer in _state.draw_layers {
-            if len(layer.dynamic_verts) == 0 {
-                continue
+            if len(layer.dynamic_verts) > 0 {
+                append(&vert_upload_bufs, gpu.slice_bytes(layer.dynamic_verts[:]))
             }
-
-            runtime.mem_copy_non_overlapping(
-                &vert_upload_buf[vert_upload_offs],
-                raw_data(layer.dynamic_verts),
-                size_of(Vertex) * len(layer.dynamic_verts),
-            )
-
-            vert_upload_offs += len(layer.dynamic_verts)
         }
 
         gpu.update_buffer(
             _state.dynamic_vert_buf,
-            gpu.slice_bytes(vert_upload_buf[:vert_upload_offs]),
+            offset = 0,
+            buffers = vert_upload_bufs[:],
         )
     }
 
@@ -4192,152 +4182,111 @@ submit_layers :: proc() {
 
     //     gpu.update_buffer(_state.sprite_inst_buf, sprite_upload_buf)
     // }
-
-
-    // Upload mesh-like data
-    {
-        perf_scope("submit_layers meshes")
-
-        total_mesh_instances := 0
-        total_triangle_instances := 0
-        total_line_instances := 0
-
+    
         // NOTE: no culling for lines and tris
-        // for &layer in _state.draw_layers {
-        //     total_triangle_instances += len(layer.triangles)
-        //     total_line_instances += len(layer.lines)
-        // }
+    // for &layer in _state.draw_layers {
+    //     total_triangle_instances += len(layer.triangles)
+    //     total_line_instances += len(layer.lines)
+    // }
 
-        // for &layer in _state.draw_layers {
-        //     if len(layer.meshes) == 0 {
-        //         continue
-        //     }
+    // for &layer in _state.draw_layers {
+    //     if len(layer.meshes) == 0 {
+    //         continue
+    //     }
 
-        //     if .No_Cull not_in layer.flags {
-        //         perf_scope("submit_layers mesh cull")
-                
-        //         frustum := calc_camera_frustum(layer.camera)
-        //         far_plane := frustum.planes[FRUSTUM_FAR_PLANE_INDEX]
-        //         mesh_dist_factor := f32(MAX_DRAW_SORT_KEY_DIST) / far_plane.w
-        //         forw := linalg.quaternion128_mul_vector3(layer.camera.rot, Vec3{0, 0, 1})
+    //     if .No_Cull not_in layer.flags {
+    //         perf_scope("submit_layers mesh cull")
+            
+    //         frustum := calc_camera_frustum(layer.camera)
+    //         far_plane := frustum.planes[FRUSTUM_FAR_PLANE_INDEX]
+    //         mesh_dist_factor := f32(MAX_DRAW_SORT_KEY_DIST) / far_plane.w
+    //         forw := linalg.quaternion128_mul_vector3(layer.camera.rot, Vec3{0, 0, 1})
 
-        //         for mesh_index := len(layer.meshes) - 1; mesh_index >= 0; mesh_index -= 1 {
-        //             inst := layer.meshes.inst[mesh_index]
-        //             key := &layer.meshes.key[mesh_index]
+    //         for mesh_index := len(layer.meshes) - 1; mesh_index >= 0; mesh_index -= 1 {
+    //             inst := layer.meshes.inst[mesh_index]
+    //             key := &layer.meshes.key[mesh_index]
 
-        //             mesh := _state.meshes[key.asset_index]
+    //             mesh := _state.meshes[key.asset_index]
 
-        //             box_rad :=
-        //                 (linalg.abs(inst.mat_x) * max(abs(mesh.bounds_min.x), abs(mesh.bounds_max.x))) +
-        //                 (linalg.abs(inst.mat_y) * max(abs(mesh.bounds_min.y), abs(mesh.bounds_max.y))) +
-        //                 (linalg.abs(inst.mat_z) * max(abs(mesh.bounds_min.z), abs(mesh.bounds_max.z)))
+    //             box_rad :=
+    //                 (linalg.abs(inst.mat_x) * max(abs(mesh.bounds_min.x), abs(mesh.bounds_max.x))) +
+    //                 (linalg.abs(inst.mat_y) * max(abs(mesh.bounds_min.y), abs(mesh.bounds_max.y))) +
+    //                 (linalg.abs(inst.mat_z) * max(abs(mesh.bounds_min.z), abs(mesh.bounds_max.z)))
 
-        //             if key.blend != .Opaque {
-        //                 dist := linalg.dot(forw, inst.pos - layer.camera.pos)
-        //                 // NOTE: should this get inverted for opaque meshes to minimize overdraw?
-        //                 // What about Z prepass?
-        //                 key.dist = ~u16(dist * mesh_dist_factor) // invert
-        //             }
+    //             if key.blend != .Opaque {
+    //                 dist := linalg.dot(forw, inst.pos - layer.camera.pos)
+    //                 // NOTE: should this get inverted for opaque meshes to minimize overdraw?
+    //                 // What about Z prepass?
+    //                 key.dist = ~u16(dist * mesh_dist_factor) // invert
+    //             }
 
-        //             if !is_box_in_frustum(frustum, inst.pos, box_rad) {
-        //                 unordered_remove_soa(&layer.meshes, mesh_index)
-        //             }
-        //         }
-        //     }
+    //             if !is_box_in_frustum(frustum, inst.pos, box_rad) {
+    //                 unordered_remove_soa(&layer.meshes, mesh_index)
+    //             }
+    //         }
+    //     }
 
-        //     instances := layer.meshes.inst[:len(layer.meshes)]
+    //     instances := layer.meshes.inst[:len(layer.meshes)]
 
-        //     if .No_Reorder not_in layer.flags {
-        //         perf_scope("submit_layers mesh reorder")
-                
-        //         keys := layer.meshes.key[:len(layer.meshes)]
-        //         indices := slice.sort_with_indices(transmute([]Draw_Sort_Key_Backing)keys, context.temp_allocator)
-        //         slice.sort_from_permutation_indices(instances, indices)
-        //     }
+    //     if .No_Reorder not_in layer.flags {
+    //         perf_scope("submit_layers mesh reorder")
+            
+    //         keys := layer.meshes.key[:len(layer.meshes)]
+    //         indices := slice.sort_with_indices(transmute([]Draw_Sort_Key_Backing)keys, context.temp_allocator)
+    //         slice.sort_from_permutation_indices(instances, indices)
+    //     }
 
-        //     total_mesh_instances += len(layer.meshes)
-        // }
-        
-        for layer in _state.draw_layers {
-            for bucket_index in 0..<layer.mesh_batcher.len {
-                instances := layer.mesh_batcher.buckets[bucket_index].data
-                total_mesh_instances += len(instances)
-            }
+    //     total_mesh_instances += len(layer.meshes)
+    // }
+
+
+
+    // Generate upload ranges for sprite data
+    sprite_upload_offs := 0
+    sprite_upload_bufs := make([dynamic][]byte, 0, 256, context.temp_allocator)    
+    for &layer in _state.draw_layers {
+        for &batch in layer.sprites.batches[:layer.sprites.len] {
+            batch.consts_offset = _batcher_consts_push(&batcher, sprite_upload_offs)
+            append(&sprite_upload_bufs, gpu.slice_bytes(batch.data[:]))
+            sprite_upload_offs += len(batch.data)
         }
-        
-        // TODO: preallocate this shit.
-        mesh_upload_buf := alloc_slice_non_zeroed(Mesh_Inst,
-            total_mesh_instances + total_triangle_instances + total_line_instances,
-            alignment = 256,
-            allocator = context.temp_allocator,
-        )
-        mesh_upload_offs := 0
-        
-        for &layer in _state.draw_layers {
-            for bucket_index in 0..<layer.mesh_batcher.len {
-                bucket := &layer.mesh_batcher.buckets[bucket_index]
-                
-                uploaded_num := copy_slice(mesh_upload_buf[mesh_upload_offs:], bucket.data[:])
-                assert(uploaded_num == len(bucket.data))
-                
-                bucket.consts_offset = _batcher_consts_push(&batcher, mesh_upload_offs)
-                
-                mesh_upload_offs += uploaded_num
-            }
-        }
-
-        // for &layer, _ in _state.draw_layers {
-        //     if len(layer.meshes) == 0 {
-        //         continue
-        //     }
-        //     assert(mesh_upload_offs < len(mesh_upload_buf))
-
-        //     instances := layer.meshes.inst[:len(layer.meshes)]
-        //     uploaded_num := copy_slice(mesh_upload_buf[mesh_upload_offs:], instances)
-        //     assert(uploaded_num == len(layer.meshes))
-
-        //     layer.mesh_insts_base = u32(mesh_upload_offs)
-
-        //     mesh_upload_offs += uploaded_num
-        // }
-
-        // for &layer, _ in _state.draw_layers {
-        //     if len(layer.triangles) == 0 {
-        //         continue
-        //     }
-        //     assert(mesh_upload_offs < len(mesh_upload_buf))
-
-        //     instances := layer.triangles.inst[:len(layer.triangles)]
-        //     uploaded_num := copy_slice(mesh_upload_buf[mesh_upload_offs:], instances)
-        //     assert(uploaded_num == len(layer.triangles))
-
-        //     layer.triangle_insts_base = u32(mesh_upload_offs)
-
-        //     mesh_upload_offs += uploaded_num
-        // }
-
-        // for &layer, _ in _state.draw_layers {
-        //     if len(layer.lines) == 0 {
-        //         continue
-        //     }
-        //     assert(mesh_upload_offs < len(mesh_upload_buf))
-
-        //     instances := layer.lines.inst[:len(layer.lines)]
-        //     uploaded_num := copy_slice(mesh_upload_buf[mesh_upload_offs:], instances)
-        //     assert(uploaded_num == len(layer.lines))
-
-        //     layer.line_insts_base = u32(mesh_upload_offs)
-
-        //     mesh_upload_offs += uploaded_num
-        // }
-
-        perf_scope("submit_layers mesh upload")
-
-        gpu.update_buffer(
-            _state.mesh_inst_buf,
-            gpu.slice_bytes(mesh_upload_buf[:mesh_upload_offs]),
-        )
     }
+
+    gpu.update_buffer(
+        _state.sprite_inst_buf,
+        offset = 0,
+        buffers = sprite_upload_bufs[:],
+    )
+
+
+    // Generate upload ranges for mesh-like data
+    mesh_upload_offs := 0
+    mesh_upload_bufs := make([dynamic][]byte, 0, 256, context.temp_allocator)    
+    for &layer in _state.draw_layers {
+        for &batch in layer.meshes.batches[:layer.meshes.len] {
+            batch.consts_offset = _batcher_consts_push(&batcher, mesh_upload_offs)
+            append(&mesh_upload_bufs, gpu.slice_bytes(batch.data[:]))
+            mesh_upload_offs += len(batch.data)
+        }
+    
+        for &batch in layer.triangles.batches[:layer.triangles.len] {
+            batch.consts_offset = _batcher_consts_push(&batcher, mesh_upload_offs)
+            append(&mesh_upload_bufs, gpu.slice_bytes(batch.data[:]))
+            mesh_upload_offs += len(batch.data)
+        }
+        
+        for &batch in layer.lines.batches[:layer.lines.len] {
+            batch.consts_offset = _batcher_consts_push(&batcher, mesh_upload_offs)
+            append(&mesh_upload_bufs, gpu.slice_bytes(batch.data[:]))
+            mesh_upload_offs += len(batch.data)
+        }
+    }
+
+    gpu.update_buffer(
+        _state.mesh_inst_buf,
+        offset = 0,
+        buffers = mesh_upload_bufs[:],
+    )
 
     // Upload actual batch consts for all draws
 
@@ -4456,49 +4405,48 @@ render_layer :: proc(
     return
 }
 
-// _render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
-//     perf_scope()
+_render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    perf_scope()
     
-//     pip_desc := pip_desc
+    pip_desc := pip_desc
 
-//     layer := _state.draw_layers[layer_index]
+    layer := _state.draw_layers[layer_index]
 
-//     pip_desc.index = {
-//         resource = _state.quad_ibuf,
-//         format = .U16,
-//     }
+    pip_desc.index = {
+        resource = _state.quad_ibuf,
+        format = .U16,
+    }
 
-//     pip_desc.resources = {
-//         0 = _state.sprite_inst_buf,
-//     }
+    pip_desc.resources = {
+        0 = _state.sprite_inst_buf,
+    }
 
-//     for batch in layer.sprite_batches {
-//         // log_internal("Sprite batch drawcall with %i instances", batch.num)
+    for batch_index in 0..<layer.sprites.len {
+        key := layer.sprites.keys[batch_index]
+        batch := layer.sprites.batches[batch_index]
+        
+        _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
 
-//         _gpu_pipeline_desc_apply_draw_key(&pip_desc, batch.key)
+        pipeline, pipeline_ok := gpu.create_pipeline("sprite-pip", pip_desc)
+        if !pipeline_ok {
+            base.log_err("Failed to create GPU pipeline")
+            continue
+        }
 
-//         pipeline, pipeline_ok := gpu.create_pipeline("sprite-pip", pip_desc)
-//         if !pipeline_ok {
-//             base.log_err("Failed to create GPU pipeline")
-//             continue
-//         }
+        gpu.bind_pipeline(pipeline)
 
-//         gpu.bind_pipeline(pipeline)
-
-//         _perf_counter_add(.Num_Draw_Calls, 1)
-
-//         gpu.draw_indexed(
-//             index_num = 6,
-//             instance_num = batch.num,
-//             index_offset = 0,
-//             const_offsets = {
-//                 0 = max(u32),
-//                 1 = u32(layer_index),
-//                 2 = batch.offset,
-//             },
-//         )
-//     }
-// }
+        gpu.draw_indexed(
+            index_num = 6,
+            instance_num = len(batch.data),
+            index_offset = 0,
+            const_offsets = {
+                0 = max(u32),
+                1 = u32(layer_index),
+                2 = batch.consts_offset,
+            },
+        )
+    }
+}
 
 _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     perf_scope()
@@ -4517,11 +4465,11 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
         1 = {},
     }
 
-    _perf_counter_add(.Num_Draw_Calls, layer.mesh_batcher.len)
+    _perf_counter_add(.Num_Draw_Calls, layer.meshes.len)
 
-    for bucket_index in 0..<layer.mesh_batcher.len {
-        key := layer.mesh_batcher.keys[bucket_index]
-        batch := layer.mesh_batcher.buckets[bucket_index]
+    for bucket_index in 0..<layer.meshes.len {
+        key := layer.meshes.keys[bucket_index]
+        batch := layer.meshes.batches[bucket_index]
         _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
         
         pip_desc.index.resource = _state.groups[key.group].ibuf
@@ -4549,92 +4497,93 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
     }
 }
 
-// _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
-//     perf_scope()
+_render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    perf_scope()
     
-//     pip_desc := pip_desc
+    pip_desc := pip_desc
 
-//     layer := _state.draw_layers[layer_index]
+    layer := _state.draw_layers[layer_index]
 
-//     pip_desc.index = {
-//         resource = {},
-//         format = .U16,
-//     }
+    pip_desc.index = {
+        resource = {},
+        format = .U16,
+    }
 
-//     pip_desc.index = {}
-//     pip_desc.resources = {
-//         0 = _state.mesh_inst_buf,
-//         1 = _state.dynamic_vert_buf,
-//     }
+    pip_desc.index = {}
+    pip_desc.resources = {
+        0 = _state.mesh_inst_buf,
+        1 = _state.dynamic_vert_buf,
+    }
 
-//     for batch in layer.triangle_batches {
-//         _gpu_pipeline_desc_apply_draw_key(&pip_desc, batch.key)
+    for batch_index in 0..<layer.triangles.len {
+        key := layer.triangles.keys[batch_index]
+        batch := layer.triangles.batches[batch_index]
+        
+        _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
 
-//         pipeline, pipeline_ok := gpu.create_pipeline("tri-pip", pip_desc)
-//         if !pipeline_ok {
-//             base.log_err("Failed to create GPU pipeline")
-//             continue
-//         }
+        pipeline, pipeline_ok := gpu.create_pipeline("tri-pip", pip_desc)
+        if !pipeline_ok {
+            base.log_err("Failed to create GPU pipeline")
+            continue
+        }
 
-//         gpu.bind_pipeline(pipeline)
+        gpu.bind_pipeline(pipeline)
 
-//         _perf_counter_add(.Num_Draw_Calls, 1)
+        gpu.draw_non_indexed(
+            vertex_num = key.asset_index,
+            instance_num = len(batch.data),
+            const_offsets = {
+                0 = max(u32),
+                1 = u32(layer_index),
+                2 = batch.consts_offset,
+            },
+        )
+    }
+}
 
-//         gpu.draw_non_indexed(
-//             vertex_num = batch.key.asset_index,
-//             instance_num = batch.num,
-//             const_offsets = {
-//                 0 = max(u32),
-//                 1 = u32(layer_index),
-//                 2 = batch.offset,
-//             },
-//         )
-//     }
-// }
-
-// _render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
-//     perf_scope()
+_render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
+    perf_scope()
     
-//     pip_desc := pip_desc
+    pip_desc := pip_desc
 
-//     layer := _state.draw_layers[layer_index]
+    layer := _state.draw_layers[layer_index]
 
-//     pip_desc.topo = .Lines
-//     pip_desc.index = {
-//         resource = {},
-//         format = .U16,
-//     }
+    pip_desc.topo = .Lines
+    pip_desc.index = {
+        resource = {},
+        format = .U16,
+    }
 
-//     pip_desc.index = {}
-//     pip_desc.resources = {
-//         0 = _state.mesh_inst_buf,
-//         1 = _state.dynamic_vert_buf,
-//     }
+    pip_desc.index = {}
+    pip_desc.resources = {
+        0 = _state.mesh_inst_buf,
+        1 = _state.dynamic_vert_buf,
+    }
 
-//     for batch in layer.line_batches {
-//         _gpu_pipeline_desc_apply_draw_key(&pip_desc, batch.key)
+    for batch_index in 0..<layer.lines.len {
+        key := layer.lines.keys[batch_index]
+        batch := layer.lines.batches[batch_index]
+        
+        _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
 
-//         pipeline, pipeline_ok := gpu.create_pipeline("line-pip", pip_desc)
-//         if !pipeline_ok {
-//             base.log_err("Failed to create GPU pipeline")
-//             continue
-//         }
+        pipeline, pipeline_ok := gpu.create_pipeline("line-pip", pip_desc)
+        if !pipeline_ok {
+            continue
+        }
 
-//         gpu.bind_pipeline(pipeline)
+        gpu.bind_pipeline(pipeline)
 
-//         _perf_counter_add(.Num_Draw_Calls, 1)
-
-//         gpu.draw_non_indexed(
-//             vertex_num = batch.key.asset_index,
-//             instance_num = batch.num,
-//             const_offsets = {
-//                 0 = max(u32),
-//                 1 = u32(layer_index),
-//                 2 = batch.offset,
-//             },
-//         )
-//     }
-// }
+        gpu.draw_non_indexed(
+            vertex_num = key.asset_index,
+            instance_num = len(batch.data),
+            const_offsets = {
+                0 = max(u32),
+                1 = u32(layer_index),
+                2 = batch.consts_offset,
+            },
+        )
+    }
+}
 
 _gpu_pipeline_desc_apply_draw_key :: proc(pip_desc: ^gpu.Pipeline_Desc, key: Draw_Batch_Key, loc := #caller_location) {
     pip_desc.blends[0] = _gpu_blend_mode_desc(key.blend_mode)

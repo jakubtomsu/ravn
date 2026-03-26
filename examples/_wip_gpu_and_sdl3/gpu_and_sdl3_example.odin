@@ -179,7 +179,7 @@ main :: proc() {
 
         gpu.update_constants(consts, gpu.ptr_bytes(&c))
         gpu.update_constants(quad_consts, gpu.ptr_bytes(&quad_c))
-        gpu.update_buffer(instbuf, gpu.slice_bytes(instance_data[:]))
+        gpu.update_buffer(instbuf, 0, gpu.slice_bytes(instance_data[:]))
 
         gpu.set_shader(cs)
         gpu.set_resources({.Compute}, {

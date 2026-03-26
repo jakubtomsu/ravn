@@ -190,8 +190,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(1, rv.make_screen_camera())
 
     rv.bind_texture("default")
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
+    rv.bind_depth(.Depth)
     rv.bind_fill(.All)
 
     rv.draw_mesh(rv.get_mesh("Cube"),
