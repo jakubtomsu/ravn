@@ -1,6 +1,7 @@
-#+vet explicit-allocators shadowing unused style
+#+vet explicit-allocators shadowing style
 package raven
 
+import "core:fmt"
 import "base"
 import "base/ufmt"
 import "gpu"
@@ -477,13 +478,13 @@ Draw_Batch :: struct($Instance: typeid) {
 
 // Per 8 instances
 Draw_Cull_Group :: struct #raw_union {
-    using _: struct {
-        pos:    [3]#simd[8]f32,
-        rad:    #simd[8]f32,
+    using _simd: struct {
+        pos:    [3]#simd[LANES]f32,
+        rad:    #simd[LANES]f32,
     },
-    using _: struct {
-        pos_scalar: [3][8]f32,
-        rad_scalar: [8]f32,
+    using _scalar: struct {
+        pos_scalar: [3][LANES]f32,
+        rad_scalar: [LANES]f32,
     },
 }
 
@@ -2426,9 +2427,11 @@ create_mesh_from_data :: proc(
 
     mesh.bounds_min = max(f32)
     mesh.bounds_max = min(f32)
+    mesh.bounds_rad = 0.001
     for vert in vertices {
         mesh.bounds_min = linalg.min(mesh.bounds_min, vert.pos)
         mesh.bounds_max = linalg.max(mesh.bounds_max, vert.pos)
+        mesh.bounds_rad = max(mesh.bounds_rad, linalg.length(vert.pos))
     }
 
     handle, handle_ok := insert_mesh_by_name(name, mesh)
@@ -3530,8 +3533,10 @@ draw_mesh :: proc(
         add_col = add_col,
     )
 
+    rad := mesh.bounds_rad * max(scale.x, scale.y, scale.z)
+
     draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
-    _draw_batch_table_push(&draw_layer.meshes, key, inst, mesh.bounds_rad * max(scale.x, scale.y, scale.z))
+    _draw_batch_table_push(&draw_layer.meshes, key, inst, rad)
 }
 
 draw_triangles :: proc(
@@ -4036,13 +4041,14 @@ _draw_batch_table_push :: proc(
     batch.cull_data[batch.len / LANES].pos_scalar.x[lane_id] = inst.pos.x
     batch.cull_data[batch.len / LANES].pos_scalar.y[lane_id] = inst.pos.y
     batch.cull_data[batch.len / LANES].pos_scalar.z[lane_id] = inst.pos.z
-    batch.cull_data[batch.len / LANES].rad_scalar[lane_id] = inst.pos.z
+    batch.cull_data[batch.len / LANES].rad_scalar[lane_id] = cull_rad
 
     batch.len += 1
 }
 
 _cull_draw_batch :: proc(
     batch:      ^Draw_Batch($Inst),
+    frustum:    Frustum,
     fru_pos:    [3]#simd[LANES]f32,
     fru_rad:    [3]#simd[LANES]f32,
     fru_planes: [6][4]#simd[LANES]f32,
@@ -4055,16 +4061,32 @@ _cull_draw_batch :: proc(
     for group_index in 0..<num_lane_groups {
         batch_cull := batch.cull_data[group_index]
 
-        mask_vec := #force_inline is_sphere_in_frustum_simd(
-            fru_pos = fru_pos,
-            fru_rad = fru_rad,
-            fru_planes = fru_planes,
-            pos = batch_cull.pos,
-            rad = batch_cull.rad,
-        )
+        mask: [LANES]b32
+        if true {
+            mask_vec := #force_inline is_sphere_in_frustum_simd(
+                fru_pos = fru_pos,
+                fru_rad = fru_rad,
+                fru_planes = fru_planes,
+                pos = batch_cull.pos,
+                rad = batch_cull.rad,
+            )
 
+            mask = transmute([LANES]b32)mask_vec
 
-        mask := transmute([LANES]b32)mask_vec
+        } else {
+
+            for &m, i in mask {
+                m = b32(is_sphere_in_frustum(
+                    frustum,
+                    {
+                        batch_cull.pos_scalar.x[i],
+                        batch_cull.pos_scalar.y[i],
+                        batch_cull.pos_scalar.z[i],
+                    },
+                    batch_cull.rad_scalar[i],
+                ))
+            }
+        }
 
         for lane_index in 0..<u32(LANES) {
             read_index := group_index * LANES + lane_index
@@ -4131,13 +4153,9 @@ submit_layers :: proc() {
     perf_scope()
 
     for &layer in _state.draw_layers {
-        pre_cull_num := 0
-        post_cull_num := 0
-        for &batch in layer.meshes.batches[:layer.meshes.len] {
-            pre_cull_num += int(batch.len)
-        }
+        perf_scope("submit_layers cull")
 
-        if pre_cull_num == 0 {
+        if layer.camera == {} {
             continue
         }
 
@@ -4148,23 +4166,26 @@ submit_layers :: proc() {
 
         fru_pos: [3]#simd[LANES]f32 = {fru_pos_vec.x, fru_pos_vec.y, fru_pos_vec.z}
         fru_rad: [3]#simd[LANES]f32 = {fru_rad_vec.x, fru_rad_vec.y, fru_rad_vec.z}
+
         fru_planes: [6][4]#simd[LANES]f32
         for &pl, i in fru_planes {
-            pl = {fru.planes[i].x, fru.planes[i].y, fru.planes[i].z, fru.planes[i].w}
+            pl = {
+                fru.planes[i].x,
+                fru.planes[i].y,
+                fru.planes[i].z,
+                fru.planes[i].w,
+            }
         }
 
         for &batch in layer.meshes.batches[:layer.meshes.len] {
             #force_inline _cull_draw_batch(
                 batch = &batch,
+                frustum = fru,
                 fru_pos = fru_pos,
                 fru_rad = fru_rad,
                 fru_planes = fru_planes,
             )
-
-            post_cull_num += int(batch.len)
         }
-
-        base.log_debug("Precull/postcull: %i/%i (%f culled)", pre_cull_num, post_cull_num, f32(pre_cull_num - post_cull_num) * 100.0 / f32(pre_cull_num))
     }
 
     _upload_gpu_global_constants()
@@ -4666,10 +4687,9 @@ calc_matrix_frustum :: proc(clip_to_world: Mat4) -> (result: Frustum) {
         result.corners[i] = p.xyz / p.w
     }
 
-    result.bounds_min = max(f32)
-    result.bounds_max = min(f32)
-
-    for p in result.corners {
+    result.bounds_min = result.corners[0]
+    result.bounds_max = result.corners[0]
+    for p in result.corners[1:] {
         result.bounds_min = linalg.min(result.bounds_min, p)
         result.bounds_max = linalg.max(result.bounds_max, p)
     }
@@ -4710,12 +4730,15 @@ calc_matrix_frustum :: proc(clip_to_world: Mat4) -> (result: Frustum) {
 is_box_in_frustum :: proc(fru: Frustum, pos: Vec3, rad: Vec3) -> bool #no_bounds_check {
     EPS :: 1
 
-    if pos.x < fru.bounds_min.x - rad.x - EPS ||
-       pos.y < fru.bounds_min.y - rad.y - EPS ||
-       pos.z < fru.bounds_min.z - rad.z - EPS ||
-       pos.x > fru.bounds_max.x + rad.x + EPS ||
-       pos.y > fru.bounds_max.y + rad.y + EPS ||
-       pos.z > fru.bounds_max.z + rad.z + EPS
+    bounds_min := fru.bounds_min - rad - EPS
+    bounds_max := fru.bounds_max + rad + EPS
+
+    if pos.x < bounds_min.x ||
+       pos.y < bounds_min.y ||
+       pos.z < bounds_min.z ||
+       pos.x > bounds_max.x ||
+       pos.y > bounds_max.y ||
+       pos.z > bounds_max.z
     {
         return false
     }
@@ -4734,12 +4757,15 @@ is_box_in_frustum :: proc(fru: Frustum, pos: Vec3, rad: Vec3) -> bool #no_bounds
 is_sphere_in_frustum :: proc(fru: Frustum, pos: Vec3, rad: f32) -> bool #no_bounds_check {
     EPS :: 1
 
-    if pos.x < fru.bounds_min.x - rad - EPS ||
-       pos.y < fru.bounds_min.y - rad - EPS ||
-       pos.z < fru.bounds_min.z - rad - EPS ||
-       pos.x > fru.bounds_max.x + rad + EPS ||
-       pos.y > fru.bounds_max.y + rad + EPS ||
-       pos.z > fru.bounds_max.z + rad + EPS
+    bounds_min := fru.bounds_min - rad - EPS
+    bounds_max := fru.bounds_max + rad + EPS
+
+    if pos.x < bounds_min.x ||
+       pos.y < bounds_min.y ||
+       pos.z < bounds_min.z ||
+       pos.x > bounds_max.x ||
+       pos.y > bounds_max.y ||
+       pos.z > bounds_max.z
     {
         return false
     }
@@ -4764,24 +4790,20 @@ is_sphere_in_frustum_simd :: proc(
     EPS :: 1
 
     r := fru_rad + rad
+
     xin := intrinsics.simd_lanes_lt(intrinsics.simd_abs(pos.x - fru_pos.x), r.x)
     yin := intrinsics.simd_lanes_lt(intrinsics.simd_abs(pos.y - fru_pos.y), r.y)
     zin := intrinsics.simd_lanes_lt(intrinsics.simd_abs(pos.z - fru_pos.z), r.z)
-    result = intrinsics.simd_bit_and(xin, intrinsics.simd_bit_and(yin, zin))
-
-    if result == 0 {
-        return result
-    }
+    result = xin & yin & zin
 
     for i in 0..<len(fru_planes) {
         dists :=
             fru_planes[i].x * pos.x +
             fru_planes[i].y * pos.y +
-            fru_planes[i].z * pos.z +
-            -fru_planes[i].w - rad
+            fru_planes[i].z * pos.z -
+            fru_planes[i].w - rad
 
-        planes_in := intrinsics.simd_lanes_lt(dists, 1)
-        result = intrinsics.simd_bit_and(result, planes_in)
+        result &= intrinsics.simd_lanes_lt(dists, EPS)
     }
 
     return result
