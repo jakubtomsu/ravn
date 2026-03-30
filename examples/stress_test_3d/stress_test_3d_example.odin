@@ -163,10 +163,9 @@ stress_draw :: proc(handle: rv.Mesh_Handle, pos: rv.Vec3, num: int = 256, col: r
     for i in 0..<num {
         rv.draw_mesh(handle,
             pos = pos + {0, 0, f32(i) * 3},
-            rot = rv.quat_angle_axis(f32(i) * 0.1 + rv.get_time(), {0, 0, 1}),
             col = col,
         )
 
-        // rv.draw_sprite(pos + {0, 0, f32(i) * 3}, scale = 0.01)
+        rv.draw_sprite(pos + {0, 0, f32(i) * 3}, scale = 0.01)
     }
 }

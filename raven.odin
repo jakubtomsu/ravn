@@ -20,8 +20,6 @@ import "base:runtime"
 import debug_trace "core:debug/trace"
 import stbi "vendor:stb/image"
 
-// TODO: go through all TODOs
-
 // TODO: try odin's new [dynamic; N]T arrays
 // TODO: fix triangles with pooled textures
 // TODO: actual 3d transform structure
@@ -32,28 +30,12 @@ import stbi "vendor:stb/image"
 // TODO: try core:image?
 // TODO: separate hash table size from backing array size?
 // TODO: abstract log_error and log_warn etc to comptime disable logging?
-// TODO: compress vertex data more
 // TODO: More "summary" info when app exist - min/max/avg cpu/gpu frame time, num draws, temp allocs, ..?
-// TODO: uniform anchor values
-// TODO: drawing real lines, not quads
 // TODO: default module init/shutdown procs
 // TODO: load_* vs create_*, insert_* naming convention, and resource management naming in general
 // TODO: DXT texture compression
-// TODO: triangle drawing with a dynamic mesh?
 // TODO: figure out file flushing and custom file data loop
 // TODO: all resources should return a handle if an identifier exists already
-
-// TODO: lowlevel optimizations, for both debug and release builds:
-//
-// Bottom-up:
-// - runtime bounds_check_error
-// - is_box_in_frustum
-// - smoothsort boundscheck
-// - runtime::_read/_write_bits
-// - pack_unorm8
-//
-// Top-down:
-// - new_frame possibly called twice?
 
 RELEASE :: #config(RAVEN_RELEASE, false)
 VALIDATION :: #config(RAVEN_VALIDATION, !RELEASE)
@@ -416,16 +398,10 @@ Texture_Data :: struct {
 
 
 Bind_State :: struct {
+    using key:              Draw_Batch_Key,
     draw_layer:             u8,
-    blend:                  Blend_Mode,
-    fill:                   Fill_Mode,
-    depth:                  Depth_Mode,
-    texture_mode:           Bind_Texture_Mode,
-    texture:                u8,
     texture_slice:          u8,
     texture_size:           [2]u16, // cached
-    pixel_shader:           u8,
-    vertex_shader:          u8,
 }
 
 Bind_Texture_Mode :: enum u8 {
@@ -927,7 +903,10 @@ shutdown_state :: proc() {
     gpu.shutdown()
     platform.shutdown()
 
-    delete(_perf_scopes)
+    when PERF_SCOPES_ENABLED {
+        delete(_perf_scopes)
+    }
+
     free(_state, _state.allocator)
     _state = nil
 }
@@ -1256,9 +1235,9 @@ begin_frame :: proc() -> (keep_running: bool) {
 
     _state.bind_states_len = 0
     _state.bind_state = {
-        pixel_shader = int_cast(u8, _state.builtin_pixel_shader[.Default].index),
-        vertex_shader = int_cast(u8, _state.builtin_vertex_shader[.Default].index),
-        blend = .Opaque,
+        ps = int_cast(u8, _state.builtin_pixel_shader[.Default].index),
+        vs = int_cast(u8, _state.builtin_vertex_shader[.Default].index),
+        blend_mode = .Opaque,
     }
 
     bind_pixel_shader_by_handle({})
@@ -3115,15 +3094,15 @@ bind_layer :: proc(#any_int layer: i32) {
 }
 
 bind_blend :: proc(blend: Blend_Mode) {
-    _state.bind_state.blend = blend
+    _state.bind_state.blend_mode = blend
 }
 
 bind_fill :: proc(fill: Fill_Mode) {
-    _state.bind_state.fill = fill
+    _state.bind_state.fill_mode = fill
 }
 
 bind_depth :: proc(depth: Depth_Mode) {
-    _state.bind_state.depth = depth
+    _state.bind_state.depth_mode = depth
 }
 
 bind_pixel_shader :: proc {
@@ -3167,17 +3146,17 @@ bind_texture_by_name :: proc(name: string) -> bool {
 
 bind_pixel_shader_by_handle :: proc(handle: Pixel_Shader_Handle) {
     if _, ok := get_internal_pixel_shader(handle); ok {
-        _state.bind_state.pixel_shader = u8(handle.index)
+        _state.bind_state.ps = u8(handle.index)
     } else {
-        _state.bind_state.pixel_shader = u8(_state.builtin_pixel_shader[.Default].index)
+        _state.bind_state.ps = u8(_state.builtin_pixel_shader[.Default].index)
     }
 }
 
 bind_vertex_shader_by_handle :: proc(handle: Vertex_Shader_Handle) {
     if _, ok := get_internal_vertex_shader(handle); ok {
-        _state.bind_state.vertex_shader = u8(handle.index)
+        _state.bind_state.vs = u8(handle.index)
     } else {
-        _state.bind_state.vertex_shader = u8(_state.builtin_vertex_shader[.Default].index)
+        _state.bind_state.vs = u8(_state.builtin_vertex_shader[.Default].index)
     }
 }
 
@@ -3283,12 +3262,11 @@ draw_sprite :: proc(
 
     validate_vec3(pos)
 
-    if col.a < 0.01 || abs(scale.x * scale.y) < 0.0001 {
-        return
-    }
+    // mat := linalg.matrix3_from_quaternion_f32(rot *
+    //     linalg.quaternion_angle_axis_f32(angle, {0, 0, 1}))
+    mat: Mat3 = 1
 
-    mat := linalg.matrix3_from_quaternion_f32(rot *
-        linalg.quaternion_angle_axis_f32(angle, {0, 0, 1}))
+    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
 
     rect_size := rect_full_size(rect)
 
@@ -3297,11 +3275,8 @@ draw_sprite :: proc(
         scale.y * 0.5,
     }
 
-    layer := get_internal_draw_layer(_state.bind_state.draw_layer) or_else panic("Invalid layer")
+    size.y = .Flip_Y in draw_layer.flags ? -size.y : size.y
 
-    if .Flip_Y in layer.flags {
-        size.y *= -1
-    }
 
     switch scaling {
     case .Pixel:
@@ -3319,8 +3294,8 @@ draw_sprite :: proc(
     center -= mat[1] * anchor.y * size.y
 
     rect_size_sign := Vec2{
-        math.sign_f32(rect_size.x),
-        math.sign_f32(rect_size.y),
+        rect_size.x > 0 ? 1 : -1,
+        rect_size.y > 0 ? 1 : -1,
     }
 
     inst := pack_sprite_inst(
@@ -3335,10 +3310,9 @@ draw_sprite :: proc(
         param = param,
     )
 
-    key := _bind_state_batch_key(_state.bind_state)
+    key := _state.bind_state.key
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
-    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
     _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
 }
 
@@ -3370,7 +3344,7 @@ draw_rect :: proc(
         param = param,
     )
 
-    key := _bind_state_batch_key(_state.bind_state)
+    key := _state.bind_state.key
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
     draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
@@ -3487,26 +3461,6 @@ text_glyph_apply :: proc(offs: Vec2, r: rune, scale: Vec2, char_size: IVec2 = 8,
     return offs
 }
 
-_bind_state_batch_key :: proc(
-    bind_state:     Bind_State,
-    asset_index:    u16 = 0,
-    group_index:    u8 = 0,
-) -> Draw_Batch_Key {
-    return {
-        asset_index     = asset_index,
-        group           = group_index,
-        texture         = bind_state.texture,
-        ps              = bind_state.pixel_shader,
-        vs              = bind_state.vertex_shader,
-        packed = {
-            texture_mode    = bind_state.texture_mode,
-            depth_mode      = bind_state.depth,
-            fill_mode       = bind_state.fill,
-            blend_mode      = bind_state.blend,
-        },
-    }
-}
-
 draw_mesh :: proc(
     handle:     Mesh_Handle,
     pos:        Vec3,
@@ -3525,13 +3479,12 @@ draw_mesh :: proc(
 
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
-    key := _bind_state_batch_key(
-        _state.bind_state,
-        asset_index = u16(handle.index),
-        group_index = u8(mesh.group.index),
-    )
+    key := _state.bind_state.key
+    key.asset_index = u16(handle.index)
+    key.group = u8(mesh.group.index)
 
-    if linalg.matrix3x3_determinant(mat) < 0 {
+    // Scale diag mat determinant
+    if scale.x * scale.y * scale.z < 0 {
         switch key.fill_mode {
         case .All, .Wire: // no op
         case .Front: key.fill_mode = .Back
@@ -3582,7 +3535,8 @@ draw_triangles :: proc(
     offset, num := _push_draw_dynamic_verts(verts)
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
-    key := _bind_state_batch_key(_state.bind_state, int_cast(u16, num))
+    key := _state.bind_state.key
+    key.asset_index = int_cast(u16, num)
 
     inst := pack_mesh_inst(
         pos = pos,
@@ -3624,7 +3578,8 @@ draw_lines :: proc(
     offset, num := _push_draw_dynamic_verts(verts)
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
-    key := _bind_state_batch_key(_state.bind_state, int_cast(u16, num))
+    key := _state.bind_state.key
+    key.asset_index = int_cast(u16, num)
 
     inst := pack_mesh_inst(
         pos = pos,
@@ -3986,10 +3941,10 @@ _draw_batch_table_push :: proc(
     key:        Draw_Batch_Key,
     inst:       Inst,
     cull_rad:   f32,
-) {
-    hash := hash_splittable64(transmute(u64)key)
+) #no_bounds_check {
+    hash := #force_inline hash_splittable64(transmute(u64)key)
 
-    lookup_index := int(hash % DRAW_BATCH_TABLE_LOOKUP)
+    lookup_index := u64(hash % DRAW_BATCH_TABLE_LOOKUP)
     index := -1
     found := false
 
@@ -4009,7 +3964,7 @@ _draw_batch_table_push :: proc(
             break
         }
 
-        lookup_index = (lookup_index + 1) %% DRAW_BATCH_TABLE_LOOKUP
+        lookup_index = (lookup_index + 1) % DRAW_BATCH_TABLE_LOOKUP
     }
 
     if !found {
@@ -4042,8 +3997,10 @@ _draw_batch_table_push :: proc(
         new_inst := make([^]Inst, batch.cap, context.temp_allocator)
         new_cull := make([^]Draw_Cull_Group, batch.cap, context.temp_allocator)
 
-        intrinsics.mem_copy_non_overlapping(rawptr(new_inst), batch.inst_data, batch.len * size_of(Inst))
-        intrinsics.mem_copy_non_overlapping(rawptr(new_cull), batch.cull_data, batch.len * size_of(Draw_Cull_Group))
+        if batch.len > 0 {
+            intrinsics.mem_copy_non_overlapping(rawptr(new_inst), batch.inst_data, size_of(Inst) * batch.len)
+            intrinsics.mem_copy_non_overlapping(rawptr(new_cull), batch.cull_data, size_of(Draw_Cull_Group) * batch.len / LANES)
+        }
 
         // if batch.inst_data != nil {
         //     base.log_warn("REALLOC %x %i %i", uintptr(batch), batch.last_len, batch.cap)
@@ -5053,12 +5010,9 @@ _assertion_failure_proc :: proc(prefix, message: string, loc: runtime.Source_Cod
 
 @(require_results)
 pack_unorm8 :: proc "contextless" (val: [4]f32) -> [4]u8 {
-    return {
-        u8(clamp(val.x * 255, 0, 255)),
-        u8(clamp(val.y * 255, 0, 255)),
-        u8(clamp(val.z * 255, 0, 255)),
-        u8(clamp(val.w * 255, 0, 255)),
-    }
+    v := transmute(#simd[4]f32)val
+    v = intrinsics.simd_clamp(v * 255, 0, 255)
+    return transmute([4]u8)cast(#simd[4]u8)v
 }
 
 @(require_results)
@@ -5090,7 +5044,10 @@ unpack_unorm16 :: proc "contextless" (val: [2]u16) -> [2]f32 {
 // Special packing to allow -2..2 range
 @(require_results)
 pack_signed_color_unorm8 :: proc "contextless" (val: [4]f32) -> [4]u8 {
-    return pack_unorm8(val * 0.25 + 0.5)
+    v := transmute(#simd[4]f32)val
+    v = v * 0.25 * 255.0 + 0.5 * 255.0
+    v = intrinsics.simd_clamp(v, 0, 255)
+    return transmute([4]u8)cast(#simd[4]u8)v
 }
 
 @(require_results)
@@ -5103,12 +5060,12 @@ unpack_signed_color_unorm8 :: proc "contextless" (val: [4]u8) -> [4]f32 {
 // Input in range -8..8
 @(require_results)
 pack_uv_unorm16 :: proc "contextless" (val: [2]f32) -> [2]u16 {
-    return pack_unorm16((val + 8.0) * (1.0 / 16.0))
+    return #force_inline pack_unorm16((val + 8.0) * (1.0 / 16.0))
 }
 
 @(require_results)
 unpack_uv_unorm16 :: proc "contextless" (val: [2]u16) -> [2]f32 {
-    return unpack_unorm16(val) * 16.0 - 8.0
+    return #force_inline unpack_unorm16(val) * 16.0 - 8.0
 }
 
 
@@ -5306,66 +5263,79 @@ draw_perf_counter :: proc(kind: Perf_Counter_Kind, pos: Vec3, scale: f32 = 1, co
 
 // Lives for only the current frame. Measures sum nanoseconds.
 
-_perf_scopes: map[string]i64
+PERF_SCOPES_ENABLED :: #config(PERF_SCOPES_ENABLED, !RELEASE)
+
+when PERF_SCOPES_ENABLED {
+    _perf_scopes: map[string]i64
+}
 
 @(deferred_in_out = _perf_scope_add)
 perf_scope :: proc(name: string = "", loc := #caller_location) -> i64 {
-    return intrinsics.read_cycle_counter()
+    when PERF_SCOPES_ENABLED {
+        return intrinsics.read_cycle_counter()
+    } else {
+        return 0
+    }
 }
 
+@(disabled = !PERF_SCOPES_ENABLED,)
 _perf_scope_add :: proc(name: string, loc := #caller_location, start: i64) {
-    str := name == "" ? loc.procedure : name
-    prev := _perf_scopes[str]
-    _perf_scopes[str] = prev + (intrinsics.read_cycle_counter() - start)
+    when PERF_SCOPES_ENABLED {
+        str := name == "" ? loc.procedure : name
+        prev := _perf_scopes[str]
+        _perf_scopes[str] = prev + (intrinsics.read_cycle_counter() - start)
+    }
 }
 
 draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
-    scope_binds()
-    bind_texture(get_builtin_texture(.CGA8x8thick))
-    bind_depth(.Depth)
+    when PERF_SCOPES_ENABLED {
+        scope_binds()
+        bind_texture(get_builtin_texture(.CGA8x8thick))
+        bind_depth(.Depth)
 
-    Scope :: struct {
-        name:   string,
-        cycles: i64,
-    }
+        Scope :: struct {
+            name:   string,
+            cycles: i64,
+        }
 
-    scopes := make([]Scope, len(_perf_scopes), context.temp_allocator)
-    _scope_counter := 0
-    for name, scope in _perf_scopes {
-        scopes[_scope_counter] = {name, scope}
-        _scope_counter += 1
-    }
+        scopes := make([]Scope, len(_perf_scopes), context.temp_allocator)
+        _scope_counter := 0
+        for name, scope in _perf_scopes {
+            scopes[_scope_counter] = {name, scope}
+            _scope_counter += 1
+        }
 
-    slice.sort_by(scopes, proc(a, b: Scope) -> bool {
-        return a.name > b.name
-    })
+        slice.sort_by(scopes, proc(a, b: Scope) -> bool {
+            return a.name > b.name
+        })
 
-    rect := Rect{
-        min = {0, 1 - 1.0/128.0},
-        max = {0 + 1.0/128.0, 1},
-    }
+        rect := Rect{
+            min = {0, 1 - 1.0/128.0},
+            max = {0 + 1.0/128.0, 1},
+        }
 
-    FRAME_TIME :: 1.0 / 60.0
+        FRAME_TIME :: 1.0 / 60.0
 
-    cycles_to_ms := f64(_state.frame_dur_ns) / (f64(_state.frame_dur_cycles) * 1e6)
+        cycles_to_ms := f64(_state.frame_dur_ns) / (f64(_state.frame_dur_cycles) * 1e6)
 
-    for scope, i in scopes {
-        p := pos + Vec3{0, f32(i) * 16, 0}
+        for scope, i in scopes {
+            p := pos + Vec3{0, f32(i) * 16, 0}
 
-        ms := f32(f64(scope.cycles) * cycles_to_ms)
-        width := max(1, clamp(ms, 0, 16) * 10)
+            ms := f32(f64(scope.cycles) * cycles_to_ms)
+            width := max(1, clamp(ms, 0, 16) * 10)
 
-        text := base.tprintf("%s: %f ms", scope.name, ms)
-        draw_text(text, p)
-        draw_text(text, p + {1, 1, 0.001}, col = BLACK)
-        draw_sprite(p + {-5, 5, 0.01}, rect, {width, 16}, anchor = {-1, 0},
-            col = ms > 16.1 ? RED : (ms < 1 ? GREEN : ORANGE),
-        )
-    }
+            text := base.tprintf("%s: %f ms", scope.name, ms)
+            draw_text(text, p)
+            draw_text(text, p + {1, 1, 0.001}, col = BLACK)
+            draw_sprite(p + {-5, 5, 0.01}, rect, {width, 16}, anchor = {-1, 0},
+                col = ms > 16.1 ? RED : (ms < 1 ? GREEN : ORANGE),
+            )
+        }
 
-    // Flush
-    if _perf_scopes != nil {
-        clear(&_perf_scopes)
+        // Flush
+        if _perf_scopes != nil {
+            clear(&_perf_scopes)
+        }
     }
 }
 

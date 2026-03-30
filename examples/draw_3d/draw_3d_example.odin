@@ -94,12 +94,12 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         // Meshes
 
-        rv.draw_mesh(rv.get_mesh("Cube"), {3, 1, 1}, rv.quat_angle_axis(rv.get_time(), {0, 1, 0}), col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
-        rv.draw_mesh(rv.get_mesh("Cylinder"), {9, 2, 2}, scale = {1, 0.1 + rv.nsin(rv.get_time() * 0.5), 1}, col = rv.GRAY)
+        rv.draw_mesh(rv.get_builtin_mesh(.Cube), {3, 0, 0}, col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
+        rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), {9, 0, 0}, scale = {1, 0.1 + rv.nsin(rv.get_time() * 0.5), 1}, col = rv.GRAY)
 
         rv.bind_fill(.All)
 
-        // // Custom triangles
+        // Custom triangles
 
         rv.draw_triangle(
             pos = {
@@ -129,7 +129,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.draw_line_sphere({8, 0, 5}, mat = 0.7, col = rv.RED)
 
         rv.bind_pixel_shader(state.shader)
-        rv.draw_mesh(rv.get_mesh("Cube"), {3, -5, 0}, rv.quat_angle_axis(rv.get_time(), {0, 1, 0}), col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
+        rv.draw_mesh(rv.get_builtin_mesh(.Cube), {3, -5, 0}, col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
     }
 
     rv.bind_layer(1)
