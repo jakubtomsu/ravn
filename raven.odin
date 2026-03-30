@@ -4127,7 +4127,7 @@ submit_layers :: proc() {
     for &layer in _state.draw_layers {
         perf_scope("submit_layers cull")
 
-        if layer.camera == {} {
+        if layer.camera == {} || .No_Cull in layer.flags {
             continue
         }
 

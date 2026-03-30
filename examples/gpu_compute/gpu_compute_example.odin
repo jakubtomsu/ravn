@@ -124,8 +124,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, cam)
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
+    rv.bind_depth(.Depth)
 
     // rv.draw_mesh(
     //     rv.get_builtin_mesh(.Cylinder),
