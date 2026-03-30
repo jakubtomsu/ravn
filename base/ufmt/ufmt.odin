@@ -58,14 +58,14 @@ tprintf :: proc(format: string, args: ..any) -> string {
             return "<INVALID FORMAT>"
         }
 
-        if curr_arg >= len(args) {
-            return "<NOT ENOUGH ARGS>"
-        }
 
         qual, qual_size := runtime.string_decode_rune(curr)
         curr = curr[qual_size:]
 
-        arg := args[curr_arg]
+        arg: any = nil
+        if curr_arg < len(args) {
+            arg = args[curr_arg]
+        }
 
         consume_arg := true
         switch qual {
@@ -143,6 +143,9 @@ tprintf :: proc(format: string, args: ..any) -> string {
         }
 
         if consume_arg {
+            if curr_arg >= len(args) {
+                return "<NOT ENOUGH ARGS>"
+            }
             curr_arg += 1
         }
     }
