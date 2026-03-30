@@ -3253,7 +3253,6 @@ draw_sprite :: proc(
     col:        Vec4 = 1,
     rot:        Quat = 1,
     anchor:     Vec2 = 0,
-    angle:      f32 = 0,
     add_col:    Vec4 = 0,
     scaling:    Sprite_Scaling = .Pixel,
     param:      u32 = 0,
@@ -3262,9 +3261,7 @@ draw_sprite :: proc(
 
     validate_vec3(pos)
 
-    // mat := linalg.matrix3_from_quaternion_f32(rot *
-    //     linalg.quaternion_angle_axis_f32(angle, {0, 0, 1}))
-    mat: Mat3 = 1
+    mat := linalg.matrix3_from_quaternion_f32(rot)
 
     draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
 
@@ -4161,6 +4158,16 @@ submit_layers :: proc() {
                 fru_planes = fru_planes,
             )
         }
+
+        for &batch in layer.sprites.batches[:layer.sprites.len] {
+            #force_inline _cull_draw_batch(
+                batch = &batch,
+                frustum = fru,
+                fru_pos = fru_pos,
+                fru_rad = fru_rad,
+                fru_planes = fru_planes,
+            )
+        }
     }
 
     _upload_gpu_global_constants()
@@ -4410,9 +4417,9 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
     _perf_counter_add(.Num_Draw_Calls, layer.meshes.len)
 
-    for bucket_index in 0..<layer.meshes.len {
-        key := layer.meshes.keys[bucket_index]
-        batch := layer.meshes.batches[bucket_index]
+    for batch_index in 0..<layer.meshes.len {
+        key := layer.meshes.keys[batch_index]
+        batch := layer.meshes.batches[batch_index]
         _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
 
         pip_desc.index.resource = _state.groups[key.group].ibuf
