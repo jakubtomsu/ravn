@@ -1124,12 +1124,14 @@ when BACKEND == BACKEND_WGPU {
         wgpu.ComputePassEncoderSetPipeline(_state.compute_pass_encoder, curr_pip.pip)
     }
 
-    _update_buffer :: proc(res: ^Resource_State, data: []u8, offset: int) {
+    _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]byte) {
+        temp := _combine_buffer_writes_temp(buffers)
+        
         wgpu.QueueWriteBuffer(_state.queue,
             res.buf,
             bufferOffset = u64(offset),
-            data = raw_data(data),
-            size = uint(len(data)),
+            data = raw_data(temp),
+            size = uint(len(temp)),
         )
     }
 

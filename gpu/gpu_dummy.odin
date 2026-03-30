@@ -68,7 +68,7 @@ when BACKEND == BACKEND_DUMMY {
     _bind_compute_pipeline :: proc(curr_pip: Compute_Pipeline_State, curr: Compute_Pipeline_Desc, prev: Compute_Pipeline_Desc) { dummy() }
 
     _update_constants :: proc(consts: ^Resource_State, data: []u8) { dummy() }
-    _update_buffer :: proc(res: ^Resource_State, data: []u8, offset: int) { dummy() }
+    _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]u8) { dummy() }
     _map_buffer :: proc(res: _Resource) -> []byte { dummy() }
     _unmap_buffer :: proc(res: _Resource) { dummy() }
     _update_texture_2d :: proc(res: Resource_State, data: []byte, slice: i32) { dummy() }

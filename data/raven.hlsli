@@ -71,7 +71,9 @@ RV_CONSTANTS_SLOT(1, cbuffer rv_layer_constants) {
 
 RV_CONSTANTS_SLOT(2, cbuffer rv_batch_constants) {
     uint rv_instance_offset;
-    uint rv_vertex_offset;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
 }
 
 

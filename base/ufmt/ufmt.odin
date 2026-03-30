@@ -58,14 +58,14 @@ tprintf :: proc(format: string, args: ..any) -> string {
             return "<INVALID FORMAT>"
         }
 
-        if curr_arg >= len(args) {
-            return "<NOT ENOUGH ARGS>"
-        }
 
         qual, qual_size := runtime.string_decode_rune(curr)
         curr = curr[qual_size:]
 
-        arg := args[curr_arg]
+        arg: any = nil
+        if curr_arg < len(args) {
+            arg = args[curr_arg]
+        }
 
         consume_arg := true
         switch qual {
@@ -143,6 +143,9 @@ tprintf :: proc(format: string, args: ..any) -> string {
         }
 
         if consume_arg {
+            if curr_arg >= len(args) {
+                return "<NOT ENOUGH ARGS>"
+            }
             curr_arg += 1
         }
     }
@@ -440,7 +443,7 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
         append_elem(buf, '}')
 
     case runtime.Type_Info_Bit_Field:
-        unimplemented()
+        append_elem_string(buf, "bit_field")
 
     case runtime.Type_Info_Enum:
         _ = v.base.variant.(runtime.Type_Info_Integer)
@@ -557,7 +560,44 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
 
     case runtime.Type_Info_Union: unimplemented()
     case runtime.Type_Info_Map: unimplemented()
-    case runtime.Type_Info_Matrix: unimplemented()
+    case runtime.Type_Info_Matrix:
+        append_elem(buf, '{')
+        if pretty {
+            append_elem(buf, '\n')
+        }
+
+        // Printed in Row-Major layout to match text layout
+        for row in 0..<v.row_count {
+            if pretty {
+                _append_indent(buf, depth + 1)
+            }
+
+            for col in 0..<v.column_count {
+                if col > 0 {
+                    append_elem_string(buf, ", ")
+                }
+
+                offset: int
+                switch v.layout {
+                case .Column_Major: offset = (row + col*v.elem_stride)*v.elem_size
+                case .Row_Major:    offset = (col + row*v.elem_stride)*v.elem_size
+                }
+
+                data := uintptr(value.data) + uintptr(offset)
+                _append_any(buf, any{rawptr(data), v.elem.id}, pretty = pretty, depth = depth + 1)
+            }
+
+            if pretty {
+                append_elem_string(buf, ";\n")
+            } else if row + 1 < v.row_count {
+                append_elem_string(buf, "; ")
+            }
+        }
+
+        if pretty {
+            _append_indent(buf, depth)
+        }
+        append_elem(buf, '}')
 
     case runtime.Type_Info_Soa_Pointer:
         unimplemented()

@@ -165,7 +165,7 @@ add_snake_segment :: proc() {
 
 _update :: proc(hot_state: rawptr) -> rawptr {
     rv.perf_scope()
-    
+
     if hot_state != nil {
         state = cast(^State)hot_state
     }
@@ -276,11 +276,11 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, state.cam_rot, state.cam_fov))
     rv.set_layer_params(1, rv.make_screen_camera())
 
+    rv.bind_depth(.Depth)
+
     if state.screen == .Game {
         snake := state.snake
 
-        rv.bind_depth_test(true)
-        rv.bind_depth_write(true)
         rv.bind_texture("default")
 
         sph := rv.get_mesh("Icosphere")
@@ -306,8 +306,6 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.bind_layer(1)
     rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
 
     screen := rv.get_viewport()
 
