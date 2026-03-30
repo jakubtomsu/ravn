@@ -177,7 +177,9 @@ State :: struct #align(64) {
     start_time:                 u64,
     curr_time:                  u64,
     last_time:                  u64,
+    last_cycle:                 i64,
     frame_dur_ns:               u64,
+    frame_dur_cycles:           i64,
     frame_index:                u64,
     screen_size:                [2]i32,
     screen_dirty:               bool,
@@ -1027,16 +1029,33 @@ begin_frame :: proc() -> (keep_running: bool) {
     perf_scope()
 
     assert(_state != nil)
-
-    free_all(context.temp_allocator)
-    // In case big file allocations happened...
-    defer free_all(context.temp_allocator)
+    assert(_state.bind_states_len == 0, "Looks like you forgot pop_binds() somewhere")
 
     if _state.frame_index == 0 {
         base.log_info("Time to first frame: %f ms", f32((platform.get_time_ns() - _state.start_time) / 1e3) * 1e-3)
     }
 
-    assert(_state.bind_states_len == 0, "Looks like you forgot pop_binds() somewhere")
+    if false && context.temp_allocator.procedure == runtime.default_temp_allocator_proc {
+        data := (cast(^runtime.Default_Temp_Allocator)context.temp_allocator.data).arena
+
+        curr := data.curr_block
+        num_blocks := 0
+        for curr != nil {
+            num_blocks += 1
+            curr = curr.prev
+        }
+
+        base.log_debug("[temp] curr: %v, blocksz: %v, blocknum: %v, cap: %v, used: %v (%f%%)",
+            data.curr_block,
+            data.minimum_block_size,
+            num_blocks,
+            data.total_capacity,
+            data.total_used,
+            f64(data.total_used) * 100.0 / f64(data.total_capacity),
+        )
+    }
+
+    free_all(context.temp_allocator)
 
     keep_running = true
 
@@ -1068,18 +1087,21 @@ begin_frame :: proc() -> (keep_running: bool) {
         _perf_counter_flush(&counter)
     }
 
-    gpu_can_begin_frame := gpu.begin_frame()
-    assert(gpu_can_begin_frame) // HACK
-
-    audio.update()
-
     _state.frame_index += 1
     _state.submitted_layers = false
 
     time_ns := platform.get_time_ns()
+    time_cycles := intrinsics.read_cycle_counter()
     _state.curr_time = time_ns
     _state.frame_dur_ns = time_ns - _state.last_time
+    _state.frame_dur_cycles = time_cycles - _state.last_cycle
     _state.last_time = time_ns
+    _state.last_cycle = time_cycles
+
+    gpu_can_begin_frame := gpu.begin_frame()
+    assert(gpu_can_begin_frame) // HACK
+
+    audio.update()
 
     _perf_counter_add(.Frame_Time, _state.frame_dur_ns)
 
@@ -1259,8 +1281,6 @@ end_frame :: proc(vsync := true) {
     curr_time := platform.get_time_ns()
 
     _perf_counter_add(.Frame_Work_Time, curr_time - _state.last_time)
-
-    _perf_scope_add("FRAME", start = _state.last_time)
 
     gpu.end_frame(sync = vsync)
 }
@@ -3262,8 +3282,6 @@ draw_sprite :: proc(
     perf_scope()
 
     validate_vec3(pos)
-    validate_vec2(scale)
-    validate_quat(rot)
 
     if col.a < 0.01 || abs(scale.x * scale.y) < 0.0001 {
         return
@@ -4052,7 +4070,7 @@ _cull_draw_batch :: proc(
     fru_pos:    [3]#simd[LANES]f32,
     fru_rad:    [3]#simd[LANES]f32,
     fru_planes: [6][4]#simd[LANES]f32,
-) {
+) #no_bounds_check {
     culled_insts := make([]Inst, batch.len, context.temp_allocator)
     culled_len := 0
 
@@ -5288,18 +5306,17 @@ draw_perf_counter :: proc(kind: Perf_Counter_Kind, pos: Vec3, scale: f32 = 1, co
 
 // Lives for only the current frame. Measures sum nanoseconds.
 
-_perf_scopes: map[string]u64
-
+_perf_scopes: map[string]i64
 
 @(deferred_in_out = _perf_scope_add)
-perf_scope :: proc(name: string = "", loc := #caller_location) -> u64 {
-    return platform.get_time_ns()
+perf_scope :: proc(name: string = "", loc := #caller_location) -> i64 {
+    return intrinsics.read_cycle_counter()
 }
 
-_perf_scope_add :: proc(name: string, loc := #caller_location, start: u64) {
+_perf_scope_add :: proc(name: string, loc := #caller_location, start: i64) {
     str := name == "" ? loc.procedure : name
     prev := _perf_scopes[str]
-    _perf_scopes[str] = prev + (platform.get_time_ns() - start)
+    _perf_scopes[str] = prev + (intrinsics.read_cycle_counter() - start)
 }
 
 draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
@@ -5309,7 +5326,7 @@ draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
 
     Scope :: struct {
         name:   string,
-        dur:    u64,
+        cycles: i64,
     }
 
     scopes := make([]Scope, len(_perf_scopes), context.temp_allocator)
@@ -5317,12 +5334,6 @@ draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
     for name, scope in _perf_scopes {
         scopes[_scope_counter] = {name, scope}
         _scope_counter += 1
-    }
-
-    // Flush
-    if _perf_scopes != nil {
-        delete(_perf_scopes)
-        _perf_scopes = {}
     }
 
     slice.sort_by(scopes, proc(a, b: Scope) -> bool {
@@ -5336,10 +5347,12 @@ draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
 
     FRAME_TIME :: 1.0 / 60.0
 
+    cycles_to_ms := f64(_state.frame_dur_ns) / (f64(_state.frame_dur_cycles) * 1e6)
+
     for scope, i in scopes {
         p := pos + Vec3{0, f32(i) * 16, 0}
 
-        ms := f32(scope.dur) * 1e-6
+        ms := f32(f64(scope.cycles) * cycles_to_ms)
         width := max(1, clamp(ms, 0, 16) * 10)
 
         text := base.tprintf("%s: %f ms", scope.name, ms)
@@ -5348,6 +5361,11 @@ draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
         draw_sprite(p + {-5, 5, 0.01}, rect, {width, 16}, anchor = {-1, 0},
             col = ms > 16.1 ? RED : (ms < 1 ? GREEN : ORANGE),
         )
+    }
+
+    // Flush
+    if _perf_scopes != nil {
+        clear(&_perf_scopes)
     }
 }
 
