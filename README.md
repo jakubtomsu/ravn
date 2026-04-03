@@ -56,9 +56,8 @@ _update :: proc(_: rawptr) -> rawptr {
     rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.draw_text("Hello World! ☺", {100, 100, 0}, scale = 4, spacing = 1)
 
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE,
-        clear_color = rv.DARK_BLUE.rgb, clear_depth = true)
+    rv.submit_layers()
+    rv.render_layer(0, clear_color = rv.DARK_BLUE.rgb, clear_depth = true)
 
     return nil
 }
@@ -137,7 +136,7 @@ Code can be hot reloaded by running `odin run build -- run_hot my_package`.
 
 You can run the following command to export your game to web:
 ```
-odin run build -- export_web my_package
+odin run build -- export-web my_package
 ```
 
 To run the app locally, you must also create a tiny HTTP file server (to fetch the WASM) due to CORS policy. Something like this works:

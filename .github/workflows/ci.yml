@@ -29,24 +29,5 @@ jobs:
       - name: Check All
         shell: cmd
         run: |
-          set -e
-          set FLAGS=-debug
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          .\Odin\odin build examples/hello
-          .\Odin\odin build examples/hello %FLAGS%
-          .\Odin\odin build examples/hello %FLAGS% -define:GPU_BACKEND=WGPU
-          .\Odin\odin build examples/hello %FLAGS% -define:GPU_BACKEND=Dummy -define:PLATFORM_BACKEND=Dummy -define:AUDIO_BACKEND=None
-
-          .\Odin\odin build build
-
-          .\Odin\odin test .
-
-          .\Odin\odin build examples/hello_minimal
-          .\Odin\odin build examples/stress_test_3d
-          .\Odin\odin build examples/simple_3d
-          .\Odin\odin build examples/fps
-          .\Odin\odin build examples/snake_planet
-
-          .\Odin\odin build examples/standalone_platform_d3d11
-          .\Odin\odin build examples/standalone_gpu_sdl3_example
-          .\Odin\odin build examples/standalone_audio_simple
+          set "PATH=%CD%\Odin;%PATH%"
+          call check_all.cmd

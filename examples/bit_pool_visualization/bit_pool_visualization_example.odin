@@ -1,6 +1,5 @@
 package raven_example_hello
 
-import "core:log"
 import rv "../.."
 import "../../base"
 import "core:math/rand"
@@ -110,7 +109,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
                     base.bit_pool_set_1(&state.pool, index)
                     state.parts[index] = p
                 } else {
-                    log.error("Bit Pool full!")
+                    base.log_err("Bit Pool full!")
                 }
             }
 
@@ -120,7 +119,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
                     state.ll_next[index] = max(u32)
                     state.ll_parts[index] = p
                 } else {
-                    log.error("List Pool full!")
+                    base.log_err("List Pool full!")
                 }
             }
         }
@@ -278,8 +277,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.draw_text("LMB to spawn particles", {10, 10, 0}, scale = 2)
 
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.Vec3{0, 0, 0.1}, clear_depth = true)
+    rv.submit_layers()
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.Vec3{0, 0, 0.1}, clear_depth = true)
 
     return state
 }

@@ -24,9 +24,9 @@ main :: proc() {
             scale = 4,
         )
 
-        rv.upload_gpu_layers()
+        rv.submit_layers()
 
-        rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE,
+        rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE,
             clear_color = rv.Vec3{0, 0, 0.5},
             clear_depth = true,
         )

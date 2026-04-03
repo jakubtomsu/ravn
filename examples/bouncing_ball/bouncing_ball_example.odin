@@ -94,8 +94,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.bind_blend(.Alpha)
     rv.draw_text("PRESS SPACE to PAUSE BALL MOVEMENT", {20, 20, 0}, scale = 4, col = {0, 0, 0, 1})
 
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.Vec3{.98, .98, .98}, clear_depth = true)
+    rv.submit_layers()
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.Vec3{.98, .98, .98}, clear_depth = true)
 
     return state
 }

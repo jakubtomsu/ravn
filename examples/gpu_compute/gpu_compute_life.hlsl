@@ -1,5 +1,7 @@
-Texture2D<float4> src : register(t0);
-RWTexture2D<float4> dst : register(u0);
+#include "raven.hlsli"
+
+RV_RESOURCE_SLOT(0, Texture2D<float4> src);
+RV_RW_RESOURCE_SLOT(0, RWTexture2D<float4> dst);
 
 [numthreads(8, 8, 1)]
 void cs_main(int3 did : SV_DispatchThreadID) {

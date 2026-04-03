@@ -1,7 +1,5 @@
 package wasapi
 
-import "core:sys/windows"
-
 // MAKE_HRESULT(sev,fac,code) ((sev<<31) | (fac<<16) | (code))
 
 // Binary compatible with HRESULT

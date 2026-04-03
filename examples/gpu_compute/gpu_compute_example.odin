@@ -38,7 +38,7 @@ _init :: proc() {
 
     life_hlsl := #load("gpu_compute_life.hlsl", string)
 
-    cs_bin := shader_compiler.compile("life.hlsl", life_hlsl, {target = .D3D11, stage = .Compute}) or_else panic("Shader compile")
+    cs_bin := shader_compiler.compile("life.hlsl", life_hlsl, {target = rv.SHADER_COMPILER_TARGET, stage = .Compute, include_proc = rv._shader_include_proc}) or_else panic("Shader compile")
     state.cs = gpu.create_shader("life", cs_bin, .Compute) or_else panic("Shader")
 
     pixels := make([][4]u8, SIZE * SIZE, context.temp_allocator)
@@ -124,8 +124,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, cam)
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
+    rv.bind_depth(.Depth)
 
     // rv.draw_mesh(
     //     rv.get_builtin_mesh(.Cylinder),
@@ -155,11 +154,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.bind_layer(1)
     rv.draw_text(ufmt.tprintf("press space to restart\ntex: %v\nfill: %v", state.tex_index, state.fill), {10, 10, 0})
 
-    rv.draw_counter(.CPU_Frame_Ns, {20, 200, 0.1}, scale = 2, unit = 1e-6, col = rv.GREEN)
-
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, clear_color = rv.DARK_BLUE.rgb * 0.5, clear_depth = true)
-    rv.render_gpu_layer(1, clear_color = nil, clear_depth = true)
+    rv.submit_layers()
+    rv.render_layer(0, clear_color = rv.DARK_BLUE.rgb * 0.5, clear_depth = true)
+    rv.render_layer(1, clear_color = nil, clear_depth = true)
 
     return state
 }

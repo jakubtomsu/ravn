@@ -5,9 +5,11 @@ import "../base"
 
 import "base:runtime"
 
+SLANG_ENABLED :: #config(SHADER_COMPILER_SLANG_ENABLED, true)
+
 Target :: enum u8 {
     Invalid = 0,
-    DXIL,
+    DXBC,
     WGSL,
 }
 
@@ -45,18 +47,21 @@ compile :: proc(
     name:           string,
     source:         string,
     opts:           Options,
+    loc := #caller_location,
 ) -> (result: []byte, ok: bool) {
     assert(_state != nil, "You must first call init()")
     assert(opts.target != .Invalid, "You must specify the target output format")
     assert(opts.stage != .Invalid, "You must specify the shader stage")
 
+    base.log_info("Compiling %s: %v, %v", name, opts.stage, opts.target, loc = loc)
+
     switch opts.target {
     case .Invalid:
         assert(false)
 
-    case .DXIL:
+    case .DXBC:
         when ODIN_OS == .Windows {
-            result, ok = _compile_dxil(name, source, opts)
+            result, ok = _compile_dxbc(name, source, opts)
         } else {
             base.log_err("D3D11 shader compilation is not supported on non-windows platforms")
             assert(false)

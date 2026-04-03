@@ -373,6 +373,16 @@ def export_rscn(context):
             fh.write(p.encode("ascii"))
         prof("Write ASCII")
 
+    for action in bpy.data.actions:
+        start = int(action.frame_range[0])
+        end = int(action.frame_range[1])
+        print(f"Action: {action.name}, frames: {start}..{end}")
+        for frame in range(start, end):
+            bpy.context.scene.frame_set(frame)
+            for obj in bpy.data.objects:
+                if obj.type != 'ARMATURE':
+                    continue
+
 
 def main():
     start = time.perf_counter()

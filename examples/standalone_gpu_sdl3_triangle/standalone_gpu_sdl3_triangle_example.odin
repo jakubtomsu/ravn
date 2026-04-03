@@ -1,15 +1,16 @@
 package game
 
-import gpu "../../gpu"
+import "../../base"
+import "../../gpu"
+import "../../shader_compiler"
 import sdl "vendor:sdl3"
-import "core:log"
 
 main :: proc() {
     assert(sdl.Init({.VIDEO}))
     defer sdl.Quit()
 
-    context.logger = log.create_console_logger()
-    log.debug("Init")
+    context.logger = base.make_logger()
+    base.log_debug("Init")
 
     sdl.SetHintWithPriority(sdl.HINT_RENDER_DRIVER, "direct3d11", .OVERRIDE)
     window := sdl.CreateWindow("Raven GPU SDL3 Triangle", 854, 480, {.HIGH_PIXEL_DENSITY, .HIDDEN, .RESIZABLE})
@@ -25,9 +26,13 @@ main :: proc() {
 
     gpu.update_swapchain(native_window, size)
 
+    shader_compiler.init(new(shader_compiler.State))
+    ps_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Pixel, target = .DXBC}) or_else panic("ps_blob")
+    vs_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Vertex, target = .DXBC}) or_else panic("vs_blob")
+
     pip := gpu.create_pipeline("triangle-pip", gpu.pipeline_desc(
-        ps = gpu.create_shader("triangle-ps", transmute([]u8)_shader_code, .Pixel) or_else panic("ps"),
-        vs = gpu.create_shader("triangle-vs", transmute([]u8)_shader_code, .Vertex) or_else panic("vs"),
+        ps = gpu.create_shader("triangle-ps", ps_blob, .Pixel) or_else panic("ps"),
+        vs = gpu.create_shader("triangle-vs", vs_blob, .Vertex) or_else panic("vs"),
         out_colors = {.RGBA_U8}, // TODO
         resources = {
             gpu.create_buffer("verts", size_of(Vertex), data = gpu.slice_bytes([]Vertex{
@@ -56,13 +61,13 @@ main :: proc() {
         prev_size := size
         sdl.GetWindowSize(window, &size.x, &size.y)
         if size != prev_size {
-            log.debug("Resizing swapchain", size)
+            base.log_debug("Resizing swapchain", size)
             gpu.update_swapchain(native_window, size)
         }
 
         gpu.begin_frame()
 
-        gpu.begin_pass({
+        gpu.begin_pass("main", {
             colors = {
                 0 = {
                     resource = gpu.get_swapchain(),
@@ -74,6 +79,8 @@ main :: proc() {
 
         gpu.bind_pipeline(pip)
         gpu.draw_non_indexed(3)
+
+        gpu.end_pass()
 
         gpu.end_frame(sync = true)
     }

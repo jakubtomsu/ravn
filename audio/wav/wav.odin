@@ -22,12 +22,12 @@ Chunk :: struct {
 }
 
 RIFF_Chunk :: struct {
-    using chunk:        Chunk, // FILE_TYPE_BLOC_ID + Overall file size minus 8 bytes
+    using chunk:        Chunk, // RIFF_CHUNK_ID + Overall file size minus 8 bytes
     file_format_id:     [4]byte, // FILE_FORMAT_ID
 }
 
 Format_Chunk :: struct {
-    using chunk:        Chunk, // FORMAT_BLOC_ID + Chunk size minus 8 bytes, which is 16 bytes here (0x10)
+    using chunk:        Chunk, // FORMAT_CHUNK_ID + Chunk size minus 8 bytes, which is 16 bytes here (0x10)
     format:             Format,
     num_channels:       u16,
     sample_rate:        u32, // Sample rate frequency in hertz
@@ -37,7 +37,7 @@ Format_Chunk :: struct {
 }
 
 Data_Chunk :: struct {
-    using chunk:    Chunk, // DATA_BLOCK_ID + sample data size
+    using chunk:    Chunk, // DATA_CHUNK_ID + sample data size
 }
 
 Format :: enum u16 {
@@ -46,6 +46,20 @@ Format :: enum u16 {
     IEEE_754_Float = 3,
 }
 
+@(require_results)
+decode :: proc(data: []byte, allocator := context.allocator) -> (header: Header, samples: []f32, ok: bool) {
+    sample_bytes: []byte
+    header, sample_bytes, ok = decode_header(data)
+    if !ok {
+        log(.Error, "WAV: Failed to decode header")
+    }
+
+    samples = decode_samples(header.format, sample_bytes, allocator = allocator)
+
+    return header, samples, true
+}
+
+@(require_results)
 decode_header :: proc(data: []byte) -> (result: Header, result_data: []byte, ok: bool) {
     if len(data) < size_of(Header) {
         log(.Error, "WAV: Data is too small")
@@ -94,6 +108,7 @@ decode_header :: proc(data: []byte) -> (result: Header, result_data: []byte, ok:
     return result, result_data, ok
 }
 
+@(require_results)
 decode_samples :: proc(format: Format_Chunk, data: []byte, allocator := context.allocator) -> (result: []f32) {
     switch format.format {
     case .Invalid: fallthrough
@@ -139,7 +154,6 @@ decode_samples :: proc(format: Format_Chunk, data: []byte, allocator := context.
     case .IEEE_754_Float:
         switch format.bits_per_sample {
         case 32:
-            assert(len(data) % size_of(f32) == 0)
             return reinterpret_bytes(f32, data)
 
         case:
@@ -150,9 +164,42 @@ decode_samples :: proc(format: Format_Chunk, data: []byte, allocator := context.
     return result
 }
 
+// Initialize a header for writing it to a file.
+// To encode a WAV file, write the header immediately followed by the raw sample bytes.
+init_header :: proc(header: ^Header, sample_rate: u32, num_channels: u16, sample_size: u32, sample_format: Format, data: []byte) {
+    header^ = {
+        riff = RIFF_Chunk{
+            chunk = {
+                id = RIFF_CHUNK_ID,
+                size = u32(len(data)) - size_of(Chunk),
+            },
+            file_format_id = FILE_FORMAT_ID,
+        },
+        format = Format_Chunk{
+            chunk = {
+                id = FORMAT_CHUNK_ID,
+                size = size_of(Format_Chunk) - size_of(Chunk),
+            },
+            format = sample_format,
+            num_channels = num_channels,
+            sample_rate = sample_rate,
+            byte_per_sec = u32(sample_rate) * sample_size,
+            byte_per_bloc = u16(num_channels) * u16(sample_size),
+            bits_per_sample = u16(sample_size * 8),
+        },
+        data = Data_Chunk{
+            chunk = {
+                id = DATA_CHUNK_ID,
+                size = u32(len(data)),
+            },
+        },
+    }
+}
+
 @(require_results)
 reinterpret_bytes :: proc "contextless" ($T: typeid, bytes: []byte) -> []T {
     n := len(bytes) / size_of(T)
+    assert_contextless(n * size_of(T) == len(bytes))
     return ([^]T)(raw_data(bytes))[:n]
 }
 

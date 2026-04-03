@@ -16,19 +16,24 @@ NOTE: curly braces don't need to be doubled ({{ and }}) like in `core:fmt`
 By Jakub Tomšů
 Read https://jakubtomsu.github.io/posts/odin_comp_speed/ for more info.
 */
+#+no-instrumentation
 package ufmt
 
 import "base:runtime"
 
 INDENT :: "  "
 
-eprintf :: proc(format: string, args: ..any) {
-    runtime.print_string(tprintf(format = format, args = args))
+eprintf :: proc(format: string, args: ..any) -> int {
+    str := tprintf(format = format, args = args)
+    runtime.print_string(str)
+    return len(str)
 }
 
-eprintfln :: proc(format: string, args: ..any) {
-    runtime.print_string(tprintf(format = format, args = args))
+eprintfln :: proc(format: string, args: ..any) -> int {
+    str := tprintf(format = format, args = args)
+    runtime.print_string(str)
     runtime.print_byte('\n')
+    return len(str)
 }
 
 tprintf :: proc(format: string, args: ..any) -> string {
@@ -53,14 +58,14 @@ tprintf :: proc(format: string, args: ..any) -> string {
             return "<INVALID FORMAT>"
         }
 
-        if curr_arg >= len(args) {
-            return "<NOT ENOUGH ARGS>"
-        }
 
         qual, qual_size := runtime.string_decode_rune(curr)
         curr = curr[qual_size:]
 
-        arg := args[curr_arg]
+        arg: any = nil
+        if curr_arg < len(args) {
+            arg = args[curr_arg]
+        }
 
         consume_arg := true
         switch qual {
@@ -138,6 +143,9 @@ tprintf :: proc(format: string, args: ..any) -> string {
         }
 
         if consume_arg {
+            if curr_arg >= len(args) {
+                return "<NOT ENOUGH ARGS>"
+            }
             curr_arg += 1
         }
     }
@@ -435,14 +443,16 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
         append_elem(buf, '}')
 
     case runtime.Type_Info_Bit_Field:
-        unimplemented()
+        append_elem_string(buf, "bit_field")
 
     case runtime.Type_Info_Enum:
         _ = v.base.variant.(runtime.Type_Info_Integer)
         val := _extract_int(value.data, v.base.size)
         for enum_val, i in v.values {
             if val == u64(enum_val) {
-                append_elem(buf, '.')
+                if depth > 0 {
+                    append_elem(buf, '.')
+                }
                 append_elem_string(buf, v.names[i])
                 break
             }
@@ -531,6 +541,10 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
         raw := (transmute(^runtime.Raw_Dynamic_Array)value.data)^
         _append_slice(buf, raw.data, raw.len, v.elem_size, v.elem.id, pretty = pretty, depth = depth)
 
+    case runtime.Type_Info_Fixed_Capacity_Dynamic_Array:
+        length := (cast(^int)(uintptr(value.data) + v.len_offset))^
+        _append_slice(buf, value.data, length, v.elem_size, v.elem.id, pretty = pretty, depth = depth)
+
     case runtime.Type_Info_Any:
         _append_any(buf, (cast(^any)value.data)^, pretty = pretty, depth = depth)
 
@@ -546,7 +560,44 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
 
     case runtime.Type_Info_Union: unimplemented()
     case runtime.Type_Info_Map: unimplemented()
-    case runtime.Type_Info_Matrix: unimplemented()
+    case runtime.Type_Info_Matrix:
+        append_elem(buf, '{')
+        if pretty {
+            append_elem(buf, '\n')
+        }
+
+        // Printed in Row-Major layout to match text layout
+        for row in 0..<v.row_count {
+            if pretty {
+                _append_indent(buf, depth + 1)
+            }
+
+            for col in 0..<v.column_count {
+                if col > 0 {
+                    append_elem_string(buf, ", ")
+                }
+
+                offset: int
+                switch v.layout {
+                case .Column_Major: offset = (row + col*v.elem_stride)*v.elem_size
+                case .Row_Major:    offset = (col + row*v.elem_stride)*v.elem_size
+                }
+
+                data := uintptr(value.data) + uintptr(offset)
+                _append_any(buf, any{rawptr(data), v.elem.id}, pretty = pretty, depth = depth + 1)
+            }
+
+            if pretty {
+                append_elem_string(buf, ";\n")
+            } else if row + 1 < v.row_count {
+                append_elem_string(buf, "; ")
+            }
+        }
+
+        if pretty {
+            _append_indent(buf, depth)
+        }
+        append_elem(buf, '}')
 
     case runtime.Type_Info_Soa_Pointer:
         unimplemented()

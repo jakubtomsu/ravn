@@ -5,6 +5,7 @@ import "core:math/linalg"
 import "core:math/rand"
 import "core:math/noise"
 import rv "../.."
+import "../../base"
 import "../../platform"
 import "../../base/ufmt"
 
@@ -189,14 +190,20 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(1, rv.make_screen_camera())
 
     rv.bind_texture("default")
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
+    rv.bind_depth(.Depth)
     rv.bind_fill(.All)
 
     rv.draw_mesh(rv.get_mesh("Cube"),
         gun_pos,
         rot = gun_rot,
         scale = {0.03, 0.05, 0.25},
+    )
+
+    terrain_t := intersect_terrain(state.pos, mat[2])
+    rv.draw_mesh(rv.get_mesh("Cube"),
+        state.pos + mat[2] * terrain_t,
+        scale = 0.2,
+        col = rv.BLUE,
     )
 
     rv.draw_mesh(state.terrain_mesh, 0)
@@ -215,9 +222,11 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_text(ufmt.tprintf("speed: %v, vel: %v", linalg.length(state.vel), state.vel),
         {14, 64, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
-    rv.render_gpu_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
+    rv.draw_perf_scopes()
+
+    rv.submit_layers()
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
+    rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
 
     return state
 }
@@ -253,4 +262,37 @@ sample_terrain :: proc(pos: rv.Vec2) -> f32 {
         sub = rv.Vec2{1.0, 1.0} - sub
         return samples[3] + sub.x * (samples[2] - samples[3]) + sub.y * (samples[1] - samples[3])
     }
+}
+
+@(require_results)
+intersect_terrain :: proc(
+    pos:        rv.Vec3,
+    dir:        rv.Vec3,
+    tmin:       f32 = 0.15,
+    tmax:       f32 = 100.0,
+    step_size:  f32 = 0.025,
+) -> (time: f32, ok: bool) #optional_ok {
+    // https://iquilezles.org/articles/terrainmarching/
+
+    dt: f32 = 0.1
+    lh: f32 = 0.0
+    ly: f32 = 0.0
+    steps := 0
+
+    // accuracy proportional to the distance
+    for t: f32 = tmin; t < tmax; t += t * step_size {
+        p := pos + dir * t
+        h := sample_terrain(p.xz)
+        if p.y < h {
+            // interpolate intersection distance
+            time = t-dt+dt*(lh-ly)/(p.y-ly-h+lh)
+            return time, true
+        }
+        lh = h
+        ly = p.y
+        steps += 1
+    }
+
+
+    return tmax, false
 }

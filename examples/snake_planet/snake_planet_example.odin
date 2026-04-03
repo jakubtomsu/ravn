@@ -1,7 +1,6 @@
 package raven_snake_planet_example
 
 import "core:math/rand"
-import "core:log"
 import "core:math/linalg"
 import "core:math"
 import rv "../.."
@@ -85,7 +84,7 @@ _init :: proc() {
 
     state.death_sound = rv.create_sound_resource_encoded("death", #load("../data/snake_death_sound.wav")) or_else panic("load")
     state.berry_sound = rv.create_sound_resource_encoded("berry", #load("../data/snake_powerup_sound.wav")) or_else panic("load")
-    state.music_res = rv.create_sound_resource_encoded("music", #load("../data/Emerald.ogg")) or_else panic("load")
+    // state.music_res = rv.create_sound_resource_encoded("music", #load("../data/Emerald.ogg")) or_else panic("load")
 
     state.screen = .Menu
 }
@@ -122,7 +121,7 @@ new_game :: proc() {
     state.snake.pos = repel_from_obstacles(state.snake.pos, 0.3)
 
     rv.destroy_sound(state.music)
-    state.music = rv.play_sound(state.music_res, loop = true, async_decode = true)
+    state.music = rv.create_sound(state.music_res, flags = {.Loop})
 
     spawn_berry()
 }
@@ -136,7 +135,7 @@ spawn_berry :: proc() {
         state.berry.pos = repel_from_obstacles(state.berry.pos, 0.5)
     }
 
-    rv.play_sound(state.berry_sound, pitch = rand.float32_range(0.9, 1.2))
+    rv.create_sound(state.berry_sound, pitch = rand.float32_range(0.9, 1.2))
 }
 
 rand_dir :: proc() -> rv.Vec3 {
@@ -165,6 +164,8 @@ add_snake_segment :: proc() {
 }
 
 _update :: proc(hot_state: rawptr) -> rawptr {
+    rv.perf_scope()
+
     if hot_state != nil {
         state = cast(^State)hot_state
     }
@@ -260,7 +261,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state.cam_fov = rv.lexp(state.cam_fov, rv.deg(65 + rv.remap_clamped(state.berry_timer, 0, 0.5, 7, 0)), delta * 15)
 
         if die {
-            rv.play_sound(state.death_sound, pitch = rand.float32_range(0.9, 1.2))
+            rv.create_sound(state.death_sound, pitch = rand.float32_range(0.9, 1.2))
             rv.destroy_sound(state.music)
             state.music = {}
             state.screen = .Death
@@ -275,11 +276,11 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, state.cam_rot, state.cam_fov))
     rv.set_layer_params(1, rv.make_screen_camera())
 
+    rv.bind_depth(.Depth)
+
     if state.screen == .Game {
         snake := state.snake
 
-        rv.bind_depth_test(true)
-        rv.bind_depth_write(true)
         rv.bind_texture("default")
 
         sph := rv.get_mesh("Icosphere")
@@ -305,8 +306,6 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.bind_layer(1)
     rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_depth_test(true)
-    rv.bind_depth_write(true)
 
     screen := rv.get_viewport()
 
@@ -361,13 +360,11 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         }
     }
 
+    rv.draw_perf_scopes()
 
-    rv.draw_counter(.CPU_Frame_Ns, {10, 50, 0.2}, scale = 2, unit = 1e-6, col = rv.DARK_GREEN)
-    rv.draw_counter(.CPU_Frame_Work_Ns, {10, 50, 0.1}, scale = 2, unit = 1e-6, col = rv.GREEN, show_text = false)
-
-    rv.upload_gpu_layers()
-    rv.render_gpu_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0.05, 0.1, 0.2}, true)
-    rv.render_gpu_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
+    rv.submit_layers()
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0.05, 0.1, 0.2}, true)
+    rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
 
     // rv.end_frame(false) // disable VSYNC
 

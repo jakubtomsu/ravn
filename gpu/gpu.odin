@@ -1129,10 +1129,14 @@ update_constants :: proc(handle: Resource_Handle, data: []byte) {
     _update_constants(res, data)
 }
 
-update_buffer :: proc(handle: Resource_Handle, data: []byte, offset: int = 0) {
+// "buffers" can be multiple separate slices of CPU memory, written consecutively to the GPU memory.
+// Written range is [offset : offset + sum_of_all_buffer_sizes].
+// This way the backend can sometimes more efficiently copy the data to the native buffer,
+// compared to always allocating a temp buffer to combine the writes.
+update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte) {
     validate(_state.curr_pass_desc == {}, "You must do all buffer updates before rendering")
 
-    if len(data) == 0 {
+    if len(buffers) == 0 {
         return
     }
 
@@ -1140,12 +1144,18 @@ update_buffer :: proc(handle: Resource_Handle, data: []byte, offset: int = 0) {
     if !res_ok {
         return
     }
-
+    
+    total_len := 0
+    for buf in buffers {
+        total_len += len(buf)
+    }
+    
     validate(res.kind == .Buffer || res.kind == .Index_Buffer)
-    validate(len(data) <= int(res.size.x))
+    validate(total_len <= int(res.size.x))
     validate(res.size.y == 1 && res.size.z == 1)
     validate(res.usage != .Immutable)
-    _update_buffer(res, data, offset)
+    
+    _update_buffer(res, offset, buffers)
 }
 
 update_texture_2d :: proc(handle: Resource_Handle, data: []byte, #any_int slice: i32 = 0) {
@@ -1548,6 +1558,28 @@ get_pipeline_desc_bindings :: proc(desc: Pipeline_Desc) -> Pipeline_Bindings_Des
         resources = desc.resources,
         rw_resources = {},
     }
+}
+
+@(require_results)
+_combine_buffer_writes_temp :: proc(buffers: [][]byte) -> (result: []byte) {
+    if len(buffers) == 1 {
+        return buffers[0]
+    }
+    
+    sum_len := 0
+    for buf in buffers {
+        sum_len += len(buf)
+    }
+    
+    result = make([]byte, sum_len, context.temp_allocator)
+    
+    write_ptr := uintptr(raw_data(result))
+    for buf in buffers {
+        runtime.mem_copy_non_overlapping(rawptr(write_ptr), raw_data(buf), len(buf))
+        write_ptr += uintptr(len(buf))
+    }
+    
+    return result
 }
 
 
