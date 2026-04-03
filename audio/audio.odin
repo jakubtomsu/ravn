@@ -234,11 +234,11 @@ init :: proc(state: ^State) -> bool {
     _state.running = true
 
     for i in 1..<MAX_SOUNDS {
-        spsc_push(&_state.sounds_free, Handle_Index(i))
+        base.spsc_push(&_state.sounds_free, Handle_Index(i))
     }
 
     for i in 1..<MAX_RESOURCES {
-        spsc_push(&_state.resources_free, Handle_Index(i))
+        base.spsc_push(&_state.resources_free, Handle_Index(i))
     }
 
     set_master_mixer(default_master_mixer)
@@ -311,7 +311,7 @@ create_resource :: proc(
 ) -> (result: Resource_Handle, ok: bool) {
     assert(format != .Invalid)
 
-    index, index_ok := spsc_pop(&_state.resources_free)
+    index, index_ok := base.spsc_pop(&_state.resources_free)
     if !index_ok {
         base.log_err("No free sound resource slots")
         return {}, false
@@ -433,7 +433,7 @@ create_sound :: proc(
     assert(group_index >= 0)
     assert(group_index < NUM_GROUPS)
 
-    index, index_ok := spsc_pop(&_state.sounds_free)
+    index, index_ok := base.spsc_pop(&_state.sounds_free)
     if !index_ok {
         base.log_err("No free sound slots")
         return {}, false
@@ -926,7 +926,7 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
 
     _free_sound :: proc(sound_index: int) {
         intrinsics.atomic_store(&_state.sounds_state[sound_index], .Free)
-        spsc_push(&_state.sounds_free, Handle_Index(sound_index))
+        base.spsc_push(&_state.sounds_free, Handle_Index(sound_index))
     }
 }
 
