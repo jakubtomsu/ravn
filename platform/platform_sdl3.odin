@@ -101,7 +101,7 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _get_gamepad_state :: proc(#any_int index: int) -> (result: Gamepad_State, ok: bool) {
-
+        sdl3.GetGamepadFromPlayerIndex
     }
 
     @(require_results)
@@ -167,8 +167,8 @@ when BACKEND == BACKEND_SDL3 {
     //
 
     @(require_results)
-    _create_thread :: proc(procedure: Thread_Proc) -> (result: Thread) {
-        result.thread = sdl3.CreateThread(_thread_proc, "Thread", procedure)
+    _create_thread :: proc(procedure: Thread_Proc, name: string) -> (result: Thread) {
+        result.thread = sdl3.CreateThread(_thread_proc, clone_to_cstring(name), procedure)
 
         return
 
@@ -180,9 +180,6 @@ when BACKEND == BACKEND_SDL3 {
 
     _join_thread :: proc(thread: Thread) {
         sdl3.WaitThread(thread.thread, nil)
-    }
-
-    _set_thread_name :: proc(thread: Thread, name: string) {
     }
 
     @(require_results)

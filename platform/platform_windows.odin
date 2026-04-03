@@ -407,7 +407,7 @@ when BACKEND == BACKEND_WINDOWS {
     //
 
     @(require_results)
-    _create_thread :: proc(procedure: Thread_Proc) -> Thread {
+    _create_thread :: proc(procedure: Thread_Proc, name: string) -> Thread {
         handle := windows.CreateThread(
             lpThreadAttributes    = nil,
             dwStackSize           = 0,
@@ -421,6 +421,10 @@ when BACKEND == BACKEND_WINDOWS {
             base.log_err("Failed to create thread.")
             return {}
         }
+
+        buf: [128]u16
+        str := windows.utf8_to_wstring_buf(buf[:], name)
+        windows.SetThreadDescription(handle, str)
 
         return Thread{handle = handle}
 
@@ -441,12 +445,6 @@ when BACKEND == BACKEND_WINDOWS {
             base.log_err("Failed to close thread handle")
             return
         }
-    }
-
-    _set_thread_name :: proc(thread: Thread, name: string) {
-        buf: [128]u16
-        str := windows.utf8_to_wstring_buf(buf[:], name)
-        windows.SetThreadDescription(thread.handle, str)
     }
 
     @(require_results)

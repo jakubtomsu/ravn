@@ -1,7 +1,6 @@
 #+vet explicit-allocators shadowing style
 package raven
 
-import "core:fmt"
 import "base"
 import "base/ufmt"
 import "gpu"
@@ -1355,6 +1354,8 @@ _load_builtin_assets :: proc() {
         #panic("GPU backend not supported")
     }
 
+    // TODO: if slang dll is not present and is required, can we use precompiled WGSL?
+    // The reason is prototyping.
 
     _state.builtin_vertex_shader = {
         .Default = create_vertex_shader("default", default_vs) or_else panic("Failed to load default vertex shader"),

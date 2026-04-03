@@ -397,16 +397,12 @@ register_default_exception_handler :: proc() {
 // MARK: Thread
 //
 
-create_thread :: proc(procedure: Thread_Proc) -> Thread {
-    return _create_thread(procedure)
+create_thread :: proc(procedure: Thread_Proc, name: string) -> Thread {
+    return _create_thread(procedure, name)
 }
 
 join_thread :: proc(thread: Thread) {
     _join_thread(thread)
-}
-
-set_thread_name :: proc(thread: Thread, name: string) {
-    _set_thread_name(thread, name)
 }
 
 get_current_thread :: proc() -> Thread {

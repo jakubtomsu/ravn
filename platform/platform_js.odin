@@ -205,16 +205,12 @@ _get_time_ns :: proc() -> u64 {
 //
 
 @(require_results)
-_create_thread :: proc(procedure: Thread_Proc) -> Thread {
+_create_thread :: proc(procedure: Thread_Proc, name: string) -> Thread {
     _js_unsupported()
     return {}
 }
 
 _join_thread :: proc(thread: Thread) {
-    _js_unsupported()
-}
-
-_set_thread_name :: proc(thread: Thread, name: string) {
     _js_unsupported()
 }
 
