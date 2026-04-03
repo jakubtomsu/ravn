@@ -3246,6 +3246,7 @@ set_layer_params :: proc(
 // MARK: Draw
 //
 
+// TODO: 2d variants!
 draw_sprite :: proc(
     pos:        Vec3,
     rect:       Rect = {0, 1},

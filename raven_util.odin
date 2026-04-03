@@ -1,11 +1,12 @@
 // Gameplay utilities.
 // WARNING: all of this will likely be moved to a separate utils package.
-#+vet explicit-allocators shadowing unused
 package raven
 
 import "core:math"
 import "core:math/linalg"
 import "base:intrinsics"
+import "base/ufmt"
+import "core:simd/x86"
 
 // TODO: random vector utilities etc
 // TODO: 1d/2d/3d hashing
@@ -42,6 +43,10 @@ LIGHT_PURPLE    :: Vec4{0.75, 0.5, 1, 1}
 
 quat_angle_axis :: linalg.quaternion_angle_axis_f32
 
+eprintf :: ufmt.eprintf
+eprintfln :: ufmt.eprintfln
+tprintf :: ufmt.tprintf
+
 @(require_results)
 deg :: #force_inline proc "contextless" (degrees: f32) -> (radians: f32) {
     return degrees * math.RAD_PER_DEG
@@ -55,7 +60,7 @@ lerp :: proc "contextless" (a, b: $T, t: f32) -> T where !intrinsics.type_is_qua
 // Exponential lerp. Multiply rate by delta to get frame rate independent interpolation
 @(require_results)
 lexp :: proc "contextless" (a, b: $T, rate: f32) -> T {
-    return lerp(b, a, math.exp_f32(-rate))
+    return lerp(b, a, approx_nexp(rate))
 }
 
 @(require_results)
@@ -65,7 +70,7 @@ nlerp :: proc "contextless" (a, b: $T, t: f32) -> T {
 
 @(require_results)
 nlexp :: proc "contextless" (a, b: $T, rate: f32) -> T {
-    return nlerp(b, a, math.exp_f32(-rate))
+    return nlerp(b, a, approx_nexp(rate))
 }
 
 @(require_results)
@@ -239,6 +244,24 @@ spring2 :: proc "contextless" (xv: ^[2]$T, x_target: T, damp: f32, freq: f32, de
 }
 
 
+// https://gist.github.com/jakubtomsu/d25210b55037858c3ed35fe00182f92a
+@(require_results, enable_target_feature="sse")
+approx_nexp :: proc "contextless" (x: f32) -> (result: f32) {
+    A :: 1.1566406
+    C :: 0.53652346
+    denom := 1.0 + x * (A + C * x * x)
+    return rcp(denom)
+}
+
+@(require_results, enable_target_feature="sse")
+rcp :: proc "contextless" (denom: f32) -> (result: f32) {
+    when ODIN_ARCH == .amd64 {
+        return intrinsics.simd_extract(x86._mm_rcp_ss(cast(x86.__m128)denom), 0)
+    } else {
+        return 1.0 / denom
+    }
+}
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -363,16 +386,16 @@ make_3d_orthographic_camera :: proc(pos: Vec3, rot: Quat, fov: f32 = 10) -> Came
 }
 
 @(require_results)
-make_2d_camera :: proc(center: Vec3 = 0, fov: f32 = 1.0, angle: f32 = 0) -> Camera {
+make_2d_camera :: proc(center: Vec3 = 0, fov: Vec2 = 1.0, angle: f32 = 0) -> Camera {
     screen := get_screen_size()
     return {
         pos = center,
         rot = linalg.quaternion_angle_axis_f32(angle, {0, 0, 1}),
         projection = orthographic_projection(
-            left  = -fov * screen.x * 0.5,
-            right = fov * screen.x * 0.5,
-            top = fov * screen.y * 0.5,
-            bottom = -fov * screen.y * 0.5,
+            left  = -fov.x * screen.x * 0.5,
+            right = fov.x * screen.x * 0.5,
+            top = fov.y * screen.y * 0.5,
+            bottom = -fov.y * screen.y * 0.5,
             near = 1,
             far = 0,
         ),
