@@ -65,12 +65,12 @@ State :: struct #align(64) {
     listener_curr:      Listener,
     listener_prev:      Listener, // Audio thread access only
 
-    resources_free:     SPSC(MAX_RESOURCES, Handle_Index),
+    resources_free:     base.SPSC(MAX_RESOURCES, Handle_Index),
     resources_state:    [MAX_RESOURCES]Slot_State,
     resources_gen:      [MAX_RESOURCES]Handle_Gen,
     resources:          [MAX_RESOURCES]Resource,
 
-    sounds_free:        SPSC(MAX_SOUNDS, Handle_Index),
+    sounds_free:        base.SPSC(MAX_SOUNDS, Handle_Index),
     sounds_state:       [MAX_SOUNDS]Slot_State,
     sounds_gen:         [MAX_SOUNDS]Handle_Gen,
     sounds:             [MAX_SOUNDS]Sound,
