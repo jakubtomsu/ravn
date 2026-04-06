@@ -245,7 +245,7 @@ spring2 :: proc "contextless" (xv: ^[2]$T, x_target: T, damp: f32, freq: f32, de
 
 
 // https://gist.github.com/jakubtomsu/d25210b55037858c3ed35fe00182f92a
-@(require_results, enable_target_feature="sse")
+@(require_results)
 approx_nexp :: proc "contextless" (x: f32) -> (result: f32) {
     A :: 1.1566406
     C :: 0.53652346
@@ -253,13 +253,14 @@ approx_nexp :: proc "contextless" (x: f32) -> (result: f32) {
     return rcp(denom)
 }
 
-@(require_results, enable_target_feature="sse")
+@(require_results)
 rcp :: proc "contextless" (denom: f32) -> (result: f32) {
-    when ODIN_ARCH == .amd64 {
-        return intrinsics.simd_extract(x86._mm_rcp_ss(cast(x86.__m128)denom), 0)
-    } else {
+    // TODO: make this compile on WASM
+    // when ODIN_ARCH == .amd64 {
+        // return intrinsics.simd_extract(x86._mm_rcp_ss(cast(x86.__m128)denom), 0)
+    // } else {
         return 1.0 / denom
-    }
+    // }
 }
 
 

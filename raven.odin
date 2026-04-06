@@ -3627,14 +3627,15 @@ draw_triangle :: proc(
 
 // Prefer draw_lines if you need to efficiently draw many lines.
 draw_line :: proc(
-    pos:        [2]Vec3,
+    pos0:       Vec3,
+    pos1:       Vec3,
     col:        [2]Vec4 = WHITE,
     uvs:        [2]Vec2 = {{0, 0.5}, {1, 0.5}},
     add_col:    Vec4 = BLACK,
     normals:    Maybe([2]Vec3) = nil,
 ) {
-    validate_vec3(pos[0])
-    validate_vec3(pos[1])
+    validate_vec3(pos0)
+    validate_vec3(pos1)
 
     norm, norm_ok := normals.?
     if !norm_ok {
@@ -3644,7 +3645,7 @@ draw_line :: proc(
     verts: [2]Vertex
     for &v, i in verts {
         v = pack_vertex(
-            pos = pos[i],
+            pos = i == 0 ? pos0 : pos1,
             uv = uvs[i],
             normal = norm[i],
             col = col[i],

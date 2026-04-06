@@ -121,7 +121,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         // Line shapes
 
-        rv.draw_line({{-3, 0, 5}, {-3, 1, 5}}, col = rv.YELLOW)
+        rv.draw_line({-3, 0, 5}, {-3, 1, 5}, col = rv.YELLOW)
         rv.draw_line_mat3({-2, 0, 5})
         rv.draw_line_box({1, 0, 5}, 1, rv.GRAY)
         rv.draw_line_circle({4, 0, 5}, col = rv.ORANGE)
