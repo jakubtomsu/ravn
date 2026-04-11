@@ -193,7 +193,7 @@ load_hotreload_module :: proc(path: string) -> (result: Hotreload_Module, ok: bo
         return {}, false
     }
 
-    module_desc_ptr := cast(^base.Module_Desc)platform.module_symbol_address(module, "_module_desc")
+    module_desc_ptr := cast(^base.Module_Desc)platform.get_module_symbol_address(module, "_module_desc")
 
     if module_desc_ptr == nil {
         base.log_err("Hotreload: Failed to find _module_desc data")
@@ -202,7 +202,7 @@ load_hotreload_module :: proc(path: string) -> (result: Hotreload_Module, ok: bo
 
     result.desc = module_desc_ptr^
 
-    result.callback = auto_cast(platform.module_symbol_address(module, "_module_hot_step"))
+    result.callback = auto_cast(platform.get_module_symbol_address(module, "_module_hot_step"))
 
     if result.callback == nil {
         base.log_err("Hotreload: Failed to find the _module_hot_step proc")

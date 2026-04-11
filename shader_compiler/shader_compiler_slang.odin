@@ -3,15 +3,56 @@
 package raven_shader_compiler
 
 import "../base"
+import "../platform"
 import "slang"
 import "base:runtime"
 
 _Slang_State :: struct {
+    using vtable:   slang.Global_VTable,
+    initialized:    bool,
+    module:         platform.Module,
     global_session: ^slang.IGlobalSession,
 }
 
-_slang_init :: proc() {
-    _slang_check(slang.createGlobalSession(slang.API_VERSION, &_state.global_session))
+_slang_init :: proc() -> bool {
+    if _state.slang.initialized {
+        return true
+    }
+    
+    module_ok: bool
+    _state.module, module_ok = platform.load_module("slang.dll")
+    if !module_ok {
+        base.log_err("Failed to load slang.dll. Ensure it's in your working directory to compile shaders.")
+        return false
+    }
+    
+    _state.slang.vtable = {
+        createBlob                           = auto_cast _load_sym("slang_createBlob") or_return,
+        loadModuleFromSource                 = auto_cast _load_sym("slang_loadModuleFromSource") or_return,
+        loadModuleFromIRBlob                 = auto_cast _load_sym("slang_loadModuleFromIRBlob") or_return,
+        loadModuleInfoFromIRBlob             = auto_cast _load_sym("slang_loadModuleInfoFromIRBlob") or_return,
+        createGlobalSession                  = auto_cast _load_sym("slang_createGlobalSession") or_return,
+        createGlobalSession2                 = auto_cast _load_sym("slang_createGlobalSession2") or_return,
+        createGlobalSessionWithoutCoreModule = auto_cast _load_sym("slang_createGlobalSessionWithoutCoreModule") or_return,
+        shutdown                             = auto_cast _load_sym("slang_shutdown") or_return,
+    }
+    
+    if !_slang_check(_state.slang.createGlobalSession(slang.API_VERSION, &_state.slang.global_session)) {
+        return false
+    }
+    
+    _state.slang.initialized = true
+    
+    return true
+    
+    _load_sym :: proc(name: cstring) -> (rawptr, bool) {
+        result := platform.get_module_symbol_address(_state.module, name)
+        if result == nil {
+            base.log_err("Failed to find symbol '%s' in slang.dll", name)
+            return nil, false
+        }
+        return result, true
+    }
 }
 
 _compile_slang_wgsl :: proc(
@@ -19,13 +60,18 @@ _compile_slang_wgsl :: proc(
     source:         string,
     opts:           Options,
 ) -> (result: []byte, ok: bool) {
+    
+    if !_slang_init() {
+        return {}, false
+    }
+    
     // Implements something like the following slangc command:
     // slangc.exe name.hlsl -target wgsl -entry vs_main -stage vertex -o shader.wgsl -fvk-b-shift 0 0 -fvk-t-shift 8 0 -fvk-s-shift 16 0
 
     target_desc := slang.TargetDesc{
         structureSize = size_of(slang.TargetDesc),
         format = .WGSL,
-        profile = _state.global_session->findProfile("wgsl_1_0"),
+        profile = _state.slang.global_session->findProfile("wgsl_1_0"),
     }
 
     // Hardcoded for now...
@@ -81,11 +127,11 @@ _compile_slang_wgsl :: proc(
     }
 
     session: ^slang.ISession
-    _slang_check(_state.global_session->createSession(session_desc, &session))
+    _slang_check(_state.slang.global_session->createSession(session_desc, &session))
 
     cname := clone_to_cstring(name, context.temp_allocator)
 
-    source_blob := slang.createBlob(raw_data(source), len(source))
+    source_blob := _state.slang.createBlob(raw_data(source), len(source))
     diag: ^slang.IBlob
     module := session->loadModuleFromSource(cname, cname, source_blob, &diag)
 
@@ -199,7 +245,7 @@ _slang_ifilesystem_loadfile :: proc "system" (
         return .E_NOT_FOUND
     }
 
-    outBlob^ = slang.createBlob(raw_data(result), len(result))
+    outBlob^ = _state.slang.createBlob(raw_data(result), len(result))
     return .OK
 }
 

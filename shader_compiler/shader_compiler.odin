@@ -35,12 +35,11 @@ Include_Proc :: #type proc (path: string, user: rawptr) -> (string, bool)
 _state: ^State
 
 State :: struct {
-    using _slang: _Slang_State,
+    using slang: _Slang_State,
 }
 
 init :: proc(state: ^State) {
     _state = state
-    _slang_init()
 }
 
 compile :: proc(

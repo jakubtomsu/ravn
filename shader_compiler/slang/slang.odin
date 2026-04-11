@@ -4,19 +4,8 @@ package slang
 
 API_VERSION :: 0
 
-when ODIN_OS == .Windows {
-    foreign import lib "slang.lib"
-} else when ODIN_OS == .Darwin {
-    foreign import lib "libslang.dylib"
-} else when ODIN_OS == .Linux {
-    foreign import lib "libslang.so"
-} else {
-    #panic("Slang is not supported on this platform")
-}
-
 CapabilityID :: distinct i32
 ProfileID :: distinct i32
-
 
 Result :: enum u32 {
     // Windows COM HRESULT Compatible
@@ -73,13 +62,13 @@ GlobalSessionDesc_DEFAULT :: GlobalSessionDesc {
 
 // MARK: Global API
 
-@(link_prefix="slang_", default_calling_convention="c")
-foreign lib {
+// You must load this yourself.
+Global_VTable :: struct {
     // Create a blob from binary data.
     // @param data Pointer to the binary data to store in the blob. Must not be null.
     // @param size Size of the data in bytes. Must be greater than 0.
     // @return The created blob on success, or nil on failure.
-    createBlob :: proc(data: rawptr, #any_int size: uint) -> ^IBlob ---
+    createBlob: proc "c" (data: rawptr, #any_int size: uint) -> ^IBlob,
 
     // Load a module from source code with size specification.
     // @param session The session to load the module into.
@@ -89,14 +78,14 @@ foreign lib {
     // @param sourceSize Size of the source code data in bytes.
     // @param outDiagnostics (out, optional) Diagnostics output.
     // @return The loaded module on success, or nil on failure.
-    loadModuleFromSource :: proc(
+    loadModuleFromSource: proc "c" (
         session: ^ISession,
         moduleName: cstring,
         path: cstring,
         source: cstring,
         sourceSize: uint,
         outDiagnostics: ^^IBlob = nil
-    ) -> ^IModule ---
+    ) -> ^IModule,
 
     // Load a module from IR data.
     // @param session The session to load the module into.
@@ -106,14 +95,14 @@ foreign lib {
     // @param sourceSize Size of the IR data in bytes.
     // @param outDiagnostics (out, optional) Diagnostics output.
     // @return The loaded module on success, or nil on failure.
-    loadModuleFromIRBlob :: proc(
+    loadModuleFromIRBlob: proc "c" (
         session: ^ISession,
         moduleName: cstring,
         path: cstring,
         source: rawptr,
         sourceSize: uint,
         outDiagnostics: ^^IBlob = nil,
-    ) -> ^IModule ---
+    ) -> ^IModule,
 
     // Read module info (name and version) from IR data.
     // @param session The session to use for loading module info.
@@ -122,46 +111,46 @@ foreign lib {
     // @param outModuleVersion (out) Module version number.
     // @param outModuleCompilerVersion (out) Compiler version that created the module.
     // @param outModuleName (out) Name of the module.
-    // @return OK :: proc on success, or an error code on failure.
-    loadModuleInfoFromIRBlob :: proc(
+    // @return OK on success, or an error code on failure.
+    loadModuleInfoFromIRBlob: proc "c" (
         session: ^ISession,
         source: rawptr,
         sourceSize: uint,
         outModuleVersion: ^int,
         outModuleCompilerVersion: ^cstring,
         outModuleName: ^cstring,
-    ) -> Result ---
+    ) -> Result,
 
     // Create a global session, with the built-in core module.
     // @param apiVersion Pass VERSION
     // @param outGlobalSession (out)The created global session.
-    createGlobalSession :: proc(apiVersion: int, outGlobalSession: ^^IGlobalSession) -> Result ---
+    createGlobalSession: proc "c" (apiVersion: int, outGlobalSession: ^^IGlobalSession) -> Result,
 
     // Create a global session, with the built-in core module.
     // @param desc Description of the global session.
     // @param outGlobalSession (out)The created global session.
-    createGlobalSession2 :: proc(#by_ptr desc: GlobalSessionDesc, outGlobalSession: ^^IGlobalSession) -> Result ---
+    createGlobalSession2: proc "c" (#by_ptr desc: GlobalSessionDesc, outGlobalSession: ^^IGlobalSession) -> Result,
 
     // Create a global session, but do not set up the core module. The core module can
     // then be loaded via loadCoreModule or compileCoreModule
     // NOTE! API is experimental and not ready for production code
     // @param apiVersion Pass VERSION
     // @param outGlobalSession (out)The created global session that doesn't have a core module setup.
-    createGlobalSessionWithoutCoreModule :: proc(apiVersion: int, outGlobalSession: ^^IGlobalSession) -> Result ---
+    createGlobalSessionWithoutCoreModule: proc "c" (apiVersion: int, outGlobalSession: ^^IGlobalSession) -> Result,
 
     // Returns a blob that contains the serialized core module.
     // Returns nil if there isn't an embedded core module.
     // NOTE! API is experimental and not ready for production code
-    getEmbeddedCoreModule :: proc() -> ^IBlob ---
+    // getEmbeddedCoreModule: proc "c" () -> ^IBlob,
 
     // Cleanup all global allocations used by Slang, to prevent memory leak detectors from
     // reporting them as leaks. This function should only be called after all Slang objects
     // have been released. No other Slang functions such as `createGlobalSession`
     // should be called after this function.
-    shutdown :: proc() ---
+    shutdown: proc "c" (),
 
     // Return the last signaled internal error message.
-    getLastinternalErrorMessage :: proc() -> cstring ---
+    // getLastinternalErrorMessage: proc "c" () -> cstring,
 }
 
 // MARK: Types
