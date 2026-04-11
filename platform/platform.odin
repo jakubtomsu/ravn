@@ -370,8 +370,8 @@ unload_module :: proc(module: Module) {
 }
 
 @(require_results)
-module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
-    return _module_symbol_address(module, cstr)
+get_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
+    return _get_module_symbol_address(module, cstr)
 }
 
 sleep_ms :: proc(#any_int ms: int) {

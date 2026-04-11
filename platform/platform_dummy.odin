@@ -47,7 +47,7 @@ when BACKEND == BACKEND_DUMMY {
     @(require_results) _get_executable_path :: proc(allocator := context.temp_allocator) -> string { dummy() }
     @(require_results) _load_module :: proc(path: string) -> (result: Module, ok: bool) { dummy() }
     _unload_module :: proc(module: Module) { dummy() }
-    @(require_results) _module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) { dummy() }
+    @(require_results) _get_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) { dummy() }
     _sleep_ms :: proc(#any_int ms: int) { dummy() }
     @(require_results) _get_time_ns :: proc() -> u64 { dummy() }
 

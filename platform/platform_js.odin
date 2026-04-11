@@ -185,7 +185,7 @@ _unload_module :: proc(module: Module) {
 }
 
 @(require_results)
-_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
+_get_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
     _js_unsupported()
     return nil
 }

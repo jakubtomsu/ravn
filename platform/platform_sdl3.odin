@@ -149,7 +149,7 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     @(require_results)
-    _module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
+    _get_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
 
     }
 
