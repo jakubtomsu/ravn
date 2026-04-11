@@ -435,7 +435,7 @@ create_sound :: proc(
 
     index, index_ok := base.spsc_pop(&_state.sounds_free)
     if !index_ok {
-        base.log_err("No free sound slots")
+        // base.log_err("No free sound slots")
         return {}, false
     }
 

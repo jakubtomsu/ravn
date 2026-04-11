@@ -146,8 +146,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.draw_perf_scopes()
 
-    rv.draw_perf_counter(.Frame_Time, {10, 500, 0.2}, scale = 2, col = rv.DARK_GREEN)
-    rv.draw_perf_counter(.Frame_Work_Time, {10, 500, 0.1}, scale = 2, col = rv.GREEN, show_text = false)
+    rv.draw_perf_counter(.Frame_Time, {10, 500, 0.2}, scale = 2, col = rv.DARK_GREEN, show_text = false)
+    rv.draw_perf_counter(.Frame_Work_Time, {10, 500, 0.1}, scale = 2, col = rv.GREEN)
     rv.draw_perf_counter(.Num_Draw_Calls, {10, 550, 0.1}, col = rv.ORANGE)
     // rv.draw_perf_counter(.Num_Total_Instances, {10, 600, 0.1}, scale = 0.001, col = rv.ORANGE)
 
@@ -159,7 +159,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     return state
 }
 
-stress_draw :: proc(handle: rv.Mesh_Handle, pos: rv.Vec3, num: int = 256, col: rv.Vec4 = {1, 1, 1, 0.25}) {
+stress_draw :: proc(handle: rv.Mesh_Handle, pos: rv.Vec3, num: int = 512, col: rv.Vec4 = {1, 1, 1, 0.25}) {
     for i in 0..<num {
         rv.draw_mesh(handle,
             pos = pos + {0, 0, f32(i) * 3},

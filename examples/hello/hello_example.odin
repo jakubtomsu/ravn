@@ -24,7 +24,7 @@ main :: proc() {
 // while not app_requested_shutdown:
 //      1. read input and prepare frame
 //      2. module.update() <--- we're here
-//      3. submit GPU commands wait for new frame (vsync)
+//      3. submit GPU commands wait for new frame using vsync
 //
 // NOTE: see simple_3d or other examples to learn how a full app with state does hotreload.
 _update :: proc(_: rawptr) -> rawptr {

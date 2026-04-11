@@ -173,8 +173,8 @@ Draw_Cull_Group :: struct #raw_union {
 
 Depth_Mode :: enum u8 {
     None        = 0b00,
-    Only_Test   = 0b10,
-    Only_Write  = 0b01,
+    Only_Test   = 0b01,
+    Only_Write  = 0b10,
     Depth       = 0b11,
 }
 
@@ -2394,8 +2394,8 @@ _render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 _gpu_pipeline_desc_apply_draw_key :: proc(pip_desc: ^gpu.Pipeline_Desc, key: Draw_Batch_Key, loc := #caller_location) {
     pip_desc.blends[0] = _gpu_blend_mode_desc(key.blend_mode)
     pip_desc.cull, pip_desc.fill = _gpu_fill_mode(key.fill_mode)
-    pip_desc.depth_comparison = bool(u8(key.depth_mode) & 1) ? .Greater_Equal : .Never
-    pip_desc.depth_write = bool(u8(key.depth_mode) & 2)
+    pip_desc.depth_comparison = bool(u8(key.depth_mode) & (1 << 0)) ? .Greater_Equal : .Always
+    pip_desc.depth_write = bool(u8(key.depth_mode) & (1 << 1))
     pip_desc.ps = gpu.Shader_Handle(_state.pixel_shaders[key.ps])
     pip_desc.vs = gpu.Shader_Handle(_state.vertex_shaders[key.vs])
 
