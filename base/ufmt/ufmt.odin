@@ -36,6 +36,11 @@ eprintfln :: proc(format: string, args: ..any) -> int {
     return len(str)
 }
 
+ctprintf :: proc(format: string, args: ..any) -> cstring {
+    return cstring(raw_data(tprintf(format, args)))
+}
+
+
 tprintf :: proc(format: string, args: ..any) -> string {
     curr := format
 
@@ -149,8 +154,10 @@ tprintf :: proc(format: string, args: ..any) -> string {
             curr_arg += 1
         }
     }
+    
+    append_elem(&buf, 0)
 
-    return string(buf[:])
+    return string(buf[:len(buf) - 1])
 }
 
 _append_string :: proc(buf: ^[dynamic]byte, str: string, quoted := false) {
