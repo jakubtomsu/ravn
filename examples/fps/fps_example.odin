@@ -97,6 +97,9 @@ _init :: proc() {
                 }
 
                 normal := linalg.normalize0(linalg.cross(verts[1].pos - verts[0].pos, verts[2].pos - verts[0].pos))
+                if normal.y < 0 {
+                    normal = -normal
+                }
 
                 for &v in verts[:3] {
                     v.normal = rv.pack_unorm8(normal.xyzz).xyz // hack
@@ -207,13 +210,6 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     )
 
     rv.draw_mesh(state.terrain_mesh, 0)
-
-    rv.draw_mesh(
-        rv.get_mesh("Plane"),
-        {0, 0, 0},
-        scale = 25,
-        col = rv.GRAY,
-    )
 
     rv.bind_layer(1)
 
