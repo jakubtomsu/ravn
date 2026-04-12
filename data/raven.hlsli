@@ -188,4 +188,24 @@ struct RV_Varyings {
     nointerpolation uint tex_slice : TEXSLICE;
 };
 
+// Calculate luminance (Y) from color.
+// Uses CIE 1931 assuming Rec709 RGB values.
+float luminance(float3 rgb) {
+    return dot(rgb, float3(0.2126f, 0.7152f, 0.0722f));
+}
+
+// Calculates schlick fresnel term.
+// f0: The fresnel reflectance an grazing angle.
+// angle: The angle between view and half-vector.
+float3 fresnel(float3 f0, float angle) {
+    return f0 + (1.0 - f0) * pow(1.0 - angle, 5.0);
+}
+
+float3x3 adjugate(float3x3 m) {
+    return float3x3(
+        cross(m[1], m[2]),
+        cross(m[2], m[0]),
+        cross(m[0], m[1]));
+}
+
 #endif // RAVEN
