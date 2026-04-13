@@ -27,7 +27,10 @@ Shape_Kind :: enum u8 {
     Triangle,
     Box,
     Sphere,
+    Cylinder,
     Capsule,
+    Uncapped_Cylinder,
+    Rounded_Triangle,
 }
 
 main :: proc() {
@@ -61,6 +64,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     delta := rv.get_delta_time()
 
     // Flycam controls
+    mat: rv.Mat3
     {
         move: rv.Vec3
         if rv.key_down(.D) do move.x += 1
@@ -74,7 +78,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state.cam_ang.x = clamp(state.cam_ang.x, -math.PI * 0.49, math.PI * 0.49)
 
         cam_rot := rv.euler_rot(state.cam_ang)
-        mat := linalg.matrix3_from_quaternion_f32(cam_rot)
+        mat = linalg.matrix3_from_quaternion_f32(cam_rot)
 
         speed: f32 = 4.0
         if rv.key_down(.Left_Shift) {
@@ -95,6 +99,11 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     
     if rv.key_pressed(.Space) {
         state.anim_rot = !state.anim_rot
+    }
+    
+    cam_sweep: Sweep = {
+        t = 10000,
+        hit = state.cam_pos + mat[2] * 10000,
     }
 
     { rv.scope_binds()
@@ -133,7 +142,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             { 0,  1,  1},
         }
         
-        rot := linalg.quaternion_angle_axis_f32(rv.get_time(), 1)
+        rot := linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0})
         
         for &d in points {
             d = linalg.normalize(d)
@@ -147,13 +156,18 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         for shape in Shape_Kind {
             draw_shape(shape, center)
             
+            if shape != .Plane {
+                update_sweep_point_vs_shape(&cam_sweep, state.cam_pos, mat[2], shape, center)
+                update_sweep_point_vs_shape(&cam_sweep, state.cam_pos, mat[2], shape, center + {0, 0, 10})
+            }
+            
             // TODO:
             // - reflection from hit
             // - raycast parallel to surface
             
             for d in points {
                 start := center + d * 3
-                move := -d * 3
+                move := -d * 2
                 
                 t, hit, nor, ok := sweep_point_vs_shape(start, move, shape, center)
                 
@@ -174,10 +188,10 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             center.z += 10
             
             draw_shape(shape, center)
-            
-            for offs0 in 0..<i32(12) {
-                for offs1 in 0..<i32(12) {
-                    v := rv.vcast(f32, [3]i32{offs0, 6, offs1} - 6) / 6.0
+                    
+            for offs0 in 0..<i32(24) {
+                for offs1 in 0..<i32(24) {
+                    v := rv.vcast(f32, [3]i32{offs0, 12, offs1} - 12) / 12.0
                     
                     if state.anim_rot {
                         v = linalg.quaternion128_mul_vector3(
@@ -199,21 +213,30 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             center.z = 0
             center.x += 10
         }
+        
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit, scale = 0.075, col = rv.DARK_CYAN)
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit + cam_sweep.nor * 0.1, scale = 0.05, col = rv.CYAN)
     }
 
     rv.bind_layer(1)
     rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.bind_depth(.Depth)
-    rv.draw_text("Use WASD and QE to move, mouse to look, Space to toggle animation", {20, 20, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
+    rv.draw_text("Use WASD and QE to move, mouse to look, Space to toggle animation", {20, 20, 0.1}, scale = 1)
+    rv.draw_text(rv.tprintf("%f", cam_sweep.t), {20, 40, 0.1}, scale = 1)
 
     rv.submit_layers()
     rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
-    rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
+    rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, true)
 
     return state
 }
 
 draw_shape :: proc(shape: Shape_Kind, center: rv.Vec3) {
+    tri := TRI
+    for &v in tri {
+        v += center
+    }
+    
     switch shape {
     case .Box:
         rv.draw_mesh(rv.get_builtin_mesh(.Cube), center, col = rv.GRAY)
@@ -224,24 +247,34 @@ draw_shape :: proc(shape: Shape_Kind, center: rv.Vec3) {
     case .Plane:
         rv.draw_mesh(rv.get_builtin_mesh(.Disk), center, col = rv.GRAY)
     
+    case .Cylinder, .Uncapped_Cylinder:
+        rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), center, col = rv.GRAY)
+    
     case .Capsule:
         rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), center, col = rv.GRAY)
         rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, 1, 0}, col = rv.GRAY)
         rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, -1, 0}, col = rv.GRAY)
     
     case .Triangle:
-        tri := TRI
-        for &v in tri {
-            v += center
-        }
         rv.draw_triangle(tri, col = rv.GRAY)
+        
+    case .Rounded_Triangle:
+        rv.draw_triangle(tri, col = rv.GRAY)
+        for v in tri {
+            rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), v, scale = 0.5, col = rv.GRAY)
+        }
     }
 }
 
-sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, center: rv.Vec3) -> (t: f32, hit: [3]f32, nor: [3]f32, ok: bool) {
+sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, center: rv.Vec3, range: f32 = 1) -> (t: f32, hit: [3]f32, nor: [3]f32, ok: bool) {
+    tri := TRI
+    for &v in tri {
+        v += center
+    }
+        
     switch shape {
     case .Box:
-        t, ok = geom.sweep_point_vs_aabb(start, move, center - 1, center + 1)
+        t, ok = geom.sweep_point_vs_aabb(start, move, center - 1, center + 1, range = range)
         hit = start + move * t
         if ok {
             centered := hit - center
@@ -254,12 +287,12 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
         }
         
     case .Plane:
-        t, ok = geom.sweep_point_vs_plane(start, move, {0, 1, 0}, center.y)
+        t, ok = geom.sweep_point_vs_plane(start, move, {0, 1, 0}, center.y, range = range)
         hit = start + move * t
         nor = {0, 1, 0}
         
     case .Sphere:
-        t, ok = geom.sweep_point_vs_sphere(start, move, center, 1)
+        t, ok = geom.sweep_point_vs_sphere(start, move, center, 1, range = range)
         hit = start + move * t
         if ok {
             nor = linalg.normalize(hit - center)
@@ -267,7 +300,8 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
     
     case .Capsule:
         points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
-        t, ok = geom.sweep_point_vs_capsule(start, move, points, 1)
+        // t, ok = geom.sweep_point_vs_capsule(start, move, points, 1, range = range)
+        t, ok = intersect_segment_capsule({start, start + move}, points, 1)
         hit = start + move * t
         if ok {
             rel := hit - points[0]
@@ -277,12 +311,18 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
             nor = linalg.normalize(hit - close)
         }
         
+    case .Cylinder:
+        points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
+        t, ok = geom.sweep_point_vs_cylinder(start, move, points, 1, range = range)
+        hit = start + move * t
+        
+    case .Uncapped_Cylinder:
+        points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
+        t, ok = geom.sweep_point_vs_uncapped_cylinder(start, move, points, 1, range = range)
+        hit = start + move * t
+        
     case .Triangle:
-        tri := TRI
-        for &v in tri {
-            v += center
-        }
-        t, ok = geom.sweep_point_vs_triangle(start, move, tri)
+        t, ok = geom.sweep_point_vs_triangle(start, move, tri, range = range)
         hit = start + move * t
         if ok {
             nor = linalg.normalize(linalg.cross(
@@ -294,13 +334,134 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
                 nor = -nor
             }
         }
+        
+    case .Rounded_Triangle:
+        t, ok = geom.sweep_sphere_vs_triangle(start, move, 0.5, tri, range = range)
+        hit = start + move * t
     }
     
     return t, hit, nor, ok
 }
 
 TRI :: [3][3]f32{
-    {0, 0, 1},
+    {0, 1, 1},
     {-1, 0, -1},
     {1, 0, -1},
+}
+
+Sweep :: struct {
+    t:      f32,
+    hit:    rv.Vec3,
+    nor:    rv.Vec3,
+}
+
+update_sweep_point_vs_shape :: proc(sweep: ^Sweep, start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, center: rv.Vec3) {
+    t, hit, nor, ok := sweep_point_vs_shape(start, move, shape, center, range = sweep.t)
+    
+    if ok && t < sweep.t {
+        sweep^ = {
+            t = t,
+            hit = hit,
+            nor = nor,
+        }
+    }
+}
+
+
+
+intersect_segment_capsule :: proc(segment: [2]rv.Vec3, points: [2]rv.Vec3, rad: f32) -> (t: f32, ok: bool) {
+    d := points[1] - points[0]
+    m := segment[0] - points[0]
+    n := segment[1] - segment[0]
+    md := linalg.dot(m, d)
+    nd := linalg.dot(n, d)
+    dd := linalg.dot(d, d)
+    // // Test if segment fully outside either endcap of cylinder
+    if md + rad< 0 && md + nd + rad < 0 {
+        return 1, false // Segment outside ’a’ side of cylinder
+    }
+    if md - rad > dd && md + nd - rad > dd {
+        return 1, false // Segment outside ’b’ side of cylinder
+    }
+    // TODO(?): fast early out if both point squared dist from the line is > rad^2
+    nn := linalg.dot(n, n)
+    mn := linalg.dot(m, n)
+    mm := linalg.dot(m, m)
+    a := dd * nn - nd * nd
+    k := mm - rad * rad
+    c := dd * k - md * md
+    EPS :: 1e-6
+    if abs(a) < EPS {
+        // Segment runs parallel to cylinder axis
+        if c > 0 {
+            return 1, false
+        }
+        // Now known that segment intersects cylinder; figure out how it intersects
+        if md < 0 {
+            if (k > 0 && mn > 0) || nn == 0 {
+                return 1, false
+            }
+            discr := mn * mn - k * nn
+            // A negative discriminant corresponds to ray missing sphere
+            if discr < 0 do return 1, false
+            // Ray now found to intersect sphere, compute smallest t value of intersection
+            t = -mn - linalg.sqrt(discr)
+            // If t is negative, ray started inside sphere so clamp t to zero
+            t /= nn
+            return t, true
+        } else if md > dd {
+            m := segment[0] - points[1]
+            b := linalg.dot(m, n)
+            c := linalg.dot(m, m) - rad * rad
+            // Exit if r’s origin outside s (c > 0) and r pointing away from s (b > 0)
+            if (c > 0 && b > 0) || nn == 0 {
+                return 1, false
+            }
+            discr := b * b - c * nn
+            // A negative discriminant corresponds to ray missing sphere
+            if discr < 0 do return 1, false
+            // Ray now found to intersect sphere, compute smallest t value of intersection
+            t = -b - linalg.sqrt(discr)
+            // If t is negative, ray started inside sphere so clamp t to zero
+            t /= nn
+            return t, true
+        } else {
+            // ’a’ lies inside cylinder
+            t = 0
+        }
+        return t, true
+    }
+    b := dd * mn - nd * md
+    discr := b * b - a * c
+    if discr < 0 {
+        return 1, false // no real roots
+    }
+    t = (-b - linalg.sqrt(discr)) / a
+    if t < 0 || t > 1 {
+        return 1, false // intersection outside segment
+    }
+    if md + t * nd < 0 {
+        if (k > 0 && mn > 0) || nn == 0 {
+            return 1, false
+        }
+        discr := mn * mn - k * nn
+        // A negative discriminant corresponds to ray missing sphere
+        if discr < 0 do return 1, false
+        t = -mn - linalg.sqrt(discr)
+        t /= nn
+        return t, true
+    } else if md + t * nd > dd {
+        m := segment[0] - points[1]
+        b := linalg.dot(m, n)
+        c := linalg.dot(m, m) - rad * rad
+        if (c > 0 && b > 0) || nn == 0 {
+            return 1, false
+        }
+        discr := b * b - c * nn
+        if discr < 0 do return 1, false
+        t = -b - linalg.sqrt(discr)
+        t /= nn
+        return t, true
+    }
+    return t, true
 }
