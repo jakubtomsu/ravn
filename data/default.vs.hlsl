@@ -12,7 +12,8 @@ RV_Varyings vs_main(uint vid : SV_VertexID, uint inst_id : SV_InstanceID) {
     RV_Varyings vars;
     vars.pos = mul(rv_view_proj, float4(world_pos, 1.0f));
     vars.world_pos = world_pos;
-    vars.normal = mul(vert.normal, adjugate(inst.mat));
+    vars.normal = mul(adjugate(inst.mat), vert.normal);
+    vars.normal = vert.normal;
     vars.uv = vert.uv;
     vars.col = inst.col * vert.col;
     vars.add_col = inst.add_col;

@@ -2046,15 +2046,15 @@ submit_layers :: proc() {
     batcher: Batcher_State
 
     // Dynamic Verts
-    // TODO: the rendering code using this is actually broken once more layers have dyn verts.
-    // Draws somehow need to know the offset of the layer vert data.
     {
         perf_scope("submit_layers dynverts")
 
         gpu.update_buffer(
             _state.dynamic_vert_buf,
             offset = 0,
-            buffers = {gpu.slice_bytes(_state.dynamic_vert_upload_buf[:_state.dynamic_vert_upload_offs])},
+            buffers = {
+                gpu.slice_bytes(_state.dynamic_vert_upload_buf[:_state.dynamic_vert_upload_offs]),
+            },
         )
     }
 
@@ -2296,7 +2296,7 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.bind_pipeline(pipeline)
 
-        mesh := _state.meshes[key.asset_index]
+        mesh := _state.meshes[key.asset_index] 
 
         gpu.draw_indexed(
             index_num = mesh.index_num,

@@ -11,6 +11,6 @@ float4 ps_main(RV_Varyings vars, uint frontface : SV_IsFrontFace) : SV_Target {
     if (col.a < 0.001) {
         discard;
     }
-
+    
     return col;
 }

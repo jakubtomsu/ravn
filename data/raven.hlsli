@@ -97,7 +97,7 @@ RV_Vertex rv_unpack_vertex(RV_Vertex_Packed packed) {
     RV_Vertex res;
     res.pos = packed.pos.xyz;
     res.uv = packed.uv;
-    res.normal = rv_unpack_unorm8(packed.normal).xyz;
+    res.normal = rv_unpack_unorm8(packed.normal).xyz * 2.0 - 1.0;
     res.col = rv_unpack_unorm8(packed.col);
     return res;
 }
@@ -171,7 +171,7 @@ RV_Mesh_Inst rv_unpack_mesh_inst(RV_Mesh_Inst_Packed packed) {
         packed.mat_z_param.xyz);
     res.add_col = rv_unpack_signed_color_unorm8(asuint(packed.mat_x_add_col.w));
     res.tex_slice = (asuint(packed.mat_y_tex_slice_vert_offs.w) >> 0) & 0xff;
-    res.vert_offs = (asuint(packed.mat_y_tex_slice_vert_offs.w) >> 8) & 0xff;
+    res.vert_offs = (asuint(packed.mat_y_tex_slice_vert_offs.w) >> 8) & 0xffffff;
     res.param = asuint(packed.mat_z_param.w);
     return res;
 }

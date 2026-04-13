@@ -33,6 +33,7 @@ import debug_trace "core:debug/trace"
 // TODO: DXT texture compression
 // TODO: figure out file flushing and custom file data loop
 // TODO: all resources should return a handle if an identifier exists already
+// TODO: fix scene mesh normals
 
 RELEASE :: #config(RAVEN_RELEASE, false)
 VALIDATION :: #config(RAVEN_VALIDATION, !RELEASE)
@@ -311,6 +312,7 @@ set_state_ptr :: proc "contextless" (state: ^State) {
     platform._state = &_state.platform_state
     gpu._state = &_state.gpu_state
     audio._state = &_state.audio_state
+    shader_compiler._state = &_state.shader_compiler_state
 }
 
 get_state_ptr :: proc "contextless" () -> (state: ^State) {
