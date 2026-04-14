@@ -34,6 +34,7 @@ import debug_trace "core:debug/trace"
 // TODO: figure out file flushing and custom file data loop
 // TODO: all resources should return a handle if an identifier exists already
 // TODO: fix scene mesh normals
+// TODO: draw_2D variants
 
 RELEASE :: #config(RAVEN_RELEASE, false)
 VALIDATION :: #config(RAVEN_VALIDATION, !RELEASE)
@@ -1024,11 +1025,22 @@ Builtin_Texture :: enum u8 {
 }
 
 Builtin_Mesh :: enum u8 {
-    Icosphere,
+    Icosphere_0,
+    Icosphere_1,
+    Icosphere = Icosphere_1,
+    UV_Sphere_0,
+    UV_Sphere_1,
+    UV_Sphere = UV_Sphere_1,
     Cube,
     Plane,
-    Disk,
-    Cylinder,
+    Disk_0,
+    Disk_1,
+    Disk = Disk_1,
+    Cylinder_0,
+    Cylinder_1,
+    Cylinder = Cylinder_1,
+    Utah_Teapot,
+    Suzanne,
 }
 
 Builtin_Vertex_Shader :: enum u8 {

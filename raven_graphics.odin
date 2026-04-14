@@ -131,13 +131,13 @@ Draw_Layer_Flag :: enum u8 {
 }
 
 Draw_Layer :: struct {
-    camera:                 Camera,
-    flags:                  bit_set[Draw_Layer_Flag],
+    camera:     Camera,
+    flags:      bit_set[Draw_Layer_Flag],
 
-    sprites:                Draw_Batch_Table(Sprite_Inst),
-    meshes:                 Draw_Batch_Table(Mesh_Inst),
-    triangles:              Draw_Batch_Table(Mesh_Inst),
-    lines:                  Draw_Batch_Table(Mesh_Inst),
+    sprites:    Draw_Batch_Table(Sprite_Inst),
+    meshes:     Draw_Batch_Table(Mesh_Inst),
+    triangles:  Draw_Batch_Table(Mesh_Inst),
+    lines:      Draw_Batch_Table(Mesh_Inst),
 }
 
 Draw_Batch_Table :: struct($T: typeid) {

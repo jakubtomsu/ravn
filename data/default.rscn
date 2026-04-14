@@ -1,26 +1,40 @@
 rscn
 ver 0 1
 img 0
-msh 5 5 1F8 3F5 AD
-spl 0 1587 0
-obj 5
+msh 12 5 2A4E 54A1 8C3
+spl 0 1386F 0
+obj 12
 
 # Blender 5.0.0
 
 @imgs
 
 @mshs
-Disk 42 16 0 0
-Cube 36 24 2A 10
-Cylinder 180 66 4E 28
-Icosphere 240 63 102 6A
-Plane 6 4 1F2 A9
+Cube 36 24 0 0
+Cylinder_0 84 34 24 18
+Cylinder_1 180 66 78 3A
+Disk_0 18 8 12C 7C
+Disk_1 42 16 13E 84
+Icosphere_0 60 22 168 94
+Icosphere_1 240 63 1A4 AA
+Plane 6 4 294 E9
+Suzanne 2904 555 29A ED
+Utah_Teapot 6444 1257 DF2 318
+UV_Sphere_0 144 43 271E 801
+UV_Sphere_1 672 151 27AE 82C
 
 @spls
 
 @objs
-msh 0 Disk -1 -1 [3 0 0] [1 0 0 0 1 0 0 0 1]
-msh 1 Cube -1 -1 [-3 0 0] [1 0 0 0 1 0 0 0 1]
-msh 2 Cylinder -1 -1 [-9 0 0] [1 0 0 0 1 0 0 0 1]
-msh 3 Icosphere -1 -1 [-6 0 0] [1 0 0 0 1 0 0 0 1]
-msh 4 Plane -1 -1 [0 0 0] [1 0 0 0 1 0 0 0 1]
+msh 0 Cube -1 -1 [4 0 4] [1 0 0 0 1 0 0 0 1]
+msh 1 Cylinder_0 -1 -1 [0 0 12] [1 0 0 0 1 0 0 0 1]
+msh 2 Cylinder_1 -1 -1 [4 0 12] [1 0 0 0 1 0 0 0 1]
+msh 3 Disk_0 -1 -1 [0 0 8] [1 0 0 0 1 0 0 0 1]
+msh 4 Disk_1 -1 -1 [4 0 8] [1 0 0 0 1 0 0 0 1]
+msh 5 Icosphere_0 -1 -1 [0 0 -4] [1 0 0 0 1 0 0 0 1]
+msh 6 Icosphere_1 -1 -1 [4 0 -4] [1 0 0 0 1 0 0 0 1]
+msh 7 Plane -1 -1 [0 0 4] [1 0 0 0 1 0 0 0 1]
+msh 8 Suzanne -1 -1 [0 0 -12] [1 0 0 0 1 0 0 0 1]
+msh 9 Utah_Teapot -1 -1 [4 0 -12] [-4.37114e-08 0 1 0 1 0 -1 0 -4.37114e-08]
+msh 10 UV_Sphere_0 -1 -1 [0 0 -8] [1 0 0 0 1 0 0 0 1]
+msh 11 UV_Sphere_1 -1 -1 [4 0 -8] [1 0 0 0 1 0 0 0 1]
