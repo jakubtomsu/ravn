@@ -280,7 +280,7 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
     case .Box:
         t, ok = geom.sweep_point_vs_aabb(start, move, center - 1, center + 1, range = range)
         hit = start + move * t
-        _, nor = geom.get_box_dist(hit, center, )
+        _, nor = geom.get_box_dist_grad(hit, center, 1)
         
     case .Plane:
         t, ok = geom.sweep_point_vs_plane(start, move, {0, 1, 0}, center.y, range = range)
@@ -298,7 +298,7 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
         points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
         t, ok = geom.sweep_point_vs_capsule(start, move, points, 1, range = range)
         hit = start + move * t
-        _, nor = geom.get_line_dist_grad(hit, points[0], points[1])
+        _, nor = geom.get_line_dist_grad(hit, points)
         
     case .Cylinder:
         points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
