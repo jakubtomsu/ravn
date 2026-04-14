@@ -303,6 +303,7 @@ create_resource_stereo_f32 :: proc(frames: [][2]f32, frame_rate: u32) -> (result
     return create_resource(.Raw_F32, to_bytes(frames), flags = {}, frame_rate = frame_rate)
 }
 
+// The data slice must remain valid until the resource is destroyed.
 create_resource :: proc(
     format:         Resource_Format,
     data:           []byte,

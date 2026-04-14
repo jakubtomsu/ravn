@@ -27,13 +27,14 @@ bit_pool_find_0 :: proc "contextless" (bp: Bit_Pool($N)) -> (index: int, ok: boo
                 break
             }
         }
+
+        if l0_index == -1 || l0_index >= (N / 64) {
+            return -1, false
+        }
     } else {
         l0_index = 0
     }
 
-    if l0_index == -1 || l0_index >= (N / 64) {
-        return -1, false
-    }
 
     l0_slot := int(intrinsics.count_trailing_zeros(~bp.l0[l0_index]))
     if l0_slot != 64 {
