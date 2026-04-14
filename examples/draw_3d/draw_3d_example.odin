@@ -94,8 +94,13 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         // Meshes
 
-        rv.draw_mesh(rv.get_builtin_mesh(.Cube), {3, 0, 0}, col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
-        rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), {9, 0, 0}, scale = {1, 0.1 + rv.nsin(rv.get_time() * 0.5), 1}, col = rv.GRAY)
+        for mesh in rv.Builtin_Mesh {
+            rv.draw_mesh(
+                rv.get_builtin_mesh(mesh),
+                {f32(int(mesh)) * 3, 0, 0},
+                col = int(mesh) % 2 == 0 ? rv.WHITE : rv.GRAY,
+            )
+        }
 
         rv.bind_fill(.All)
 
