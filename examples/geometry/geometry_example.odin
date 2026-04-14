@@ -1,5 +1,6 @@
 package raven_geometry_example
 
+import "core:math/rand"
 import rv "../.."
 import "../../platform"
 import geom "../../geometry"
@@ -162,23 +163,31 @@ _update :: proc(hot_state: rawptr) -> rawptr {
                 update_sweep_point_vs_shape(&cam_sweep, state.cam_pos, mat[2], shape, center + {0, 0, 10})
             }
             
+            rnd := rand.create_u64(123)
+            context.random_generator = rand.default_random_generator(&rnd)
+            
             for d in points {
+            // for i in 0..<200 {
+                // d := linalg.normalize([3]f32{
+                //     rand.float32() - 0.5,
+                //     rand.float32() - 0.5,
+                //     rand.float32() - 0.5,
+                // })
+                
+                // if state.anim_rot {
+                //     d = linalg.quaternion128_mul_vector3(rot, d)
+                // }
+                                    
                 start := center + d * 3
                 move := -d * 3
                 
                 t, hit, nor, ok := sweep_point_vs_shape(start, move, shape, center)
                 
-                rv.draw_line(start, hit, {ok ? rv.GREEN : rv.RED, rv.fade(0)})
+                rv.draw_line(start, hit, {ok ? rv.GREEN * rv.fade(0.5) : rv.RED, rv.fade(0)})
                 
                 if ok {
                     rv.draw_line(hit, hit + nor * 0.25, rv.YELLOW)
                     rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), hit, scale = 0.05, col = rv.GREEN)
-                    
-                    // refl := linalg.reflect(move, nor)
-                    // t2, hit2, nor2, ok2 := sweep_point_vs_shape(hit, refl, shape, center)
-                    // if !ok2 {
-                    //     rv.draw_line(hit, hit2, rv.CYAN)
-                    // }
                 }
             }
             
@@ -338,9 +347,9 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
 }
 
 TRI :: [3][3]f32{
-    {0, 1, 1},
+    {0, 1, 2},
     {-1, 0, -1},
-    {1, 0, -1},
+    {2, 0, -1},
 }
 
 Sweep :: struct {
