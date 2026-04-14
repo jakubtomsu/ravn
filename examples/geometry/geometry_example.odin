@@ -155,15 +155,12 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         
         for shape in Shape_Kind {
             draw_shape(shape, center)
+            draw_shape(shape, center + {0, 0, 10})
             
             if shape != .Plane {
                 update_sweep_point_vs_shape(&cam_sweep, state.cam_pos, mat[2], shape, center)
                 update_sweep_point_vs_shape(&cam_sweep, state.cam_pos, mat[2], shape, center + {0, 0, 10})
             }
-            
-            // TODO:
-            // - reflection from hit
-            // - raycast parallel to surface
             
             for d in points {
                 start := center + d * 3
@@ -186,8 +183,6 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             }
             
             center.z += 10
-            
-            draw_shape(shape, center)
                     
             for offs0 in 0..<i32(24) {
                 for offs1 in 0..<i32(24) {
@@ -214,8 +209,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             center.x += 10
         }
         
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit, scale = 0.075, col = rv.DARK_CYAN)
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit + cam_sweep.nor * 0.1, scale = 0.05, col = rv.CYAN)
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit, scale = 0.075, col = rv.YELLOW)
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit + cam_sweep.nor * 0.1, scale = 0.05, col = rv.ORANGE)
     }
 
     rv.bind_layer(1)
@@ -300,8 +295,7 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
     
     case .Capsule:
         points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
-        // t, ok = geom.sweep_point_vs_capsule(start, move, points, 1, range = range)
-        t, ok = intersect_segment_capsule({start, start + move}, points, 1)
+        t, ok = geom.sweep_point_vs_capsule(start, move, points, 1, range = range)
         hit = start + move * t
         if ok {
             rel := hit - points[0]
@@ -367,101 +361,3 @@ update_sweep_point_vs_shape :: proc(sweep: ^Sweep, start: rv.Vec3, move: rv.Vec3
     }
 }
 
-
-
-intersect_segment_capsule :: proc(segment: [2]rv.Vec3, points: [2]rv.Vec3, rad: f32) -> (t: f32, ok: bool) {
-    d := points[1] - points[0]
-    m := segment[0] - points[0]
-    n := segment[1] - segment[0]
-    md := linalg.dot(m, d)
-    nd := linalg.dot(n, d)
-    dd := linalg.dot(d, d)
-    // // Test if segment fully outside either endcap of cylinder
-    if md + rad< 0 && md + nd + rad < 0 {
-        return 1, false // Segment outside ’a’ side of cylinder
-    }
-    if md - rad > dd && md + nd - rad > dd {
-        return 1, false // Segment outside ’b’ side of cylinder
-    }
-    // TODO(?): fast early out if both point squared dist from the line is > rad^2
-    nn := linalg.dot(n, n)
-    mn := linalg.dot(m, n)
-    mm := linalg.dot(m, m)
-    a := dd * nn - nd * nd
-    k := mm - rad * rad
-    c := dd * k - md * md
-    EPS :: 1e-6
-    if abs(a) < EPS {
-        // Segment runs parallel to cylinder axis
-        if c > 0 {
-            return 1, false
-        }
-        // Now known that segment intersects cylinder; figure out how it intersects
-        if md < 0 {
-            if (k > 0 && mn > 0) || nn == 0 {
-                return 1, false
-            }
-            discr := mn * mn - k * nn
-            // A negative discriminant corresponds to ray missing sphere
-            if discr < 0 do return 1, false
-            // Ray now found to intersect sphere, compute smallest t value of intersection
-            t = -mn - linalg.sqrt(discr)
-            // If t is negative, ray started inside sphere so clamp t to zero
-            t /= nn
-            return t, true
-        } else if md > dd {
-            m := segment[0] - points[1]
-            b := linalg.dot(m, n)
-            c := linalg.dot(m, m) - rad * rad
-            // Exit if r’s origin outside s (c > 0) and r pointing away from s (b > 0)
-            if (c > 0 && b > 0) || nn == 0 {
-                return 1, false
-            }
-            discr := b * b - c * nn
-            // A negative discriminant corresponds to ray missing sphere
-            if discr < 0 do return 1, false
-            // Ray now found to intersect sphere, compute smallest t value of intersection
-            t = -b - linalg.sqrt(discr)
-            // If t is negative, ray started inside sphere so clamp t to zero
-            t /= nn
-            return t, true
-        } else {
-            // ’a’ lies inside cylinder
-            t = 0
-        }
-        return t, true
-    }
-    b := dd * mn - nd * md
-    discr := b * b - a * c
-    if discr < 0 {
-        return 1, false // no real roots
-    }
-    t = (-b - linalg.sqrt(discr)) / a
-    if t < 0 || t > 1 {
-        return 1, false // intersection outside segment
-    }
-    if md + t * nd < 0 {
-        if (k > 0 && mn > 0) || nn == 0 {
-            return 1, false
-        }
-        discr := mn * mn - k * nn
-        // A negative discriminant corresponds to ray missing sphere
-        if discr < 0 do return 1, false
-        t = -mn - linalg.sqrt(discr)
-        t /= nn
-        return t, true
-    } else if md + t * nd > dd {
-        m := segment[0] - points[1]
-        b := linalg.dot(m, n)
-        c := linalg.dot(m, m) - rad * rad
-        if (c > 0 && b > 0) || nn == 0 {
-            return 1, false
-        }
-        discr := b * b - c * nn
-        if discr < 0 do return 1, false
-        t = -b - linalg.sqrt(discr)
-        t /= nn
-        return t, true
-    }
-    return t, true
-}

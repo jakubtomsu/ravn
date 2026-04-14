@@ -3,6 +3,7 @@ package raven_geometry
 
 import "core:math/linalg"
 import "base:intrinsics"
+import "../base"
 
 LANES :: 8
 
@@ -166,6 +167,42 @@ sweep_point_vs_triangle :: proc "contextless" (
     return ok ? t : range, ok
 }
 
+
+@(require_results)
+sweep_point_vs_uncapped_cylinder :: proc "contextless" (
+    pos:    [3]f32,
+    move:   [3]f32,
+    points: [2][3]f32,
+    rad:    f32,
+    range:  f32 = 1,
+) -> (t: f32, ok: bool) #optional_ok {
+    d  := points[1] - points[0]
+    m  := pos - points[0]
+    dd := linalg.dot(d, d)
+    nd := linalg.dot(move, d)
+    md := linalg.dot(m, d)
+
+    a := dd * linalg.dot(move, move) - nd * nd
+    b := dd * linalg.dot(m, move) - nd * md
+    c := dd * (linalg.dot(m, m) - rad * rad) - md * md
+
+    if abs(a) < 1e-6 {
+        return range, false
+    }
+
+    discr := b * b - a * c
+    if discr < 0 {
+        return range, false
+    }
+
+    t = (-b - intrinsics.sqrt(discr)) / a
+    
+    curr_md := md + t * nd
+    ok = t >= 0 && t <= range && curr_md >= 0 && curr_md <= dd
+
+    return ok ? t : range, ok
+}
+
 @(require_results)
 sweep_point_vs_cylinder :: proc "contextless" (
     pos:    [3]f32,
@@ -176,19 +213,20 @@ sweep_point_vs_cylinder :: proc "contextless" (
 ) -> (t: f32, ok: bool) #optional_ok {
     d := points[1] - points[0]
     m := pos - points[0]
+    n := move * range
     md := linalg.vector_dot(m, d)
-    nd := linalg.vector_dot(move, d)
-    dd := linalg.vector_dot(d, d)
+    nd := linalg.vector_dot(n, d)
+    dd := linalg.vector_length2(d)
     
     // Test if segment fully outside either endcap of cylinder
-    if md < 0 && md + nd < 0 || md > dd && md + nd > dd {
+    if (md < 0 && md + nd < 0) || (md > dd && md + nd > dd) {
         return range, false
     }
     
-    nn := linalg.vector_dot(move, move)
-    mn := linalg.vector_dot(m, move)
+    nn := linalg.vector_length2(n)
+    mn := linalg.vector_dot(m, n)
+    k := linalg.vector_length2(m) - rad * rad
     a := dd * nn - nd * nd
-    k := linalg.vector_dot(m, m) - rad * rad
     c := dd * k - md * md
     
     EPS :: 1e-6
@@ -214,9 +252,11 @@ sweep_point_vs_cylinder :: proc "contextless" (
     }
     
     t = (-b - intrinsics.sqrt(discr)) / a
-    if t < 0 || t > range {
+    if t > 1 || (t < 0 && c > 0) {
         return range, false // intersection outside segment
     }
+    
+    t = max(t, 0)
     
     ok = true
     
@@ -234,49 +274,11 @@ sweep_point_vs_cylinder :: proc "contextless" (
         t = (dd - md) / nd
         ok = k + dd - 2 * md + t * (2 * (mn - nd) + t * nn) <= 0
     }
+    
+    t *= range
 
     return t, ok
 }
-
-@(require_results)
-sweep_point_vs_uncapped_cylinder :: proc "contextless" (
-    pos:    [3]f32,
-    move:   [3]f32,
-    points: [2][3]f32,
-    rad:    f32,
-    range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
-    
-    d  := points[1] - points[0]
-    m  := pos - points[0]
-    dd := linalg.dot(d, d)
-    nd := linalg.dot(move, d)
-    md := linalg.dot(m, d)
-
-    // Quadratic coefficients for distance to infinite line
-    // (dd*nn - nd*nd)t^2 + 2(dd*mn - nd*md)t + (dd*k - md*md) = 0
-    a := dd * linalg.dot(move, move) - nd * nd
-    b := dd * linalg.dot(m, move) - nd * md
-    c := dd * (linalg.dot(m, m) - rad * rad) - md * md
-
-    if abs(a) < 1e-6 do return range, false
-
-    discr := b * b - a * c
-    if discr < 0 do return range, false
-
-    t = (-b - intrinsics.sqrt(discr)) / a
-    
-    // Bounds check: 0 <= t <= range AND hit must project onto the finite axis segment
-    if t >= 0 && t <= range {
-        curr_md := md + t * nd
-        if curr_md >= 0 && curr_md <= dd {
-            return t, true
-        }
-    }
-
-    return range, false
-}
-
 
 // FIXME: broken endcaps
 @(require_results)
@@ -289,18 +291,20 @@ sweep_point_vs_capsule :: proc "contextless" (
 ) -> (t: f32, ok: bool) #optional_ok {
     d := points[1] - points[0]
     m := pos - points[0]
+    n := move * range
     md := linalg.vector_dot(m, d)
-    nd := linalg.vector_dot(move, d)
-    dd := linalg.vector_dot(d, d)
+    nd := linalg.vector_dot(n, d)
+    dd := linalg.vector_length2(d)
+    
     
     // Test if segment fully outside either endcap of cylinder
-    if md + rad < 0 && md + nd + rad < 0 || md - rad > dd && md + nd - rad > dd {
+    if (md + rad < 0 && md + nd + rad < 0) || (md - rad > dd && md + nd - rad > dd) {
         return range, false
     }
     
-    nn := linalg.vector_dot(move, move)
-    mn := linalg.vector_dot(m, move)
-    mm := linalg.vector_dot(m, m)
+    nn := linalg.vector_length2(n)
+    mn := linalg.vector_dot(m, n)
+    mm := linalg.vector_length2(m)
     a := dd * nn - nd * nd
     k := mm - rad * rad
     c := dd * k - md * md
@@ -312,7 +316,6 @@ sweep_point_vs_capsule :: proc "contextless" (
         }
         t = 0
     } else {
-        
         b := dd * mn - nd * md
         discr := b * b - a * c
         if discr < 0 {
@@ -320,40 +323,39 @@ sweep_point_vs_capsule :: proc "contextless" (
         }
         
         t = (-b - intrinsics.sqrt(discr)) / a
-        if t < 0 || t > range {
+        if (t < 0 && c > 0) || t > 1 {
             return range, false // intersection outside segment
         }
+        
+        t = max(t, 0)
     }
     
     // Try intersect endcaps
     if md + t * nd < 0 {
-        if (k > 0 && mn > 0) || nn == 0 {
-            return range, false
-        }
         discr := mn * mn - k * nn
-        if discr < 0 {
+        if (k > 0 && mn > 0) || nn == 0 || discr < 0 {
             return range, false
         }
         t = -mn - intrinsics.sqrt(discr)
         t /= nn
     } else if md + t * nd > dd {
         m = pos - points[1]
-        b := linalg.vector_dot(m, move)
+        b := linalg.vector_dot(m, n)
         c = linalg.vector_length2(m) - rad * rad
-        if (c > 0 && b > 0) || nn == 0 {
-            return range, false
-        }
         discr := b * b - c * nn
-        if discr < 0 {
+        if (c > 0 && b > 0) || nn == 0 || discr < 0 {
             return range, false
         }
         t = -b - intrinsics.sqrt(discr)
         t /= nn
     }
-
+    
+    t *= range
+    
     return t, true
 }
 
+// Inspired by:
 // https://github.com/blat-blatnik/Snippets/blob/main/capsule_triangle_sweep.glsl
 
 sweep_sphere_vs_triangle :: proc(
