@@ -147,10 +147,10 @@ sweep_point_vs_triangle :: proc "contextless" (
     normal := linalg.vector_cross3(ab, ac)
     denom := linalg.vector_dot(move, normal)
     
-    rel_pos := tri[0] - pos
-    t = linalg.vector_dot(rel_pos, normal) * (1.0 / denom)
+    rel := tri[0] - pos
+    t = linalg.vector_dot(rel, normal) * (1.0 / denom)
     
-    tangent := linalg.vector_cross3(move, rel_pos)
+    tangent := linalg.vector_cross3(move, rel)
     uv := [2]f32{
         -linalg.vector_dot(ac, tangent),
         linalg.vector_dot(ab, tangent),
@@ -161,7 +161,47 @@ sweep_point_vs_triangle :: proc "contextless" (
     }
     
     ok = t >= 0 && t <= range &&
-        abs(denom) > 1e-10 &&
+        abs(denom) > 1e-6 &&
+        uv.x >= 0 && uv.y >= 0 && uv.x + uv.y <= abs(denom)
+    
+    return ok ? t : range, ok
+}
+
+// Triangle expanded by 2*radius along the normal.
+// Sweeps a 5 sided polyhedron but only the two triangles are intersected.
+@(require_results)
+sweep_point_vs_triangle_slab :: proc "contextless" (
+    pos:        [3]f32,
+    move:       [3]f32,
+    tri:        [3][3]f32,
+    rad:        f32,
+    range:      f32 = 1,
+) -> (t: f32, ok: bool) #optional_ok {
+    ab := tri[1] - tri[0]
+    ac := tri[2] - tri[0]
+
+    normal := linalg.vector_cross3(ab, ac)
+    denom := linalg.vector_dot(move, normal)
+    inv_denom := 1.0 / denom
+    
+    nrad := linalg.normalize(normal) * rad
+    nrad = denom < 0 ? nrad : -nrad
+    
+    rel := tri[0] + nrad - pos
+    t = linalg.vector_dot(rel, normal) * inv_denom
+
+    tangent := linalg.vector_cross3(move, rel)
+    uv := [2]f32{
+        -linalg.vector_dot(ac, tangent),
+        linalg.vector_dot(ab, tangent),
+    }
+    
+    if denom < 0 {
+        uv = -uv
+    }
+    
+    ok = t >= 0 && t < range &&
+        abs(denom) > 1e-6 &&
         uv.x >= 0 && uv.y >= 0 && uv.x + uv.y <= abs(denom)
     
     return ok ? t : range, ok
@@ -303,7 +343,7 @@ sweep_point_vs_cylinder :: proc "contextless" (
             return range, false
         }
         t = -md / nd
-        ok = k + 2 * t * (mn + t * nn) <= 0
+        ok = k + t * (2 * mn + t * nn) <= 0
     } else if md + t * nd > dd {
         if nd >= 0 {
             return range, false
@@ -407,8 +447,6 @@ sweep_sphere_vs_triangle :: proc(
     
     t = range
     
-    normal := linalg.normalize(linalg.vector_cross3(v01, v02))
-    
     for v in tri {
         t = sweep_point_vs_sphere(pos, move, v, rad, t) or_continue
         ok = true
@@ -420,15 +458,23 @@ sweep_sphere_vs_triangle :: proc(
         ok = true
     }
     
-    side := [2]f32{-1, 1}
-    for s in side {
-        tt := tri
-        for &v in tt {
-            v += s * normal * rad
-        }
-        t = sweep_point_vs_triangle(pos, move, tt, t) or_continue
+    // side := [2]f32{-1, 1}
+    // for s in side {
+    //     tt := tri
+    //     for &v in tt {
+    //         v += s * normal * rad
+    //     }
+    //     t = sweep_point_vs_triangle(pos, move, tt, t) or_continue
+    //     ok = true
+    // }
+    
+    
+    tt, tok := sweep_point_vs_triangle_slab(pos, move, tri, rad, t)
+    if tok && tt < t {
+        t = tt
         ok = true
     }
+    
     
     return t, ok
 }
