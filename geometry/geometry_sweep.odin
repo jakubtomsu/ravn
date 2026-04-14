@@ -3,11 +3,8 @@ package raven_geometry
 
 import "core:math/linalg"
 import "base:intrinsics"
-import "../base"
 
 LANES :: 8
-
-// MARK: Sweeps
 
 @(require_results)
 sweep_point_vs_plane :: proc "contextless" (
