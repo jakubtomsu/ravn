@@ -167,7 +167,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             
             for d in points {
                 start := center + d * 3
-                move := -d * 2
+                move := -d * 3
                 
                 t, hit, nor, ok := sweep_point_vs_shape(start, move, shape, center)
                 

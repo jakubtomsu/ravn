@@ -4,6 +4,8 @@ import "base:intrinsics"
 import "core:math/linalg"
 
 // https://iquilezles.org/articles/distgradfunctions3d/
+// https://iquilezles.org/articles/distfunctions/
+// https://iquilezles.org/articles/triangledistance/
 
 @(require_results)
 get_box_dist :: proc "contextless" (p: [3]f32, b: [3]f32) -> f32 {
