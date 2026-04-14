@@ -280,15 +280,7 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
     case .Box:
         t, ok = geom.sweep_point_vs_aabb(start, move, center - 1, center + 1, range = range)
         hit = start + move * t
-        if ok {
-            centered := hit - center
-            rel := linalg.abs(centered) - 1
-            switch max(rel.x, rel.y, rel.z) {
-            case rel.x: nor.x = centered.x > 0 ? 1 : -1
-            case rel.y: nor.y = centered.y > 0 ? 1 : -1
-            case rel.z: nor.z = centered.z > 0 ? 1 : -1
-            }
-        }
+        _, nor = geom.get_box_dist(hit, center, )
         
     case .Plane:
         t, ok = geom.sweep_point_vs_plane(start, move, {0, 1, 0}, center.y, range = range)
@@ -306,13 +298,7 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
         points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
         t, ok = geom.sweep_point_vs_capsule(start, move, points, 1, range = range)
         hit = start + move * t
-        if ok {
-            rel := hit - points[0]
-            axis := points[1] - points[0]
-            h := clamp(linalg.dot(rel, axis) / linalg.length2(axis), 0, 1)
-            close := points[0] + axis * h
-            nor = linalg.normalize(hit - close)
-        }
+        _, nor = geom.get_line_dist_grad(hit, points[0], points[1])
         
     case .Cylinder:
         points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
@@ -327,20 +313,12 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
     case .Triangle:
         t, ok = geom.sweep_point_vs_triangle(start, move, tri, range = range)
         hit = start + move * t
-        if ok {
-            nor = linalg.normalize(linalg.cross(
-                tri[1] - tri[0],
-                tri[2] - tri[0],
-            ))
-            
-            if linalg.dot(move, nor) > 0 {
-                nor = -nor
-            }
-        }
+        _, nor = geom.get_triangle_dist_grad(start + move * (t - 0.001), tri)
         
     case .Rounded_Triangle:
         t, ok = geom.sweep_sphere_vs_triangle(start, move, 0.5, tri, range = range)
         hit = start + move * t
+        _, nor = geom.get_triangle_dist_grad(hit, tri)
     }
     
     return t, hit, nor, ok

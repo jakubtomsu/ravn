@@ -8,15 +8,16 @@ import "core:math/linalg"
 // https://iquilezles.org/articles/triangledistance/
 
 @(require_results)
-get_box_dist :: proc "contextless" (p: [3]f32, b: [3]f32) -> f32 {
-  q := linalg.abs(p) - b
+get_box_dist :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: [3]f32) -> f32 {
+  q := linalg.abs(pos - center) - rad
   m := max(q.x, q.y, q.z)
   return m > 0 ? linalg.length(q) : m
 }
 
 @(require_results)
-get_box_dist_grad :: proc "contextless" (p: [3]f32, b: [3]f32) -> (dist: f32, grad: [3]f32) {
-    w := linalg.abs(p) - b
+get_box_dist_grad :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: [3]f32) -> (dist: f32, grad: [3]f32) {
+    rel := pos - center
+    w := linalg.abs(rel) - rad
     g := max(w.x, w.y, w.z)
     q := linalg.max(w, 0.0)
     l := linalg.vector_length(q)
@@ -32,25 +33,25 @@ get_box_dist_grad :: proc "contextless" (p: [3]f32, b: [3]f32) -> (dist: f32, gr
             w.z == g ? 1.0 : 0.0,
         }
     }
-    grad *= linalg.sign(p)
+    grad *= linalg.sign(rel)
     return dist, grad
 }
 
 
 // Capsule
 @(require_results)
-get_line_dist :: proc "contextless" (p: [3]f32, a: [3]f32, b: [3]f32) -> f32 {
-  pa := p - a
-  ba := b - a
+get_line_dist :: proc "contextless" (pos: [3]f32, points: [2][3]f32) -> f32 {
+  pa := pos - points[0]
+  ba := points[1] - points[0]
   h := clamp(linalg.vector_dot(pa, ba) / linalg.vector_length2(ba), 0.0, 1.0)
   return linalg.vector_length(pa - ba * h)
 }
 
 // Capsule
 @(require_results)
-get_line_dist_grad :: proc "contextless" (p: [3]f32,  a: [3]f32, b: [3]f32) -> (dist: f32, grad: [3]f32) {
-    ba := b - a
-    pa := p - a
+get_line_dist_grad :: proc "contextless" (pos: [3]f32,  points: [2][3]f32) -> (dist: f32, grad: [3]f32) {
+    pa := pos - points[0]
+    ba := points[1] - points[0]
     h := clamp(linalg.vector_dot(pa, ba) / linalg.vector_length2(ba), 0.0, 1.0)
     q := pa - h * ba
     d := linalg.vector_length(q)
@@ -58,29 +59,29 @@ get_line_dist_grad :: proc "contextless" (p: [3]f32,  a: [3]f32, b: [3]f32) -> (
 }
 
 @(require_results)
-get_triangle_dist :: proc "contextless" (pos: [3]f32, v1: [3]f32, v2: [3]f32, v3: [3]f32) -> (dist: f32) {
+get_triangle_dist :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (dist: f32) {
     // prepare data
-    v21 := v2 - v1
-    v32 := v3 - v2
-    v13 := v1 - v3
-    p1 := pos - v1
-    p2 := pos - v2
-    p3 := pos - v3
+    v10 := tri[1] - tri[0]
+    v23 := tri[2] - tri[1]
+    v02 := tri[0] - tri[2]
+    p1 := pos - tri[0]
+    p2 := pos - tri[1]
+    p3 := pos - tri[2]
 
-    normal := linalg.vector_cross3(v21, v13)
+    normal := linalg.vector_cross3(v10, v02)
 
     inside_factor :=
-        (linalg.vector_dot(linalg.vector_cross3(v21, normal), p1) >= 0 ? 1 : -1) +
-        (linalg.vector_dot(linalg.vector_cross3(v32, normal), p2) >= 0 ? 1 : -1) +
-        (linalg.vector_dot(linalg.vector_cross3(v13, normal), p3) >= 0 ? 1 : -1)
+        (linalg.vector_dot(linalg.vector_cross3(v10, normal), p1) >= 0 ? 1 : -1) +
+        (linalg.vector_dot(linalg.vector_cross3(v23, normal), p2) >= 0 ? 1 : -1) +
+        (linalg.vector_dot(linalg.vector_cross3(v02, normal), p3) >= 0 ? 1 : -1)
 
     // inside/outside test
     if inside_factor < 2.0 { // Outside
         // 3 edges
         dist = min(
-            linalg.vector_length2(v21 * clamp(linalg.vector_dot(v21, p1) / linalg.vector_length2(v21), 0.0, 1.0) - p1),
-            linalg.vector_length2(v32 * clamp(linalg.vector_dot(v32, p2) / linalg.vector_length2(v32), 0.0, 1.0) - p2),
-            linalg.vector_length2(v13 * clamp(linalg.vector_dot(v13, p3) / linalg.vector_length2(v13), 0.0, 1.0) - p3),
+            linalg.vector_length2(v10 * clamp(linalg.vector_dot(v10, p1) / linalg.vector_length2(v10), 0.0, 1.0) - p1),
+            linalg.vector_length2(v23 * clamp(linalg.vector_dot(v23, p2) / linalg.vector_length2(v23), 0.0, 1.0) - p2),
+            linalg.vector_length2(v02 * clamp(linalg.vector_dot(v02, p3) / linalg.vector_length2(v02), 0.0, 1.0) - p3),
         )
     } else {
         // 1 face
@@ -93,29 +94,29 @@ get_triangle_dist :: proc "contextless" (pos: [3]f32, v1: [3]f32, v2: [3]f32, v3
 
 
 @(require_results)
-get_triangle_dist_grad :: proc "contextless" (pos: [3]f32, v1: [3]f32, v2: [3]f32, v3: [3]f32) -> (dist: f32, grad: [3]f32) {
+get_triangle_dist_grad :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (dist: f32, grad: [3]f32) {
     // prepare data
-    v21 := v2 - v1
-    v32 := v3 - v2
-    v13 := v1 - v3
-    p1 := pos - v1
-    p2 := pos - v2
-    p3 := pos - v3
+    v10 := tri[1] - tri[0]
+    v23 := tri[2] - tri[1]
+    v02 := tri[0] - tri[2]
+    p1 := pos - tri[0]
+    p2 := pos - tri[1]
+    p3 := pos - tri[2]
 
-    normal := linalg.vector_cross3(v21, v13)
+    normal := linalg.vector_cross3(v10, v02)
 
     inside_factor :=
-        (linalg.vector_dot(linalg.vector_cross3(v21, normal), p1) >= 0 ? 1 : -1) +
-        (linalg.vector_dot(linalg.vector_cross3(v32, normal), p2) >= 0 ? 1 : -1) +
-        (linalg.vector_dot(linalg.vector_cross3(v13, normal), p3) >= 0 ? 1 : -1)
+        (linalg.vector_dot(linalg.vector_cross3(v10, normal), p1) >= 0 ? 1 : -1) +
+        (linalg.vector_dot(linalg.vector_cross3(v23, normal), p2) >= 0 ? 1 : -1) +
+        (linalg.vector_dot(linalg.vector_cross3(v02, normal), p3) >= 0 ? 1 : -1)
 
     // inside/outside test
     if inside_factor < 2.0 { // Outside
         // 3 edges
         
-        d12, g12 := get_line_dist_grad(pos, v1, v2)
-        d13, g13 := get_line_dist_grad(pos, v1, v3)
-        d23, g23 := get_line_dist_grad(pos, v2, v3)
+        d12, g12 := get_line_dist_grad(pos, {tri[0], tri[1]})
+        d13, g13 := get_line_dist_grad(pos, {tri[0], tri[2]})
+        d23, g23 := get_line_dist_grad(pos, {tri[1], tri[2]})
         
         dist = min(d12, d13, d23)
         
@@ -130,8 +131,10 @@ get_triangle_dist_grad :: proc "contextless" (pos: [3]f32, v1: [3]f32, v2: [3]f3
     } else {
         // 1 face
         d := linalg.vector_dot(normal, p1)
-        grad = d > 0 ? normal : -normal
-        dist = d / linalg.vector_length2(normal)
+        normal_len2 := linalg.vector_length2(normal)
+        grad = normal * (1.0 / intrinsics.sqrt(normal_len2))
+        grad = d > 0 ? grad : -grad
+        dist = d * (1.0 / normal_len2)
     }
 
     return dist, grad
