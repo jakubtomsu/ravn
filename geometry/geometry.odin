@@ -178,13 +178,13 @@ sweep_point_vs_uncapped_cylinder :: proc "contextless" (
 ) -> (t: f32, ok: bool) #optional_ok {
     d  := points[1] - points[0]
     m  := pos - points[0]
-    dd := linalg.dot(d, d)
-    nd := linalg.dot(move, d)
-    md := linalg.dot(m, d)
+    dd := linalg.vector_length2(d)
+    nd := linalg.vector_dot(move, d)
+    md := linalg.vector_dot(m, d)
 
-    a := dd * linalg.dot(move, move) - nd * nd
-    b := dd * linalg.dot(m, move) - nd * md
-    c := dd * (linalg.dot(m, m) - rad * rad) - md * md
+    a := dd * linalg.vector_length2(move) - nd * nd
+    b := dd * linalg.vector_dot(m, move) - nd * md
+    c := dd * (linalg.vector_length2(m) - rad * rad) - md * md
 
     if abs(a) < 1e-6 {
         return range, false
@@ -202,6 +202,43 @@ sweep_point_vs_uncapped_cylinder :: proc "contextless" (
 
     return ok ? t : range, ok
 }
+
+@(require_results)
+sweep_point_vs_uncapped_cylinder_simd :: proc "contextless" (
+    pos:    [3]#simd[LANES]f32,
+    move:   [3]#simd[LANES]f32,
+    points: [2][3]#simd[LANES]f32,
+    rad:    #simd[LANES]f32,
+    range:  #simd[LANES]f32 = 1,
+) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32) {
+    d  := points[1] - points[0]
+    m  := pos - points[0]
+    dd := length2_simd(d)
+    nd := dot_simd(move, d)
+    md := dot_simd(m, d)
+
+    a := dd * length2_simd(move) - nd * nd
+    b := dd * dot_simd(m, move) - nd * md
+    c := dd * (length2_simd(m) - rad * rad) - md * md
+
+    discr := b * b - a * c
+    
+    t = (-b - intrinsics.sqrt(discr)) / a
+    curr_md := md + t * nd
+    
+    ok =
+        intrinsics.simd_lanes_gt(intrinsics.simd_abs(a), 1e-6) &
+        intrinsics.simd_lanes_gt(discr, 0) &
+        intrinsics.simd_lanes_ge(t, 0) &
+        intrinsics.simd_lanes_le(t, range) &
+        intrinsics.simd_lanes_ge(curr_md, 0) &
+        intrinsics.simd_lanes_le(curr_md, dd)
+    
+    t = intrinsics.simd_select(ok, t, range)
+
+    return t, ok
+}
+
 
 @(require_results)
 sweep_point_vs_cylinder :: proc "contextless" (
