@@ -296,11 +296,11 @@ set_listener :: proc(
 //
 
 create_resource_mono_f32 :: proc(frames: []f32, frame_rate: u32) -> (result: Resource_Handle, ok: bool) {
-    return create_resource(.Raw_F32, to_bytes(frames), flags = {.Mono}, frame_rate = frame_rate)
+    return create_resource(.Raw_F32, base.to_bytes(frames), flags = {.Mono}, frame_rate = frame_rate)
 }
 
 create_resource_stereo_f32 :: proc(frames: [][2]f32, frame_rate: u32) -> (result: Resource_Handle, ok: bool) {
-    return create_resource(.Raw_F32, to_bytes(frames), flags = {}, frame_rate = frame_rate)
+    return create_resource(.Raw_F32, base.to_bytes(frames), flags = {}, frame_rate = frame_rate)
 }
 
 // The data slice must remain valid until the resource is destroyed.
@@ -917,11 +917,20 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
     // Final pass
     // Applies a limiter curve
 
-    out_buf_simd := reinterpret_slice(#simd[8]f32, out_buf)
-    for &vec in out_buf_simd {
-        // FIXME
-        // vec = fast_tanh_simd(vec)
+    out_buf_f32 := base.reinterpret_slice(f32, out_buf)
+    out_buf_index := 0
+
+    for ; out_buf_index + 7 < len(out_buf_f32); out_buf_index += 8 {
+        vec_ptr := transmute(^#simd[8]f32)&out_buf_f32[out_buf_index]
+        vec := intrinsics.unaligned_load(vec_ptr)
+        vec = fast_tanh_simd(vec)
+        intrinsics.unaligned_store(vec_ptr, vec)
     }
+
+    for &val in out_buf_f32[out_buf_index:] {
+        val = fast_tanh(val)
+    }
+
 
     return
 
@@ -1295,26 +1304,6 @@ move_towards_vec3 :: proc "contextless" (val: [3]f32, target: [3]f32, delta: f32
     return val + dir * delta
 }
 
-
-@(require_results)
-reinterpret_slice :: proc "contextless" ($T: typeid, data: []$E, loc := #caller_location) -> []T {
-    bytes := to_bytes(data)
-    n := len(bytes) / size_of(T)
-    assert_contextless(n * size_of(T) == len(bytes), loc = loc)
-    return (cast([^]T)raw_data(bytes))[:n]
-}
-
-@(require_results)
-reinterpret_bytes :: proc "contextless" ($T: typeid, bytes: []byte, loc := #caller_location) -> []T {
-    n := len(bytes) / size_of(T)
-    assert_contextless(n * size_of(T) == len(bytes), loc = loc)
-    return ([^]T)(raw_data(bytes))[:n]
-}
-
-@(require_results)
-to_bytes :: proc "contextless" (data: []$T) -> []byte {
-    return (cast([^]byte)raw_data(data))[:size_of(T) * len(data)]
-}
 
 volume_linear_to_db :: proc(factor: f32) -> f32 {
     return 20 * math.log10_f32(factor)
