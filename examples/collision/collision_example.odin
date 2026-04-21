@@ -38,13 +38,13 @@ _init :: proc() {
 
     state.cam_pos = {1.5, 3, -8}
     state.cam_ang = {0.3, 0, 0}
-    
+
     coll.init(new(coll.State))
-    
+
     for &t in _triangles {
         t -= 1 // OBJ indices are 1-based
     }
-    
+
     state.arena = coll.create_arena(1024 * 1024)
     state.mesh = coll.create_mesh(state.arena, _verts, _triangles)
 }
@@ -57,7 +57,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     if hot_state != nil {
         state = cast(^State)hot_state
     }
-    
+
     rv.perf_scope()
 
     if rv.key_pressed(.Escape) {
@@ -97,9 +97,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
         rv.set_layer_params(1, rv.make_screen_camera())
     }
-    
+
     rv.bind_depth(.Depth)
-    
+
     if rv.key_pressed(.Space) {
         state.point = !state.point
     }
@@ -114,7 +114,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
                 HEIGHT,
                 ((f32(y) / N) - 0.5) * SCALE,
             }
-            
+
             t: f32
             prim: int
             hit_ok: bool
@@ -123,9 +123,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             } else {
                 t, prim, hit_ok = coll.sweep_sphere_vs_mesh_local(p, {0, -1, 0}, 0.25, state.mesh, HEIGHT)
             }
-            
+
             hit := p + {0, -t, 0}
-            
+
             rv.draw_mesh(
                 rv.get_builtin_mesh(.Icosphere_0),
                 hit,
@@ -134,7 +134,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             )
         }
     }
-    
+
     t: f32
     prim: int
     hit_ok: bool
@@ -144,10 +144,10 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         t, prim, hit_ok = coll.sweep_sphere_vs_mesh_local(state.cam_pos, mat[2], 0.25, state.mesh, 100)
     }
     hit := state.cam_pos + mat[2] * t
-    
+
     {
         rv.scope_binds()
-        
+
         // for v in _verts {
         //     rv.draw_mesh(
         //         rv.get_builtin_mesh(.UV_Sphere_0),
@@ -155,38 +155,38 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         //         scale = 0.25,
         //     )
         // }
-        
+
         for tri, i in _triangles {
             p := [3][3]f32{
                 _verts[tri[0]],
                 _verts[tri[1]],
                 _verts[tri[2]],
             }
-            
+
             rv.draw_triangle(p, col = i == prim ? rv.YELLOW : rv.WHITE)
         }
-        
+
         rv.draw_mesh(
             rv.get_builtin_mesh(.UV_Sphere_0),
             hit,
             col = rv.ORANGE,
             scale = 0.1,
         )
-        
+
         // if tri, tri_ok := coll.get_mesh_triangle(state.mesh, prim); tri_ok {
         //     _, nor := geom.get_triangle_dist_grad(state.cam_pos + mat[2] * (t - 0.001), tri)
         //     rv.draw_line(hit, hit + nor, rv.YELLOW)
         // }
-        
+
     }
-    
+
 
     rv.bind_layer(1)
     rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.bind_depth(.Depth)
     rv.draw_text("Use WASD and QE to move, mouse to look, Space to toggle animation", {20, 20, 0.1}, scale = 1)
     rv.draw_text(rv.tprintf("Dist %v, Tri %v", t, prim), {20, 40, 0.1}, scale = 1, col = hit_ok ? rv.GREEN : rv.RED)
-    
+
     rv.draw_perf_scopes({10, 60, 0.1})
 
     rv.submit_layers()

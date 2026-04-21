@@ -1,6 +1,7 @@
 #+vet shadowing explicit-allocators
 package raven_collision
 
+import "base:intrinsics"
 import "base:runtime"
 import "../base"
 import "../geometry"
@@ -17,7 +18,7 @@ Handle_Gen :: u8
 
 Handle :: struct {
     index:  Handle_Index,
-    gen:    Handle_Gen,    
+    gen:    Handle_Gen,
 }
 
 Arena_Handle :: distinct Handle
@@ -32,7 +33,7 @@ State :: struct {
     arena_data:     [MAX_ARENAS]Arena,
     arena_gen:      [MAX_ARENAS]Handle_Gen,
     arena_used:     base.Bit_Pool(MAX_ARENAS),
-    
+
     mesh_data:      [MAX_MESHES]Mesh,
     mesh_gen:       [MAX_MESHES]Handle_Gen,
     mesh_used:      base.Bit_Pool(MAX_MESHES),
@@ -65,7 +66,7 @@ shutdown :: proc() {
         if arena.data != nil {
             delete(arena.data, arena.backing)
         }
-    }    
+    }
 }
 
 
@@ -78,25 +79,25 @@ create_arena :: proc(
     loc             := #caller_location,
 ) -> (Arena_Handle, bool) #optional_ok {
     assert(_state != nil)
-    
+
     index, index_ok := base.bit_pool_find_0(_state.arena_used)
     if !index_ok {
         return {}, false
     }
-    
+
     arena := Arena{
         data = runtime.make_aligned([]byte, size_in_bytes, 4096, allocator = allocator, loc = loc),
         backing = allocator,
         used = 0,
     }
-    
+
     if arena.data == nil {
         return {}, false
     }
-    
+
     _state.arena_data[index] = arena
     base.bit_pool_set_1(&_state.arena_used, index)
-    
+
     return {
         index = Handle_Index(index),
         gen = _state.arena_gen[index],
@@ -105,7 +106,7 @@ create_arena :: proc(
 
 destroy_arena :: proc(handle: Arena_Handle) -> bool {
     arena := get_arena(handle) or_return
-    
+
     delete(arena.data, arena.backing)
 
     for i in 0..<MAX_MESHES {
@@ -117,7 +118,7 @@ destroy_arena :: proc(handle: Arena_Handle) -> bool {
             })
         }
     }
-    
+
     return true
 }
 
@@ -143,43 +144,43 @@ _arena_allocator_proc :: proc(
     if !arena_ok {
         return nil, .Invalid_Argument
     }
-    
+
     switch mode {
     case .Alloc, .Alloc_Non_Zeroed:
-        space := len(arena.data) - int(arena.used)             
+        space := len(arena.data) - int(arena.used)
         if size > space {
             return nil, .Out_Of_Memory
         }
-        
+
         start := uintptr(raw_data(arena.data)) + uintptr(arena.used)
         aligned_start := runtime.align_forward_uintptr(start, uintptr(alignment))
-        
+
         data := transmute([]byte)runtime.Raw_Slice{
             data = rawptr(aligned_start),
             len = size,
         }
-        
+
         total_allocated := i64(size) + i64(aligned_start) - i64(start)
         arena.used += total_allocated
-        
+
         return data, nil
-    
+
     case .Free_All:
         arena.used = 0
         return nil, nil
-    
+
     case .Query_Features:
 		set := (^runtime.Allocator_Mode_Set)(old_memory)
 		if set != nil {
 			set^ = {.Alloc, .Alloc_Non_Zeroed, .Free_All, .Query_Features}
 		}
 		return nil, nil
-        
+
     case .Free, .Resize, .Resize_Non_Zeroed, .Query_Info:
         return nil, .Mode_Not_Implemented
-    
+
     }
-    
+
     return nil, .Invalid_Argument
 }
 
@@ -188,11 +189,11 @@ get_arena :: proc(handle: Arena_Handle) -> (^Arena, bool) {
     if handle.index <= 0 || handle.index > MAX_ARENAS {
         return nil, false
     }
-    
+
     if _state.arena_gen[handle.index] != handle.gen {
         return nil, false
     }
-    
+
     return &_state.arena_data[handle.index], true
 }
 
@@ -201,11 +202,11 @@ get_mesh :: proc(handle: Mesh_Handle) -> (^Mesh, bool) {
     if handle.index <= 0 || handle.index > MAX_MESHES {
         return nil, false
     }
-    
+
     if _state.mesh_gen[handle.index] != handle.gen {
         return nil, false
     }
-    
+
     return &_state.mesh_data[handle.index], true
 }
 
@@ -216,21 +217,21 @@ create_mesh :: proc(
     triangles:      [][3]u16,
 ) -> (Mesh_Handle, bool) #optional_ok {
     assert(_state != nil)
-    
+
     _, arena_ok := get_arena(arena_handle)
     if !arena_ok {
         return {}, false
     }
-    
+
     index, index_ok := base.bit_pool_find_0(_state.mesh_used)
     if !index_ok {
         return {}, false
     }
-    
+
     allocator := arena_allocator(arena_handle)
-    
-    cloned_verts := clone_slice(verts, allocator)
-    cloned_triangles := clone_slice(triangles, allocator)
+
+    cloned_verts := clone_slice(verts, 64, allocator)
+    cloned_triangles := clone_slice(triangles, 64, allocator)
 
     // Find de-duplicated triangle edges and fill primitive mapping buffers
 
@@ -241,17 +242,17 @@ create_mesh :: proc(
         _insert_edge(&edge_map, tri[0], tri[1], u16(tri_index))
         _insert_edge(&edge_map, tri[0], tri[2], u16(tri_index))
         _insert_edge(&edge_map, tri[1], tri[2], u16(tri_index))
-        
+
         for index in tri {
             assert(int(index) < len(verts))
-            
+
             vert_tri[index] = u16(tri_index)
         }
     }
-    
+
     edges := make([][2]u16, len(edge_map), allocator)
     edge_tri := make([]u16, len(edges), allocator)
-    
+
     edge_index := 0
     for key, val in edge_map {
         edges[edge_index] = key
@@ -260,7 +261,7 @@ create_mesh :: proc(
     }
 
     base.log_debug("Creating collision mesh with %i verts, %i edges, %i tris", len(verts), len(edges), len(triangles))
-    
+
     mesh: Mesh = {
         arena = arena_handle,
         verts = verts,
@@ -269,15 +270,15 @@ create_mesh :: proc(
         edge_tri = edge_tri,
         vert_tri = vert_tri,
     }
-    
+
     _state.mesh_data[index] = mesh
     base.bit_pool_set_1(&_state.mesh_used, index)
-    
+
     return {
         index = Handle_Index(index),
         gen = _state.arena_gen[index],
     }, true
-    
+
     _insert_edge :: proc(m: ^map[[2]u16]u16, a, b: u16, tri_index: u16) {
         pair := [2]u16{
             min(a, b),
@@ -325,12 +326,43 @@ sweep_point_vs_mesh_local :: proc(
     if !mesh_ok {
         return range, -1, false
     }
-    
+
     t = range
     prim = -1
-    
+
     tri_index := 0
-    
+
+    if false { // Slow!
+        pos_simd := simd_scalar_vec(8, pos)
+        move_simd := simd_scalar_vec(8, move)
+
+        for ; tri_index + 7 < len(mesh.triangles); tri_index += 8 {
+            tri: [8][3]u16
+            for &t, i in tri {
+                t = mesh.triangles[tri_index + i]
+            }
+
+            verts: [3][3]#simd[8]f32
+            for t, i in tri {
+                simd_insert_vec(&verts[0], mesh.verts[t[0]], i)
+                simd_insert_vec(&verts[1], mesh.verts[t[1]], i)
+                simd_insert_vec(&verts[2], mesh.verts[t[2]], i)
+            }
+
+            tw, mask := geometry.sweep_point_vs_triangle_simd(pos_simd, move_simd, verts, t)
+
+            tmin := intrinsics.simd_reduce_min(transmute(#simd[8]f32)((transmute(#simd[8]u32)tw) &~ mask))
+
+            if tmin >= t {
+                continue
+            }
+
+            t = tmin
+            prim = tri_index
+            ok = true
+        }
+    }
+
     for ; tri_index < len(mesh.triangles); tri_index += 1 {
         tri := mesh.triangles[tri_index]
         verts := [3][3]f32{
@@ -338,12 +370,12 @@ sweep_point_vs_mesh_local :: proc(
             mesh.verts[tri[1]],
             mesh.verts[tri[2]],
         }
-        
+
         t = geometry.sweep_point_vs_triangle(pos, move, verts, t) or_continue
         prim = tri_index
         ok = true
     }
-    
+
     return t, prim, ok
 }
 
@@ -359,27 +391,27 @@ sweep_sphere_vs_mesh_local :: proc(
     if !mesh_ok {
         return range, -1, false
     }
-    
+
     t = range
     prim = -1
-    
+
     vert_index := 0
     hit_vert := -1
-    
+
     for ; vert_index < len(mesh.verts); vert_index += 1 {
         vert := mesh.verts[vert_index]
         t = geometry.sweep_point_vs_sphere(pos, move, vert, rad, t) or_continue
         hit_vert = vert_index
         ok = true
     }
-    
+
     if hit_vert != -1 {
         prim = int(mesh.vert_tri[hit_vert])
     }
-    
+
     edge_index := 0
     hit_edge := -1
-    
+
     for ; edge_index < len(mesh.edges); edge_index += 1 {
         edge := mesh.edges[edge_index]
         verts := [2][3]f32{
@@ -390,13 +422,13 @@ sweep_sphere_vs_mesh_local :: proc(
         hit_vert = edge_index
         ok = true
     }
-    
+
     if hit_edge != -1 {
         prim = int(mesh.edge_tri[hit_edge])
     }
-    
+
     tri_index := 0
-    
+
     for ; tri_index < len(mesh.triangles); tri_index += 1 {
         tri := mesh.triangles[tri_index]
         verts := [3][3]f32{
@@ -404,12 +436,12 @@ sweep_sphere_vs_mesh_local :: proc(
             mesh.verts[tri[1]],
             mesh.verts[tri[2]],
         }
-        
+
         t = geometry.sweep_point_vs_triangle_slab(pos, move, verts, rad, t) or_continue
         prim = int(tri_index)
         ok = true
     }
-    
+
     return t, prim, ok
 }
 
@@ -418,9 +450,9 @@ get_mesh_triangle :: proc(handle: Mesh_Handle, #any_int tri_index: int) -> (vert
     if tri_index < 0 || tri_index >= len(mesh.triangles) {
         return {}, false
     }
-    
+
     tri := mesh.triangles[tri_index]
-    
+
     return {
         mesh.verts[tri[0]],
         mesh.verts[tri[1]],
@@ -468,12 +500,12 @@ IN RAVEN:
     foo := rv.get_mesh("foo")
 
     rv.sweep_point_vs_mesh(foo, ...)
-    
+
     ...
-    
+
     rv.push_collision_mesh(foo, {1, 2, 3}, 1)
     rv.push_collision_sphere(0, 1, id = u64(123))
-    
+
     sw2 := rv.sweep_sphere(pos, dir, rad)
 
 
@@ -488,8 +520,26 @@ SEPARATE BUT IN RAVEN:
 */
 
 @(require_results)
-clone_slice :: proc(a: $T/[]$E, allocator := context.allocator, loc := #caller_location) -> ([]E, bool) #optional_ok {
-	d, err := make([]E, len(a), allocator, loc)
+clone_slice :: proc(a: $T/[]$E, align: int, allocator := context.allocator, loc := #caller_location) -> ([]E, bool) #optional_ok {
+	d, err := runtime.make_aligned([]E, len(a), align, allocator, loc)
 	copy(d[:], a)
 	return d, err == nil
+}
+
+simd_insert :: #force_inline proc "contextless" (vec: ^#simd[$W]$T, val: T, #any_int index: int) {
+    vec^ = intrinsics.simd_replace(vec, index, val)
+}
+
+// Broadcast
+simd_insert_vec :: proc "contextless" (vec: ^[$N]#simd[$W]$T, val: [N]T, #any_int index: int) {
+    #unroll for v, i in val {
+        vec[i] = intrinsics.simd_replace(vec[i], index, v)
+    }
+}
+
+simd_scalar_vec :: proc "contextless" ($W: int, val: [$N]$T) -> (result: [N]#simd[W]T) {
+    for v, i in val {
+        result[i] = cast(#simd[W]T)v
+    }
+    return result
 }
