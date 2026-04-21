@@ -2497,6 +2497,20 @@ pack_vertex :: proc(
     }
 }
 
+// https://nullprogram.com/blog/2018/07/31/
+
+@(require_results)
+hash_murmurhash32_mix32 :: proc "contextless" (x: u32) -> u32 {
+    x := x
+    x ~= x >> 16
+    x *= 0x85ebca6b
+    x ~= x >> 13
+    x *= 0xc2b2ae35
+    x ~= x >> 16
+    return x
+}
+
+@(require_results)
 hash_splittable64 :: proc "contextless" (x: u64) -> u64 {
     x := x
     x ~= x >> 30

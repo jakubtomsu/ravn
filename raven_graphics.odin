@@ -2296,7 +2296,7 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
 
         gpu.bind_pipeline(pipeline)
 
-        mesh := _state.meshes[key.asset_index] 
+        mesh := _state.meshes[key.asset_index]
 
         gpu.draw_indexed(
             index_num = mesh.index_num,

@@ -95,13 +95,13 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
         rv.set_layer_params(1, rv.make_screen_camera())
     }
-    
+
     rv.bind_depth(.Depth)
-    
+
     if rv.key_pressed(.Space) {
         state.anim_rot = !state.anim_rot
     }
-    
+
     cam_sweep: Sweep = {
         t = 10000,
         hit = state.cam_pos + mat[2] * 10000,
@@ -111,7 +111,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.bind_texture(rv.get_builtin_texture(.Default))
         rv.bind_blend(.Alpha)
         rv.bind_fill(.All)
-        
+
         points := [?][3]f32{
             {-1,  0,  0},
             { 1,  0,  0},
@@ -119,7 +119,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             { 0,  1,  0},
             { 0,  0, -1},
             { 0,  0,  1},
-            
+
             {-1, -1, -1},
             {-1, -1,  1},
             {-1,  1, -1},
@@ -128,7 +128,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             { 1, -1,  1},
             { 1,  1, -1},
             { 1,  1,  1},
-            
+
             {-1, -1,  0},
             {-1,  1,  0},
             { 1, -1,  0},
@@ -142,30 +142,30 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             { 0,  1, -1},
             { 0,  1,  1},
         }
-        
+
         rot := linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0})
-        
+
         for &d in points {
             d = linalg.normalize(d)
             if state.anim_rot {
                 d = linalg.quaternion128_mul_vector3(rot, d)
             }
         }
-        
+
         center: [3]f32 = 0
-        
+
         for shape in Shape_Kind {
             draw_shape(shape, center)
             draw_shape(shape, center + {0, 0, 10})
-            
+
             if shape != .Plane {
                 update_sweep_point_vs_shape(&cam_sweep, state.cam_pos, mat[2], shape, center)
                 update_sweep_point_vs_shape(&cam_sweep, state.cam_pos, mat[2], shape, center + {0, 0, 10})
             }
-            
+
             rnd := rand.create_u64(123)
             context.random_generator = rand.default_random_generator(&rnd)
-            
+
             for d in points {
             // for i in 0..<200 {
                 // d := linalg.normalize([3]f32{
@@ -173,51 +173,51 @@ _update :: proc(hot_state: rawptr) -> rawptr {
                 //     rand.float32() - 0.5,
                 //     rand.float32() - 0.5,
                 // })
-                
+
                 // if state.anim_rot {
                 //     d = linalg.quaternion128_mul_vector3(rot, d)
                 // }
-                                    
+
                 start := center + d * 3
                 move := -d * 3
-                
+
                 t, hit, nor, ok := sweep_point_vs_shape(start, move, shape, center)
-                
+
                 rv.draw_line(start, hit, {ok ? rv.GREEN * rv.fade(0.5) : rv.RED, rv.fade(0)})
-                
+
                 if ok {
                     rv.draw_line(hit, hit + nor * 0.25, rv.YELLOW)
                     rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), hit, scale = 0.05, col = rv.GREEN)
                 }
             }
-            
+
             center.z += 10
-                    
+
             for offs0 in 0..<i32(24) {
                 for offs1 in 0..<i32(24) {
                     v := rv.vcast(f32, [3]i32{offs0, 12, offs1} - 12) / 12.0
-                    
+
                     if state.anim_rot {
                         v = linalg.quaternion128_mul_vector3(
                             rv.quat_angle_axis(rv.get_time(), {0, 1, 0}),
                             v,
                         )
                     }
-                    
+
                     start := center + v * 2 + {0, 3, 0}
-                    
+
                     move := [3]f32{0, -6, 0}
-                    
+
                     t, hit, nor, ok := sweep_point_vs_shape(start, move, shape, center)
-                                        
+
                     rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), hit, scale = 0.05, col = ok ? rv.GREEN : rv.RED)
                 }
             }
-            
+
             center.z = 0
             center.x += 10
         }
-        
+
         rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit, scale = 0.075, col = rv.YELLOW)
         rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit + cam_sweep.nor * 0.1, scale = 0.05, col = rv.ORANGE)
     }
@@ -240,28 +240,28 @@ draw_shape :: proc(shape: Shape_Kind, center: rv.Vec3) {
     for &v in tri {
         v += center
     }
-    
+
     switch shape {
     case .Box:
         rv.draw_mesh(rv.get_builtin_mesh(.Cube), center, col = rv.GRAY)
-        
+
     case .Sphere:
         rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center, col = rv.GRAY)
-    
+
     case .Plane:
         rv.draw_mesh(rv.get_builtin_mesh(.Disk), center, col = rv.GRAY)
-    
+
     case .Cylinder, .Uncapped_Cylinder:
         rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), center, col = rv.GRAY)
-    
+
     case .Capsule:
         rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), center, col = rv.GRAY)
         rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, 1, 0}, col = rv.GRAY)
         rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, -1, 0}, col = rv.GRAY)
-    
+
     case .Triangle:
         rv.draw_triangle(tri, col = rv.GRAY)
-        
+
     case .Rounded_Triangle:
         rv.draw_triangle(tri, col = rv.GRAY)
         for v in tri {
@@ -275,52 +275,52 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
     for &v in tri {
         v += center
     }
-        
+
     switch shape {
     case .Box:
         t, ok = geom.sweep_point_vs_aabb(start, move, center - 1, center + 1, range = range)
         hit = start + move * t
         _, nor = geom.get_box_dist_grad(hit, center, 1)
-        
+
     case .Plane:
         t, ok = geom.sweep_point_vs_plane(start, move, {0, 1, 0}, center.y, range = range)
         hit = start + move * t
         nor = {0, 1, 0}
-        
+
     case .Sphere:
         t, ok = geom.sweep_point_vs_sphere(start, move, center, 1, range = range)
         hit = start + move * t
         if ok {
             nor = linalg.normalize(hit - center)
         }
-    
+
     case .Capsule:
         points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
         t, ok = geom.sweep_point_vs_capsule(start, move, points, 1, range = range)
         hit = start + move * t
         _, nor = geom.get_line_dist_grad(hit, points)
-        
+
     case .Cylinder:
         points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
         t, ok = geom.sweep_point_vs_cylinder(start, move, points, 1, range = range)
         hit = start + move * t
-        
+
     case .Uncapped_Cylinder:
         points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
         t, ok = geom.sweep_point_vs_uncapped_cylinder(start, move, points, 1, range = range)
         hit = start + move * t
-        
+
     case .Triangle:
         t, ok = geom.sweep_point_vs_triangle(start, move, tri, range = range)
         hit = start + move * t
         _, nor = geom.get_triangle_dist_grad(start + move * (t - 0.001), tri)
-        
+
     case .Rounded_Triangle:
         t, ok = geom.sweep_sphere_vs_triangle(start, move, 0.5, tri, range = range)
         hit = start + move * t
         _, nor = geom.get_triangle_dist_grad(hit, tri)
     }
-    
+
     return t, hit, nor, ok
 }
 
@@ -338,7 +338,7 @@ Sweep :: struct {
 
 update_sweep_point_vs_shape :: proc(sweep: ^Sweep, start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, center: rv.Vec3) {
     t, hit, nor, ok := sweep_point_vs_shape(start, move, shape, center, range = sweep.t)
-    
+
     if ok && t < sweep.t {
         sweep^ = {
             t = t,

@@ -1,4 +1,5 @@
 #+test
+#+vet shadowing unused
 package raven
 
 import "core:math/linalg"

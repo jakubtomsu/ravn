@@ -133,3 +133,26 @@ Module_Shutdown_Proc ::   #type proc()
 // Usually, hot_ptr is nil. But after a hotreload, hot_ptr is the last returned data_ptr.
 // This way you can
 Module_Update_Proc ::     #type proc(hot_ptr: rawptr) -> (data_ptr: rawptr)
+
+
+
+
+@(require_results)
+reinterpret_slice :: proc "contextless" ($T: typeid, data: []$E, loc := #caller_location) -> []T {
+    bytes := to_bytes(data)
+    n := len(bytes) / size_of(T)
+    assert_contextless(n * size_of(T) == len(bytes), loc = loc)
+    return (cast([^]T)raw_data(bytes))[:n]
+}
+
+@(require_results)
+reinterpret_bytes :: proc "contextless" ($T: typeid, bytes: []byte, loc := #caller_location) -> []T {
+    n := len(bytes) / size_of(T)
+    assert_contextless(n * size_of(T) == len(bytes), loc = loc)
+    return ([^]T)(raw_data(bytes))[:n]
+}
+
+@(require_results)
+to_bytes :: proc "contextless" (data: []$T) -> []byte {
+    return (cast([^]byte)raw_data(data))[:size_of(T) * len(data)]
+}
