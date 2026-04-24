@@ -88,11 +88,11 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_depth(.Depth)
+    rv.set_draw_depth(.Depth)
 
-    if rv.scope_binds() {
-        rv.bind_texture("default")
-        rv.bind_layer(0)
+    if rv.scope_draw_state() {
+        rv.set_draw_texture("default")
+        rv.set_draw_layer(0)
 
 
         tex := [?]rv.Texture_Handle{
@@ -105,12 +105,12 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         offs: rv.Vec3
 
         for blend in rv.Blend_Mode {
-            rv.bind_blend(.Opaque)
-            rv.bind_fill(.All)
-            rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
+            rv.set_draw_blend(.Opaque)
+            rv.set_draw_fill(.All)
+            rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
             rv.draw_text(fmt.tprint(blend), offs + {-40, 0, 0}, scale = 0.15)
 
-            rv.bind_blend(blend)
+            rv.set_draw_blend(blend)
 
             defer {
                 offs.x = 0
@@ -118,9 +118,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             }
 
             for fill in rv.Fill_Mode {
-                rv.bind_fill(fill)
+                rv.set_draw_fill(fill)
                 for texh in tex {
-                    rv.bind_texture(texh)
+                    rv.set_draw_texture(texh)
 
                     anim := rv.Vec3{0, rv.nsin(rv.get_time() + (offs.x + offs.y + offs.z) * 0.03), 0}
 
@@ -139,9 +139,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         }
     }
 
-    rv.bind_layer(1)
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_depth(.Depth)
+    rv.set_draw_layer(1)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_depth(.Depth)
     rv.draw_text("Use WASD and QE to move, mouse to look", {200, 14, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
     rv.draw_perf_scopes()

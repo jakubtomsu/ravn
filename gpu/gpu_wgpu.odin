@@ -1080,7 +1080,7 @@ when BACKEND == BACKEND_WGPU {
         _state.render_pass_encoder = nil
     }
 
-    _bind_pipeline :: proc(
+    _set_pipeline :: proc(
         curr_pip: Pipeline_State,
         curr: Pipeline_Desc,
         prev: Pipeline_Desc,
@@ -1115,7 +1115,7 @@ when BACKEND == BACKEND_WGPU {
         _state.compute_pass_encoder = nil
     }
 
-    _bind_compute_pipeline :: proc(
+    _set_compute_pipeline :: proc(
         curr_pip:   Compute_Pipeline_State,
         curr:       Compute_Pipeline_Desc,
         prev:       Compute_Pipeline_Desc,
@@ -1204,7 +1204,7 @@ when BACKEND == BACKEND_WGPU {
         offsets_len := 0
         offsets_buf: [CONSTANTS_BIND_SLOTS]u32
 
-        // TODO: some of this should be cached on bind_pipeline
+        // TODO: some of this should be cached on set_pipeline
         for offset, i in offsets {
 
             handle := _state.curr_pipeline_desc.constants[i]

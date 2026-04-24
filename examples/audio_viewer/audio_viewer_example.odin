@@ -66,7 +66,7 @@ _update :: proc(_: rawptr) -> rawptr {
 
     rv.set_layer_params(0, rv.make_screen_camera())
 
-    rv.bind_texture(rv.get_builtin_texture(.White))
+    rv.set_draw_texture(rv.get_builtin_texture(.White))
 
     scroll: int = 0
     if abs(rv.scroll_delta().y) > 0.1 {
@@ -122,7 +122,7 @@ _update :: proc(_: rawptr) -> rawptr {
         scaling = .Absolute,
     )
 
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.draw_text(
         ufmt.tprintf("%v", smp),
         {10, 10, 0}

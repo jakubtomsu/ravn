@@ -96,7 +96,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.set_layer_params(1, rv.make_screen_camera())
     }
 
-    rv.bind_depth(.Depth)
+    rv.set_draw_depth(.Depth)
 
     if rv.key_pressed(.Space) {
         state.anim_rot = !state.anim_rot
@@ -107,10 +107,10 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         hit = state.cam_pos + mat[2] * 10000,
     }
 
-    { rv.scope_binds()
-        rv.bind_texture(rv.get_builtin_texture(.Default))
-        rv.bind_blend(.Alpha)
-        rv.bind_fill(.All)
+    { rv.scope_draw_state()
+        rv.set_draw_texture(rv.get_builtin_texture(.Default))
+        rv.set_draw_blend(.Alpha)
+        rv.set_draw_fill(.All)
 
         points := [?][3]f32{
             {-1,  0,  0},
@@ -222,9 +222,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit + cam_sweep.nor * 0.1, scale = 0.05, col = rv.ORANGE)
     }
 
-    rv.bind_layer(1)
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_depth(.Depth)
+    rv.set_draw_layer(1)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_depth(.Depth)
     rv.draw_text("Use WASD and QE to move, mouse to look, Space to toggle animation", {20, 20, 0.1}, scale = 1)
     rv.draw_text(rv.tprintf("%f", cam_sweep.t), {20, 40, 0.1}, scale = 1)
 

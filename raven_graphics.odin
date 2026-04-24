@@ -106,17 +106,11 @@ Texture_Data :: struct {
     pixels: [][4]u8,
 }
 
-Bind_State :: struct {
+Draw_State :: struct {
     using key:              Draw_Batch_Key,
     draw_layer:             u8,
     texture_slice:          u8,
     texture_size:           [2]u16, // cached
-}
-
-Bind_Texture_Mode :: enum u8 {
-    Non_Pooled,
-    Pooled,
-    Render_Texture,
 }
 
 Draw_Layer_Flag :: enum u8 {
@@ -191,11 +185,17 @@ Draw_Batch_Key :: struct #all_or_none {
     ps:             u8,
     vs:             u8,
     using packed:   bit_field u16 {
-        texture_mode:   Bind_Texture_Mode   | 2,
+        texture_kind:   Draw_Texture_Kind   | 2,
         depth_mode:     Depth_Mode          | 2,
         fill_mode:      Fill_Mode           | 2,
         blend_mode:     Blend_Mode          | 2,
     },
+}
+
+Draw_Texture_Kind :: enum u8 {
+    Non_Pooled,
+    Pooled,
+    Render_Texture,
 }
 
 Render_Texture :: struct #all_or_none {
@@ -913,138 +913,138 @@ get_render_texture_size :: proc(handle: Render_Texture_Handle) -> (result: [2]i3
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Bind
+// MARK: Draw State
 //
 
-@(deferred_none = pop_binds)
-scope_binds :: proc() -> bool {
-    push_binds()
+@(deferred_none = pop_draw_state)
+scope_draw_state :: proc() -> bool {
+    push_draw_state()
     return true
 }
 
-push_binds :: proc() {
-    if _state.bind_states_len >= MAX_BIND_STATE_DEPTH {
+push_draw_state :: proc() {
+    if _state.draw_states_len >= MAX_DRAW_STATE_DEPTH {
         base.log_err("Cannot set bind state, reached max depth")
         return
     }
 
-    _state.bind_states[_state.bind_states_len] = _state.bind_state
-    _state.bind_states_len += 1
+    _state.draw_states[_state.draw_states_len] = _state.draw_state
+    _state.draw_states_len += 1
 }
 
-pop_binds :: proc() {
-    assert(_state.bind_states_len > 0)
-    _state.bind_states_len -= 1
-    _state.bind_state = _state.bind_states[_state.bind_states_len]
+pop_draw_state :: proc() {
+    assert(_state.draw_states_len > 0)
+    _state.draw_states_len -= 1
+    _state.draw_state = _state.draw_states[_state.draw_states_len]
 }
 
 @(require_results)
-get_binds :: proc() -> Bind_State {
-    return _state.bind_state
+get_draw_state :: proc() -> Draw_State {
+    return _state.draw_state
 }
 
-// NOTE: be very careful when changing fields in Bind_State.
+// NOTE: be very careful when changing fields in Draw_State.
 // This proc should be used mostly to revert state returned by 'get_binds'
-set_binds :: proc(binds: Bind_State) {
-    _state.bind_state = binds
+set_draw_state :: proc(binds: Draw_State) {
+    _state.draw_state = binds
 }
 
-bind_layer :: proc(#any_int layer: i32) {
+set_draw_layer :: proc(#any_int layer: i32) {
     assert(layer >= 0 && layer <= MAX_DRAW_LAYERS)
-    _state.bind_state.draw_layer = u8(layer)
+    _state.draw_state.draw_layer = u8(layer)
 }
 
-bind_blend :: proc(blend: Blend_Mode) {
-    _state.bind_state.blend_mode = blend
+set_draw_blend :: proc(blend: Blend_Mode) {
+    _state.draw_state.blend_mode = blend
 }
 
-bind_fill :: proc(fill: Fill_Mode) {
-    _state.bind_state.fill_mode = fill
+set_draw_fill :: proc(fill: Fill_Mode) {
+    _state.draw_state.fill_mode = fill
 }
 
-bind_depth :: proc(depth: Depth_Mode) {
-    _state.bind_state.depth_mode = depth
+set_draw_depth :: proc(depth: Depth_Mode) {
+    _state.draw_state.depth_mode = depth
 }
 
-bind_pixel_shader :: proc {
-    bind_pixel_shader_by_name,
-    bind_pixel_shader_by_handle,
+set_draw_pixel_shader :: proc {
+    set_draw_pixel_shader_by_name,
+    set_draw_pixel_shader_by_handle,
 }
 
-bind_vertex_shader :: proc {
-    bind_vertex_shader_by_name,
-    bind_vertex_shader_by_handle,
+set_draw_vertex_shader :: proc {
+    set_draw_vertex_shader_by_name,
+    set_draw_vertex_shader_by_handle,
 }
 
-bind_texture :: proc {
-    bind_texture_by_const,
-    bind_texture_by_name,
-    bind_texture_by_handle,
-    bind_render_texture_by_handle,
+set_draw_texture :: proc {
+    set_draw_texture_by_const,
+    set_draw_texture_by_name,
+    set_draw_texture_by_handle,
+    set_draw_render_texture_by_handle,
 }
 
 
-bind_pixel_shader_by_name :: proc(name: string) -> bool {
-    bind_pixel_shader_by_handle(get_pixel_shader_by_name(name))
+set_draw_pixel_shader_by_name :: proc(name: string) -> bool {
+    set_draw_pixel_shader_by_handle(get_pixel_shader_by_name(name))
     return true
 }
 
-bind_vertex_shader_by_name :: proc(name: string) -> bool {
-    bind_vertex_shader_by_handle(get_vertex_shader_by_name(name))
+set_draw_vertex_shader_by_name :: proc(name: string) -> bool {
+    set_draw_vertex_shader_by_handle(get_vertex_shader_by_name(name))
     return true
 }
 
-bind_texture_by_const :: proc($Name: string) -> bool {
-    bind_texture_by_handle(get_texture_by_hash(hash_const_name(Name)))
+set_draw_texture_by_const :: proc($Name: string) -> bool {
+    set_draw_texture_by_handle(get_texture_by_hash(hash_const_name(Name)))
     return true
 }
 
-bind_texture_by_name :: proc(name: string) -> bool {
-    bind_texture_by_handle(get_texture_by_name(name))
+set_draw_texture_by_name :: proc(name: string) -> bool {
+    set_draw_texture_by_handle(get_texture_by_name(name))
     return true
 }
 
 
-bind_pixel_shader_by_handle :: proc(handle: Pixel_Shader_Handle) {
+set_draw_pixel_shader_by_handle :: proc(handle: Pixel_Shader_Handle) {
     if _, ok := get_internal_pixel_shader(handle); ok {
-        _state.bind_state.ps = u8(handle.index)
+        _state.draw_state.ps = u8(handle.index)
     } else {
-        _state.bind_state.ps = u8(_state.builtin_pixel_shader[.Default].index)
+        _state.draw_state.ps = u8(_state.builtin_pixel_shader[.Default].index)
     }
 }
 
-bind_vertex_shader_by_handle :: proc(handle: Vertex_Shader_Handle) {
+set_draw_vertex_shader_by_handle :: proc(handle: Vertex_Shader_Handle) {
     if _, ok := get_internal_vertex_shader(handle); ok {
-        _state.bind_state.vs = u8(handle.index)
+        _state.draw_state.vs = u8(handle.index)
     } else {
-        _state.bind_state.vs = u8(_state.builtin_vertex_shader[.Default].index)
+        _state.draw_state.vs = u8(_state.builtin_vertex_shader[.Default].index)
     }
 }
 
-bind_texture_by_handle :: proc(handle: Texture_Handle) {
-    if !_bind_texture(handle) {
-        _bind_texture(_state.builtin_texture[.Error])
+set_draw_texture_by_handle :: proc(handle: Texture_Handle) {
+    if !_set_draw_texture(handle) {
+        _set_draw_texture(_state.builtin_texture[.Error])
     }
 }
 
-_bind_texture :: proc(handle: Texture_Handle) -> bool {
+_set_draw_texture :: proc(handle: Texture_Handle) -> bool {
     tex := get_internal_texture(handle) or_return
     if tex.resource != {} {
         // Standalone tex
-        _state.bind_state.texture_mode = .Non_Pooled
-        _state.bind_state.texture = u8(handle.index)
-        _state.bind_state.texture_slice = 0
-        _state.bind_state.texture_size = tex.size
+        _state.draw_state.texture_kind = .Non_Pooled
+        _state.draw_state.texture = u8(handle.index)
+        _state.draw_state.texture_slice = 0
+        _state.draw_state.texture_size = tex.size
     } else {
         // Pool slice index
         pool := _state.texture_pools[tex.pool_index]
         assert(int(tex.slice) < int(pool.slices))
         assert(int(tex.slice) in pool.slices_used)
 
-        _state.bind_state.texture_mode = .Pooled
-        _state.bind_state.texture = u8(tex.pool_index)
-        _state.bind_state.texture_slice = u8(tex.slice)
-        _state.bind_state.texture_size = {
+        _state.draw_state.texture_kind = .Pooled
+        _state.draw_state.texture = u8(tex.pool_index)
+        _state.draw_state.texture_slice = u8(tex.slice)
+        _state.draw_state.texture_size = {
             u16(pool.size.x),
             u16(pool.size.y),
         }
@@ -1054,19 +1054,19 @@ _bind_texture :: proc(handle: Texture_Handle) -> bool {
 
 // Bind render texture for READING like a regular texture.
 // In order to WRITE to a render texture, use layers.
-bind_render_texture_by_handle :: proc(handle: Render_Texture_Handle) {
+set_draw_render_texture_by_handle :: proc(handle: Render_Texture_Handle) {
     assert(handle != DEFAULT_RENDER_TEXTURE)
     tex, tex_ok := get_internal_render_texture(handle)
     if !tex_ok {
-        _bind_texture(_state.builtin_texture[.Error])
+        _set_draw_texture(_state.builtin_texture[.Error])
         return
     }
     assert(tex.color != {})
 
-    _state.bind_state.texture_mode = .Render_Texture
-    _state.bind_state.texture = u8(handle.index)
-    _state.bind_state.texture_slice = 0
-    _state.bind_state.texture_size = {
+    _state.draw_state.texture_kind = .Render_Texture
+    _state.draw_state.texture = u8(handle.index)
+    _state.draw_state.texture_slice = 0
+    _state.draw_state.texture_size = {
         u16(tex.size.x),
         u16(tex.size.y),
     }
@@ -1125,7 +1125,7 @@ draw_sprite :: proc(
 
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
-    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
+    draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
 
     rect_size := rect_full_size(rect)
 
@@ -1140,8 +1140,8 @@ draw_sprite :: proc(
     switch scaling {
     case .Pixel:
         size *= {
-            f32(_state.bind_state.texture_size.x) * rect_size.x,
-            f32(_state.bind_state.texture_size.y) * rect_size.y,
+            f32(_state.draw_state.texture_size.x) * rect_size.x,
+            f32(_state.draw_state.texture_size.y) * rect_size.y,
         }
 
     case .Absolute:
@@ -1165,11 +1165,11 @@ draw_sprite :: proc(
         uv_size = rect_size - rect_size_sign * UV_EPS * 2,
         col = col,
         add_col = add_col,
-        tex_slice = _state.bind_state.texture_slice,
+        tex_slice = _state.draw_state.texture_slice,
         param = param,
     )
 
-    key := _state.bind_state.key
+    key := _state.draw_state.key
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
     _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
@@ -1199,14 +1199,14 @@ draw_rect :: proc(
         uv_size = rect_full_size(tex_rect) - tex_size_sign * UV_EPS * 2,
         col = col,
         add_col = add_col,
-        tex_slice = _state.bind_state.texture_slice,
+        tex_slice = _state.draw_state.texture_slice,
         param = param,
     )
 
-    key := _state.bind_state.key
+    key := _state.draw_state.key
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
-    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
+    draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
     _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
 }
 
@@ -1226,8 +1226,8 @@ draw_text :: proc(
     perf_scope()
 
     char_size := IVec2{
-        i32(_state.bind_state.texture_size.x) / 16,
-        i32(_state.bind_state.texture_size.y) / 16,
+        i32(_state.draw_state.texture_size.x) / 16,
+        i32(_state.draw_state.texture_size.y) / 16,
     }
 
     full_size := calc_text_size(
@@ -1338,7 +1338,7 @@ draw_mesh :: proc(
 
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
-    key := _state.bind_state.key
+    key := _state.draw_state.key
     key.asset_index = u16(handle.index)
     key.group = u8(mesh.group.index)
 
@@ -1356,7 +1356,7 @@ draw_mesh :: proc(
         mat_x = mat[0] * scale.x,
         mat_y = mat[1] * scale.y,
         mat_z = mat[2] * scale.z,
-        tex_slice = _state.bind_state.texture_slice,
+        tex_slice = _state.draw_state.texture_slice,
         vert_offs = u32(mesh.vert_offs),
         param = param,
         col = col,
@@ -1365,7 +1365,7 @@ draw_mesh :: proc(
 
     rad := mesh.bounds_rad * max(scale.x, scale.y, scale.z)
 
-    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
+    draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
     _draw_batch_table_push(&draw_layer.meshes, key, inst, rad)
 }
 
@@ -1390,11 +1390,11 @@ draw_triangles :: proc(
         return
     }
 
-    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
+    draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
     offset, num := _push_draw_dynamic_verts(verts)
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
-    key := _state.bind_state.key
+    key := _state.draw_state.key
     key.asset_index = int_cast(u16, num)
 
     inst := pack_mesh_inst(
@@ -1402,7 +1402,7 @@ draw_triangles :: proc(
         mat_x = mat[0] * scale.x,
         mat_y = mat[1] * scale.y,
         mat_z = mat[2] * scale.z,
-        tex_slice = _state.bind_state.texture_slice,
+        tex_slice = _state.draw_state.texture_slice,
         vert_offs = u32(offset),
         param = param,
         col = col,
@@ -1433,11 +1433,11 @@ draw_lines :: proc(
         return
     }
 
-    draw_layer := &_state.draw_layers[_state.bind_state.draw_layer]
+    draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
     offset, num := _push_draw_dynamic_verts(verts)
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
-    key := _state.bind_state.key
+    key := _state.draw_state.key
     key.asset_index = int_cast(u16, num)
 
     inst := pack_mesh_inst(
@@ -1445,7 +1445,7 @@ draw_lines :: proc(
         mat_x = mat[0] * scale.x,
         mat_y = mat[1] * scale.y,
         mat_z = mat[2] * scale.z,
-        tex_slice = _state.bind_state.texture_slice,
+        tex_slice = _state.draw_state.texture_slice,
         vert_offs = u32(offset),
         param = param,
         col = col,
@@ -2247,7 +2247,7 @@ _render_layer_sprites :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
             continue
         }
 
-        gpu.bind_pipeline(pipeline)
+        gpu.set_pipeline(pipeline)
 
         gpu.draw_indexed(
             index_num = 6,
@@ -2294,7 +2294,7 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
             continue
         }
 
-        gpu.bind_pipeline(pipeline)
+        gpu.set_pipeline(pipeline)
 
         mesh := _state.meshes[key.asset_index]
 
@@ -2336,7 +2336,7 @@ _render_layer_triangles :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
             continue
         }
 
-        gpu.bind_pipeline(pipeline)
+        gpu.set_pipeline(pipeline)
 
         gpu.draw_non_indexed(
             vertex_num = key.asset_index,
@@ -2377,7 +2377,7 @@ _render_layer_lines :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
             continue
         }
 
-        gpu.bind_pipeline(pipeline)
+        gpu.set_pipeline(pipeline)
 
         gpu.draw_non_indexed(
             vertex_num = key.asset_index,
@@ -2400,7 +2400,7 @@ _gpu_pipeline_desc_apply_draw_key :: proc(pip_desc: ^gpu.Pipeline_Desc, key: Dra
     pip_desc.vs = gpu.Shader_Handle(_state.vertex_shaders[key.vs])
 
     tex_res: gpu.Resource_Handle
-    switch key.texture_mode {
+    switch key.texture_kind {
     case .Non_Pooled:       tex_res = _state.textures[key.texture].resource
     case .Pooled:           tex_res = _state.texture_pools[key.texture].resource
     case .Render_Texture:   tex_res = _state.render_textures[key.texture].color

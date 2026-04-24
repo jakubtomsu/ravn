@@ -98,7 +98,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_depth(.Depth)
+    rv.set_draw_depth(.Depth)
 
     audio.set_listener(state.cam_pos, cam_vel, forw = mat[2], right = mat[0])
 
@@ -113,10 +113,10 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         audio.set_sound_param(sound, .Pitch, 0.1, 3.0)
     }
 
-    if rv.scope_binds() {
-        rv.bind_texture(rv.get_builtin_texture(.Default))
-        rv.bind_blend(.Alpha)
-        rv.bind_fill(.Front)
+    if rv.scope_draw_state() {
+        rv.set_draw_texture(rv.get_builtin_texture(.Default))
+        rv.set_draw_blend(.Alpha)
+        rv.set_draw_fill(.Front)
 
         rv.draw_line_grid(col = rv.WHITE * 0.7)
 
@@ -128,9 +128,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.draw_mesh(rv.get_builtin_mesh(.Cube), {0, 2, -2}, scale = {1, 2, 1}, col = rv.oklerp(rv.GRAY, rv.DARK_GREEN, 0.5))
     }
 
-    rv.bind_layer(1)
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_depth(.Depth)
+    rv.set_draw_layer(1)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_depth(.Depth)
     rv.draw_text("Use WASD and QE to move, mouse to look", {20, 20, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
     rv.submit_layers()

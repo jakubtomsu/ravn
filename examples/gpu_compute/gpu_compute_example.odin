@@ -113,7 +113,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         pip := gpu.create_compute_pipeline("life", desc) or_else panic("cs pipeline")
 
-        gpu.bind_compute_pipeline(pip)
+        gpu.set_compute_pipeline(pip)
 
         gpu.dispatch_compute({SIZE / 8, SIZE / 8, 1})
 
@@ -124,7 +124,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, cam)
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_depth(.Depth)
+    rv.set_draw_depth(.Depth)
 
     // rv.draw_mesh(
     //     rv.get_builtin_mesh(.Cylinder),
@@ -132,7 +132,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     // )
 
     for i in 0..<i32(state.tex_len-1) {
-        rv.bind_texture(state.tex[(state.tex_index - i) %% len(state.tex)])
+        rv.set_draw_texture(state.tex[(state.tex_index - i) %% len(state.tex)])
         t := f32(i) / f32(len(state.tex))
 
         // brute force thickness
@@ -150,8 +150,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.draw_line_mat3(0, 1)
 
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_layer(1)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_layer(1)
     rv.draw_text(ufmt.tprintf("press space to restart\ntex: %v\nfill: %v", state.tex_index, state.fill), {10, 10, 0})
 
     rv.submit_layers()

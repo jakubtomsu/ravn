@@ -192,9 +192,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.pos_spr[0], cam_rot, rv.deg(fov)))
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_texture("default")
-    rv.bind_depth(.Depth)
-    rv.bind_fill(.All)
+    rv.set_draw_texture("default")
+    rv.set_draw_depth(.Depth)
+    rv.set_draw_fill(.All)
 
     rv.draw_mesh(rv.get_mesh("Cube"),
         gun_pos,
@@ -211,9 +211,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.draw_mesh(state.terrain_mesh, 0)
 
-    rv.bind_layer(1)
+    rv.set_draw_layer(1)
 
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.draw_text("Use WASD and QE to move, mouse to look", {14, 14, 0.1}, scale = 2)
     rv.draw_text(ufmt.tprintf("speed: %v, vel: %v", linalg.length(state.vel), state.vel),
         {14, 64, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK

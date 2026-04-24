@@ -98,7 +98,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.set_layer_params(1, rv.make_screen_camera())
     }
 
-    rv.bind_depth(.Depth)
+    rv.set_draw_depth(.Depth)
 
     if rv.key_pressed(.Space) {
         state.point = !state.point
@@ -146,7 +146,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     hit := state.cam_pos + mat[2] * t
 
     {
-        rv.scope_binds()
+        rv.scope_draw_state()
 
         // for v in _verts {
         //     rv.draw_mesh(
@@ -181,9 +181,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     }
 
 
-    rv.bind_layer(1)
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_depth(.Depth)
+    rv.set_draw_layer(1)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_depth(.Depth)
     rv.draw_text("Use WASD and QE to move, mouse to look, Space to toggle animation", {20, 20, 0.1}, scale = 1)
     rv.draw_text(rv.tprintf("Dist %v, Tri %v", t, prim), {20, 40, 0.1}, scale = 1, col = hit_ok ? rv.GREEN : rv.RED)
 

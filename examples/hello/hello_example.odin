@@ -36,9 +36,9 @@ _update :: proc(_: rawptr) -> rawptr {
     // Layer 0 is the default one, so let's set up a regular screenspace view for it.
     rv.set_layer_params(0, rv.make_screen_camera())
 
-    // To configure draw state like blending, textures, shaders, current layer, etc, call 'rv.bind_*'
+    // To configure draw state like blending, textures, shaders, current layer, etc, call 'rv.set_draw_*'
     // You can also call push_binds/pop_binds to save and restore the bind state.
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
 
     rv.draw_sprite({100, 100, 0}, rv.font_slot(0), scale = 1, col = rv.PURPLE)
 

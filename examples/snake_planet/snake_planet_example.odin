@@ -276,18 +276,18 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, state.cam_rot, state.cam_fov))
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_depth(.Depth)
+    rv.set_draw_depth(.Depth)
 
     if state.screen == .Game {
         snake := state.snake
 
-        rv.bind_texture("default")
+        rv.set_draw_texture("default")
 
         sph := rv.get_builtin_mesh(.Icosphere_1)
 
         rv.draw_mesh(sph, 0, col = rv.Vec4{0.0, 0.6, 0.2, 1})
 
-        rv.bind_texture("white")
+        rv.set_draw_texture("white")
 
         rv.draw_mesh(sph, snake.pos, scale = 0.15, col = rv.ORANGE + rv.YELLOW * 0.1)
         for seg, i in snake.segments[:snake.num_segments] {
@@ -304,8 +304,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.draw_mesh(sph, state.berry.pos * 1.1, scale = 0.2 + 0.05 * rv.nsin(rv.get_time() * 2), col = rv.RED)
     }
 
-    rv.bind_layer(1)
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_layer(1)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
 
     screen := rv.get_viewport()
 

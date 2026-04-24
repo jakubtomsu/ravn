@@ -23,10 +23,13 @@ odin check examples/hello -define:PLATFORM_BACKEND=SDL3 || goto :err
 odin check examples/hello || goto :err
 odin check examples/hello_minimal || goto :err
 odin check examples/audio_viewer || goto :err
+odin check examples/geometry || goto :err
+odin check examples/collision || goto :err
 odin check examples/stress_test_3d || goto :err
 odin check examples/spatial_audio || goto :err
 odin check examples/fps || goto :err
 odin check examples/gpu_compute || goto :err
+odin check examples/draw_2d || goto :err
 odin check examples/draw_3d || goto :err
 odin check examples/snake_planet || goto :err
 odin check examples/standalone_audio_simple || goto :err

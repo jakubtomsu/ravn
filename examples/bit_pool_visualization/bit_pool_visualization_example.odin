@@ -80,8 +80,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     delta := rv.get_delta_time()
 
     rv.set_layer_params(0, rv.make_screen_camera())
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_blend(.Alpha)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_blend(.Alpha)
 
     if rv.mouse_down(.Left) {
         num := 64
@@ -176,7 +176,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         )
     }
 
-    rv.bind_texture(rv.get_builtin_texture(.White))
+    rv.set_draw_texture(rv.get_builtin_texture(.White))
 
     for i in 0..<64 {
         block_full := (state.pool.l1[0] & (1 << uint(i))) != 0
@@ -273,7 +273,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         }
     }
 
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
 
     rv.draw_text("LMB to spawn particles", {10, 10, 0}, scale = 2)
 

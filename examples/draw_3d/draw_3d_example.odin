@@ -85,12 +85,12 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.bind_depth(.Depth)
+    rv.set_draw_depth(.Depth)
 
-    if rv.scope_binds() {
-        rv.bind_texture(rv.get_builtin_texture(.Default))
-        rv.bind_blend(.Alpha)
-        rv.bind_fill(.Front)
+    if rv.scope_draw_state() {
+        rv.set_draw_texture(rv.get_builtin_texture(.Default))
+        rv.set_draw_blend(.Alpha)
+        rv.set_draw_fill(.Front)
 
         // Meshes
 
@@ -102,7 +102,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             )
         }
 
-        rv.bind_fill(.All)
+        rv.set_draw_fill(.All)
 
         // Custom triangles
 
@@ -133,13 +133,13 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.draw_line_cylinder({{6, -1, 5}, {6, 1, 5}}, rad = 0.5)
         rv.draw_line_sphere({8, 0, 5}, mat = 0.7, col = rv.RED)
 
-        rv.bind_pixel_shader(state.shader)
+        rv.set_draw_pixel_shader(state.shader)
         rv.draw_mesh(rv.get_builtin_mesh(.Cube), {3, -5, 0}, col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
     }
 
-    rv.bind_layer(1)
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.bind_depth(.Depth)
+    rv.set_draw_layer(1)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_depth(.Depth)
     rv.draw_text("Use WASD and QE to move, mouse to look", {20, 20, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
     rv.submit_layers()

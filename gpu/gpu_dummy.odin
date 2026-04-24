@@ -64,8 +64,8 @@ when BACKEND == BACKEND_DUMMY {
     _begin_compute_pass :: proc(name: string) { dummy() }
     _end_compute_pass :: proc() { dummy() }
 
-    _bind_pipeline :: proc(curr_pip: Pipeline_State, curr: Pipeline_Desc, prev: Pipeline_Desc) { dummy() }
-    _bind_compute_pipeline :: proc(curr_pip: Compute_Pipeline_State, curr: Compute_Pipeline_Desc, prev: Compute_Pipeline_Desc) { dummy() }
+    _set_pipeline :: proc(curr_pip: Pipeline_State, curr: Pipeline_Desc, prev: Pipeline_Desc) { dummy() }
+    _set_compute_pipeline :: proc(curr_pip: Compute_Pipeline_State, curr: Compute_Pipeline_Desc, prev: Compute_Pipeline_Desc) { dummy() }
 
     _update_constants :: proc(consts: ^Resource_State, data: []u8) { dummy() }
     _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]u8) { dummy() }

@@ -64,7 +64,7 @@ MAX_TOTAL_DYNAMIC_VERTS :: 1024 * 64 // Shared between triangles and lines
 MAX_TEXTURE_POOLS :: 8
 MAX_TEXTURE_POOL_SLICES :: 64
 
-MAX_BIND_STATE_DEPTH :: 64
+MAX_DRAW_STATE_DEPTH :: 64
 
 MAX_TOTAL_DRAW_BATCHES :: 4096
 
@@ -153,9 +153,9 @@ State :: struct #align(64) {
 
     input:                      Input,
 
-    bind_state:                 Bind_State,
-    bind_states:                [MAX_BIND_STATE_DEPTH]Bind_State,
-    bind_states_len:            i32,
+    draw_state:                 Draw_State,
+    draw_states:                [MAX_DRAW_STATE_DEPTH]Draw_State,
+    draw_states_len:            i32,
 
     builtin_group:              Group_Handle,
     builtin_mesh:               [Builtin_Mesh]Mesh_Handle,
@@ -744,7 +744,7 @@ begin_frame :: proc() -> (keep_running: bool) {
     perf_scope()
 
     assert(_state != nil)
-    assert(_state.bind_states_len == 0, "Looks like you forgot pop_binds() somewhere")
+    assert(_state.draw_states_len == 0, "Looks like you forgot pop_binds() somewhere")
 
     if _state.frame_index == 0 {
         base.log_info("Time to first frame: %f ms", f32((platform.get_time_ns() - _state.start_time) / 1e3) * 1e-3)
@@ -969,16 +969,16 @@ begin_frame :: proc() -> (keep_running: bool) {
         load_asset(change, {})
     }
 
-    _state.bind_states_len = 0
-    _state.bind_state = {
+    _state.draw_states_len = 0
+    _state.draw_state = {
         ps = int_cast(u8, _state.builtin_pixel_shader[.Default].index),
         vs = int_cast(u8, _state.builtin_vertex_shader[.Default].index),
         blend_mode = .Opaque,
     }
 
-    bind_pixel_shader_by_handle({})
-    bind_vertex_shader_by_handle({})
-    _bind_texture(_state.builtin_texture[.Default])
+    set_draw_pixel_shader_by_handle({})
+    set_draw_vertex_shader_by_handle({})
+    _set_draw_texture(_state.builtin_texture[.Default])
 
     if _state.shutdown_requested {
         keep_running = false
@@ -2584,10 +2584,10 @@ _perf_counter_flush :: proc(perf_counter: ^Perf_Counter_State) {
 // Assumes screenspace camera.
 // 'unit' is for converting e.g. nanoseconds into a reasonable range.
 draw_perf_counter :: proc(kind: Perf_Counter_Kind, pos: Vec3, scale: f32 = 1, col: Vec4 = 1, show_text := true) {
-    scope_binds()
-    bind_texture_by_handle(_state.builtin_texture[.CGA8x8thick])
-    bind_blend(.Alpha)
-    bind_depth(.Depth)
+    scope_draw_state()
+    set_draw_texture_by_handle(_state.builtin_texture[.CGA8x8thick])
+    set_draw_blend(.Alpha)
+    set_draw_depth(.Depth)
 
     max_val: u64
 
@@ -2665,9 +2665,9 @@ _perf_scope_add :: proc(name: string, loc := #caller_location, start: i64) {
 
 draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
     when PERF_SCOPES_ENABLED {
-        scope_binds()
-        bind_texture(get_builtin_texture(.CGA8x8thick))
-        bind_depth(.Depth)
+        scope_draw_state()
+        set_draw_texture(get_builtin_texture(.CGA8x8thick))
+        set_draw_depth(.Depth)
 
         Scope :: struct {
             name:   string,

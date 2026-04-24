@@ -77,7 +77,7 @@ main :: proc() {
             },
         })
 
-        gpu.bind_pipeline(pip)
+        gpu.set_pipeline(pip)
         gpu.draw_non_indexed(3)
 
         gpu.end_pass()
