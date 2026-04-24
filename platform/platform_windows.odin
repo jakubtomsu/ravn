@@ -431,13 +431,6 @@ when BACKEND == BACKEND_WINDOWS {
     }
 
     @(require_results)
-    _get_current_thread :: proc() -> Thread {
-        return {
-            handle = windows.GetCurrentThread(),
-        }
-    }
-
-    @(require_results)
     _get_current_thread_id :: proc() -> u64 {
         return u64(windows.GetCurrentThreadId())
     }

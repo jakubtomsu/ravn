@@ -204,18 +204,11 @@ _create_thread :: proc(procedure: Thread_Proc, name: string) -> Thread {
 }
 
 _join_thread :: proc(thread: Thread) {
-    _js_unsupported()
-}
 
-@(require_results)
-_get_current_thread :: proc() -> Thread {
-    _js_unsupported()
-    return {}
 }
 
 @(require_results)
 _get_current_thread_id :: proc() -> u64 {
-    _js_unsupported()
     return 0
 }
 

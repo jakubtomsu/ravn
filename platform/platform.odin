@@ -384,10 +384,6 @@ join_thread :: proc(thread: Thread) {
     _join_thread(thread)
 }
 
-get_current_thread :: proc() -> Thread {
-    return _get_current_thread()
-}
-
 get_current_thread_id :: proc() -> u64 {
     return _get_current_thread_id()
 }

@@ -55,7 +55,6 @@ when BACKEND == BACKEND_DUMMY {
     @(require_results) _create_thread :: proc(procedure: Thread_Proc, name: string) -> Thread { dummy() }
     _join_thread :: proc(thread: Thread) { dummy() }
     _set_thread_name :: proc(thread: Thread, name: string) { dummy() }
-    @(require_results) _get_current_thread :: proc() -> Thread { dummy() }
     @(require_results) _get_current_thread_id :: proc() -> u64 { dummy() }
 
 

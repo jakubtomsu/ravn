@@ -219,11 +219,6 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     @(require_results)
-    _get_current_thread :: proc() -> Thread {
-        unimplemented()
-    }
-
-    @(require_results)
     _get_current_thread_id :: proc() -> u64 {
         return u64(sdl3.GetCurrentThreadID())
     }
@@ -275,7 +270,13 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     _set_window_style :: proc(window: Window, style: Window_Style) {
-        unimplemented()
+        switch style {
+        case .Regular:
+            sdl3.SetWindowBordered(window.window, true)
+
+        case .Borderless:
+            sdl3.SetWindowBordered(window.window, false)
+        }
     }
 
     _set_window_pos :: proc(window: Window, pos: [2]i32) {
