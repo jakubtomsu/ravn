@@ -87,15 +87,13 @@ _memory_protect :: proc(ptr: rawptr, num_bytes: int, protect: Memory_Protection)
 }
 
 @(require_results)
-_clipboard_set :: proc(data: []byte, format: Clipboard_Format = .Text) -> bool {
-    _js_unsupported()
-    return true
+_clipboard_set :: proc(data: string) -> bool {
+    unimplemented()
 }
 
 @(require_results)
-_clipboard_get :: proc(format: Clipboard_Format = .Text, allocator := context.temp_allocator) -> ([]byte, bool) {
-    _js_unsupported()
-    return nil, false
+_clipboard_get :: proc(allocator := context.temp_allocator) -> (string, bool) {
+    unimplemented()
 }
 
 @(require_results)

@@ -31,8 +31,8 @@ when BACKEND == BACKEND_DUMMY {
     _register_default_exception_handler :: proc() {}
 
     @(require_results) _memory_protect :: proc(ptr: rawptr, num_bytes: int, protect: Memory_Protection) -> bool { dummy() }
-    @(require_results) _clipboard_set :: proc(data: []byte, format: Clipboard_Format = .Text) -> bool { dummy() }
-    @(require_results) _clipboard_get :: proc(format: Clipboard_Format = .Text, allocator := context.temp_allocator) -> ([]byte, bool) { dummy() }
+    @(require_results) _clipboard_set :: proc(data: string) -> bool { dummy() }
+    @(require_results) _clipboard_get :: proc(allocator := context.temp_allocator) -> (string, bool) { dummy() }
     @(require_results) _get_gamepad_state :: proc(#any_int index: int) -> (result: Gamepad_State, ok: bool) { dummy() }
     @(require_results) _set_gamepad_feedback :: proc(#any_int index: int, output: Gamepad_Feedback) -> bool { dummy() }
 

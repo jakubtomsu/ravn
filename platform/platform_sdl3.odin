@@ -72,31 +72,19 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     @(require_results)
-    _clipboard_set :: proc(data: []byte, format: Clipboard_Format = .Text) -> bool {
-        switch format {
-        case .Text:
-            sdl3.SetClipboardText(
-                clone_to_cstring(transmute(string)data),
-            )
-        case:
-            unimplemented()
-        }
-        return false
+    _clipboard_set :: proc(data: string) -> bool {
+        return sdl3.SetClipboardText(
+            clone_to_cstring(data),
+        )
     }
 
     @(require_results)
-    _clipboard_get :: proc(format: Clipboard_Format = .Text, allocator := context.temp_allocator) -> ([]byte, bool) {
-        switch format {
-        case .Text:
-            if !sdl3.HasClipboardText() {
-                return {}, false
-            }
-            text := string(cstring(sdl3.GetClipboardText()))
-            return transmute([]byte)text, true
-        case:
-            unimplemented()
+    _clipboard_get :: proc(allocator := context.temp_allocator) -> (string, bool) {
+        if !sdl3.HasClipboardText() {
+            return {}, false
         }
-        return {}, false
+        text := string(cstring(sdl3.GetClipboardText()))
+        return text, true
     }
 
     @(require_results)

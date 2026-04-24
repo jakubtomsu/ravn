@@ -110,10 +110,6 @@ Module :: struct {
     using native:   _Module,
 }
 
-Clipboard_Format :: enum u8 {
-    Text = 0,
-}
-
 File_Dialog_Mode :: enum u8 {
     Open,
     Save,
@@ -296,12 +292,12 @@ memory_protect :: proc(ptr: rawptr, num_bytes: int, protect: Memory_Protection) 
     return _memory_protect(ptr, num_bytes, protect)
 }
 
-clipboard_set :: proc(data: []byte, format: Clipboard_Format = .Text) -> bool {
-    return _clipboard_set(data, format)
+clipboard_set :: proc(data: string) -> bool {
+    return _clipboard_set(data)
 }
 
-clipboard_get :: proc(format: Clipboard_Format = .Text, allocator := context.temp_allocator) -> ([]byte, bool) {
-    return _clipboard_get(format, allocator)
+clipboard_get :: proc(allocator := context.temp_allocator) -> (string, bool) {
+    return _clipboard_get(allocator)
 }
 
 @(require_results)
@@ -337,10 +333,6 @@ set_mouse_visible :: proc(visible: bool) {
 
 set_dpi_aware :: proc() {
     _set_dpi_aware()
-}
-
-get_main_monitor_rect :: proc() -> Rect {
-    return _get_main_monitor_rect()
 }
 
 set_current_directory :: proc(path: string) -> bool {
@@ -508,6 +500,10 @@ poll_window_events :: proc(window: Window) -> (event: Event, should_continue: bo
 
     _state.event_counter = 0
     return nil, false
+}
+
+get_main_monitor_rect :: proc() -> Rect {
+    return _get_main_monitor_rect()
 }
 
 

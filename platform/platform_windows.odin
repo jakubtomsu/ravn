@@ -506,16 +506,7 @@ when BACKEND == BACKEND_WINDOWS {
     // MARK: clipboard
     //
 
-    _win32_clipboard_format :: proc(format: Clipboard_Format) -> u32 {
-        switch format {
-        case .Text:
-            // HACK: this isn't proper utf8
-            return windows.CF_TEXT
-        }
-        return 0
-    }
-
-    _clipboard_set :: proc(data: []byte, format: Clipboard_Format) -> bool {
+    _clipboard_set :: proc(data: string) -> bool {
         hwnd := windows.GetActiveWindow()
         if hwnd == nil {
             return false
@@ -542,14 +533,14 @@ when BACKEND == BACKEND_WINDOWS {
         windows.GlobalUnlock(memory_handle)
 
         windows.SetClipboardData(
-            _win32_clipboard_format(format),
+            windows.CF_TEXT,
             cast(windows.HANDLE)memory_handle,
         )
 
         return true
     }
 
-    _clipboard_get :: proc(format: Clipboard_Format, allocator := context.temp_allocator) -> ([]byte, bool) {
+    _clipboard_get :: proc(allocator := context.temp_allocator) -> (string, bool) {
         windows.SetLastError(0)
 
         hwnd := windows.GetActiveWindow()
@@ -563,7 +554,7 @@ when BACKEND == BACKEND_WINDOWS {
 
         defer windows.CloseClipboard()
 
-        memory_handle := windows.GetClipboardData(_win32_clipboard_format(format))
+        memory_handle := windows.GetClipboardData(windows.CF_TEXT)
 
         if memory_handle == nil {
             return {}, false
@@ -578,7 +569,6 @@ when BACKEND == BACKEND_WINDOWS {
         defer windows.GlobalUnlock(cast(windows.HGLOBAL)memory_handle)
 
         length := len(cstring(memory)) // dumb
-
         result, err := runtime.mem_alloc(length, allocator = allocator)
         if err != nil {
             return {}, false
@@ -586,7 +576,7 @@ when BACKEND == BACKEND_WINDOWS {
 
         runtime.mem_copy_non_overlapping(raw_data(result), memory, length)
 
-        return result, true
+        return transmute(string)result, true
     }
 
 

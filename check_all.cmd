@@ -18,6 +18,7 @@ odin check examples/hello -define:GPU_BACKEND=WGPU -target:js_wasm32 || goto :er
 odin check examples/hello -define:PLATFORM_BACKEND=Dummy || goto :err
 odin check examples/hello -define:PLATFORM_BACKEND=Windows || goto :err
 odin check examples/hello -define:PLATFORM_BACKEND=JS -target:js_wasm32 || goto :err
+odin check examples/hello -define:PLATFORM_BACKEND=SDL3 || goto :err
 
 odin check examples/hello || goto :err
 odin check examples/hello_minimal || goto :err
