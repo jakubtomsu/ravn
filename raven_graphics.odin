@@ -1071,33 +1071,24 @@ set_layer_params :: proc(
 // MARK: Draw
 //
 
-// TODO: 2d variants!
 draw_sprite :: proc(
     pos:        Vec3,
     rect:       Rect = {0, 1},
     scale:      Vec2 = 1,
     col:        Vec4 = 1,
-    rot:        Quat = 1,
+    rot:        Mat3 = 1,
     anchor:     Vec2 = 0,
     add_col:    Vec4 = 0,
     scaling:    Sprite_Scaling = .Pixel,
     param:      u32 = 0,
 ) {
     perf_scope()
-
     validate_vec3(pos)
 
-    mat := linalg.matrix3_from_quaternion_f32(rot)
-
+    rect_size := rect_full_size(rect)
     draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
 
-    rect_size := rect_full_size(rect)
-
-    size := Vec2{
-        scale.x * 0.5,
-        scale.y * 0.5,
-    }
-
+    size := scale.xy * 0.5
     size.y = .Flip_Y in draw_layer.flags ? -size.y : size.y
 
     switch scaling {
@@ -1112,20 +1103,15 @@ draw_sprite :: proc(
     }
 
     center := pos
-    center -= mat[0] * anchor.x * size.x
-    center -= mat[1] * anchor.y * size.y
-
-    rect_size_sign := Vec2{
-        rect_size.x > 0 ? 1 : -1,
-        rect_size.y > 0 ? 1 : -1,
-    }
+    center -= rot[0] * anchor.x * size.x
+    center -= rot[1] * anchor.y * size.y
 
     inst := pack_sprite_inst(
         pos = center,
-        mat_x = mat[0] * size.x,
-        mat_y = mat[1] * size.y,
-        uv_min = rect.min + rect_size_sign * UV_EPS,
-        uv_size = rect_size - rect_size_sign * UV_EPS * 2,
+        mat_x = rot[0] * size.x,
+        mat_y = rot[1] * size.y,
+        uv_min = rect.min + UV_EPS,
+        uv_size = rect_size - UV_EPS * 2,
         col = col,
         add_col = add_col,
         tex_slice = _state.draw_state.texture_slice,
@@ -1138,10 +1124,69 @@ draw_sprite :: proc(
     _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
 }
 
-draw_rect :: proc(
+draw_sprite_2d :: proc(
+    pos:        Vec2,
+    rect:       Rect = {0, 1},
+    scale:      Vec2 = 1,
+    col:        Vec4 = 1,
+    rot:        f32 = 1,
+    anchor:     Vec2 = 0,
+    add_col:    Vec4 = 0,
+    scaling:    Sprite_Scaling = .Pixel,
+    z:          f32 = 0,
+    param:      u32 = 0,
+) {
+    perf_scope()
+
+    validate_vec2(pos)
+
+    draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
+
+    rect_size := rect_full_size(rect)
+
+    size := scale * 0.5
+    size.y = .Flip_Y in draw_layer.flags ? -size.y : size.y
+
+    switch scaling {
+    case .Pixel:
+        size *= {
+            f32(_state.draw_state.texture_size.x) * rect_size.x,
+            f32(_state.draw_state.texture_size.y) * rect_size.y,
+        }
+
+    case .Absolute:
+        // No scaling
+    }
+
+    mat0 := Vec2{math.cos_f32(rot), math.sin_f32(rot)}
+    mat1 := Vec2{-mat0.y, mat0.x}
+
+    center := pos
+    center -= mat0 * anchor.x * size.x
+    center -= mat1 * anchor.y * size.y
+
+    inst := pack_sprite_inst(
+        pos = {center.x, center.y, z},
+        mat_x = {mat0.x * size.x, mat0.y * size.y, 0},
+        mat_y = {mat1.x * size.x, mat1.y * size.y, 0},
+        uv_min = rect.min + UV_EPS,
+        uv_size = rect_size - UV_EPS * 2,
+        col = col,
+        add_col = add_col,
+        tex_slice = _state.draw_state.texture_slice,
+        param = param,
+    )
+
+    key := _state.draw_state.key
+    key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
+
+    _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
+}
+
+draw_rect_2d :: proc(
     rect:       Rect,
     tex_rect:   Rect = {0, 1},
-    z:          f32 = 0.0,
+    z:          f32 = 0,
     col:        Vec4 = 1,
     add_col:    Vec4 = 0,
     param:      u32 = 0,
@@ -1149,17 +1194,12 @@ draw_rect :: proc(
     center := rect_center(rect)
     size := rect_full_size(rect)
 
-    tex_size_sign := Vec2{
-        math.sign_f32(size.x),
-        math.sign_f32(size.y),
-    }
-
     inst := pack_sprite_inst(
         pos = {center.x, center.y, z},
         mat_x = {size.x * 0.5, 0, 0},
         mat_y = {0, size.y * 0.5, 0},
-        uv_min = tex_rect.min + tex_size_sign * UV_EPS,
-        uv_size = rect_full_size(tex_rect) - tex_size_sign * UV_EPS * 2,
+        uv_min = tex_rect.min + UV_EPS,
+        uv_size = rect_full_size(tex_rect) - UV_EPS * 2,
         col = col,
         add_col = add_col,
         tex_slice = _state.draw_state.texture_slice,
@@ -1173,115 +1213,6 @@ draw_rect :: proc(
     _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
 }
 
-
-
-// Returns a slice of the GPU sprite instances.
-// TODO: real text draw iterator?
-draw_text :: proc(
-    text:       string, // UTF-8
-    pos:        [3]f32,
-    scale:      Vec2 = 1,
-    anchor:     Vec2 = -1, // Anchor point in local space. -1 = left aligned, 0 = centered, 1.0 = right aligned
-    spacing:    Vec2 = {0, 8}, // x = character spacing, y = line spacing
-    col:        Vec4 = 1,
-    rot:        Quat = 1,
-) -> []Sprite_Inst {
-    perf_scope()
-
-    char_size := IVec2{
-        i32(_state.draw_state.texture_size.x) / 16,
-        i32(_state.draw_state.texture_size.y) / 16,
-    }
-
-    full_size := calc_text_size(
-        text = text,
-        scale = scale,
-        char_size = char_size,
-        spacing = spacing,
-    )
-
-    // TODO: check layer Flip_Y
-
-    mat := linalg.matrix3_from_quaternion_f32(rot)
-
-    center := pos +
-        mat[0] * f32(char_size.x) * scale.x * 0.5 +
-        mat[1] * f32(char_size.y) * scale.y * 0.5 +
-        mat[0] * full_size.x * -(anchor.x * 0.5 + 0.5) +
-        mat[1] * full_size.y * -(anchor.y * 0.5 + 0.5)
-
-    offs: Vec2
-
-    for r in text {
-        if rune_is_drawable(r) {
-            ch := rune_to_char(r)
-
-            p := center + (
-                mat[0] * offs.x +
-                mat[1] * offs.y
-            )
-
-            // TODO: correct anchor
-            draw_sprite(
-                pos = p,
-                rect = font_slot(ch),
-                scale = scale,
-                col = col,
-                rot = rot,
-            )
-        }
-
-        offs = text_glyph_apply(offs, r, scale = scale, char_size = char_size, spacing = spacing)
-    }
-
-    // TODO:
-    // return draw_layer.sprites.inst[:len(draw_layer.sprites)][start_offs:]
-    return {}
-}
-
-rune_is_drawable :: proc(r: rune) -> bool {
-    switch r {
-    case ' ', '\n', '\t':
-        return false
-    }
-    return true
-}
-
-calc_text_size :: proc(text: string, scale: Vec2, char_size: IVec2 = 8, spacing: Vec2 = 0) -> Vec2 {
-    offs: Vec2
-
-    size: Vec2
-
-    for r in text {
-        offs = text_glyph_apply(offs, r, scale = scale, char_size = char_size, spacing = spacing)
-        size = {
-            max(size.x, offs.x),
-            max(size.y, offs.y),
-        }
-    }
-
-    return size + {0, (f32(char_size.y) + spacing.y) * scale.y}
-}
-
-text_glyph_apply :: proc(offs: Vec2, r: rune, scale: Vec2, char_size: IVec2 = 8, spacing: Vec2 = 0) -> Vec2 {
-    offs := offs
-
-    switch r {
-    case '\n':
-        offs.x = 0
-        offs.y += scale.y * (f32(char_size.y) + spacing.y)
-        return offs
-
-    case '\t':
-        tab_size := scale.x * (f32(char_size.x) + spacing.x) * 4
-        offs.x = math.ceil_f32(offs.x / tab_size + 1) * tab_size
-        return offs
-    }
-
-    offs.x += scale.x * (f32(char_size.x) + spacing.x)
-
-    return offs
-}
 
 draw_mesh :: proc(
     handle:     Mesh_Handle,
@@ -1448,6 +1379,25 @@ draw_triangle :: proc(
     draw_triangles(..verts[:])
 }
 
+draw_triangle_2d :: proc(
+    pos:        [3]Vec2,
+    col:        [3]Vec4 = WHITE,
+    uvs:        [3]Vec2 = {{0, 0}, {1, 0}, {0, 1}},
+    add_col:    Vec4 = BLACK,
+    z:          f32 = 0,
+) {
+    verts: [3]Vertex
+    for i in 0..<3 {
+        verts[i] = pack_vertex(
+            pos = {pos[i].x, pos[i].y, z},
+            uv = uvs[i],
+            normal = {0, 0, -1},
+            col = col[i],
+        )
+    }
+    draw_triangles(..verts[:])
+}
+
 // Prefer draw_lines if you need to efficiently draw many lines.
 draw_line :: proc(
     pos0:       Vec3,
@@ -1478,6 +1428,25 @@ draw_line :: proc(
     draw_lines(..verts[:])
 }
 
+draw_line_2d :: proc(
+    pos0:       Vec2,
+    pos1:       Vec2,
+    col:        [2]Vec4 = WHITE,
+    uvs:        [2]Vec2 = {{0, 0.5}, {1, 0.5}},
+    add_col:    Vec4 = BLACK,
+    z:          f32 = 0,
+) {
+    verts: [2]Vertex
+    for &v, i in verts {
+        v = pack_vertex(
+            pos = i == 0 ? {pos0.x, pos0.y, z} : {pos1.x, pos1.y, z},
+            uv = uvs[i],
+            normal = {0, 0, -1},
+            col = col[i],
+        )
+    }
+    draw_lines(..verts[:])
+}
 
 _init_draw_array :: #force_inline proc(arr: ^$T/#soa[dynamic]$V, #any_int last_len: int) {
     if len(arr) == 0 {
@@ -1502,7 +1471,157 @@ _push_draw_dynamic_verts :: proc(verts: []Vertex) -> (offset: int, length: int) 
 }
 
 
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Draw Text
+//
+
+// Returns a slice of the GPU sprite instances.
+// TODO: real text draw iterator?
+draw_text :: proc(
+    text:       string, // UTF-8
+    pos:        [3]f32,
+    scale:      Vec2 = 1,
+    anchor:     Vec2 = -1, // Anchor point in local space. -1 = left aligned, 0 = centered, 1.0 = right aligned
+    spacing:    Vec2 = {0, 8}, // x = character spacing, y = line spacing
+    col:        Vec4 = 1,
+    add_col:    Vec4 = 0,
+    rot:        Mat3 = 1,
+) -> []Sprite_Inst {
+    perf_scope()
+
+    char_size := IVec2{
+        i32(_state.draw_state.texture_size.x) / 16,
+        i32(_state.draw_state.texture_size.y) / 16,
+    }
+
+    full_size := calc_text_size(
+        text = text,
+        scale = scale,
+        char_size = char_size,
+        spacing = spacing,
+    )
+
+    center := pos +
+        rot[0] * f32(char_size.x) * scale.x * 0.5 +
+        rot[1] * f32(char_size.y) * scale.y * 0.5 +
+        rot[0] * full_size.x * -(anchor.x * 0.5 + 0.5) +
+        rot[1] * full_size.y * -(anchor.y * 0.5 + 0.5)
+
+    offs: Vec2
+
+    key := _state.draw_state.key
+    key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
+
+    table := &_state.draw_layers[_state.draw_state.draw_layer].sprites
+    batch_index, batch_ok := _draw_batch_table_find_or_create(table, key)
+
+    if !batch_ok {
+        return nil
+    }
+
+    batch := &table.batches[batch_index]
+
+    initial_offs := batch.len
+
+    for r in text {
+        if rune_is_drawable(r) {
+            ch := rune_to_char(r)
+
+            p := center + (
+                rot[0] * offs.x +
+                rot[1] * offs.y
+            )
+
+            rect := font_slot(ch)
+
+            rect_size := rect_full_size(rect)
+            draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
+
+            size := scale.xy * 0.5
+            size.y = .Flip_Y in draw_layer.flags ? -size.y : size.y
+
+            // Pixel scaling
+            size *= {
+                f32(_state.draw_state.texture_size.x) * rect_size.x,
+                f32(_state.draw_state.texture_size.y) * rect_size.y,
+            }
+
+            center := p
+            center -= rot[0] * anchor.x * size.x
+            center -= rot[1] * anchor.y * size.y
+
+            inst := pack_sprite_inst(
+                pos = center,
+                mat_x = rot[0] * size.x,
+                mat_y = rot[1] * size.y,
+                uv_min = rect.min + UV_EPS,
+                uv_size = rect_size - UV_EPS * 2,
+                col = col,
+                add_col = add_col,
+                tex_slice = _state.draw_state.texture_slice,
+            )
+
+            _draw_batch_push(batch, inst, max(size.x, size.y))
+        }
+
+        offs = text_glyph_apply(offs, r, scale = scale, char_size = char_size, spacing = spacing)
+    }
+
+    return batch.inst_data[:batch.len][initial_offs:]
+}
+
+rune_is_drawable :: proc(r: rune) -> bool {
+    switch r {
+    case ' ', '\n', '\t':
+        return false
+    }
+    return true
+}
+
+calc_text_size :: proc(text: string, scale: Vec2, char_size: IVec2 = 8, spacing: Vec2 = 0) -> Vec2 {
+    offs: Vec2
+
+    size: Vec2
+
+    for r in text {
+        offs = text_glyph_apply(offs, r, scale = scale, char_size = char_size, spacing = spacing)
+        size = {
+            max(size.x, offs.x),
+            max(size.y, offs.y),
+        }
+    }
+
+    return size + {0, (f32(char_size.y) + spacing.y) * scale.y}
+}
+
+text_glyph_apply :: proc(offs: Vec2, r: rune, scale: Vec2, char_size: IVec2 = 8, spacing: Vec2 = 0) -> Vec2 {
+    offs := offs
+
+    switch r {
+    case '\n':
+        offs.x = 0
+        offs.y += scale.y * (f32(char_size.y) + spacing.y)
+        return offs
+
+    case '\t':
+        tab_size := scale.x * (f32(char_size.x) + spacing.x) * 4
+        offs.x = math.ceil_f32(offs.x / tab_size + 1) * tab_size
+        return offs
+    }
+
+    offs.x += scale.x * (f32(char_size.x) + spacing.x)
+
+    return offs
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Line shapes
+//
+// TODO: some shapes could use a single inst + linear transform
+//
 
 _BOX_CORNER_POSITIONS :: [8]Vec3 {
     0 = Vec3{-1, -1, -1},
@@ -1740,7 +1859,7 @@ _calc_circle_points :: proc(segments: int) -> []Vec2 {
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Draw Batching
+// MARK: Batch Table
 //
 
 _draw_batch_table_init :: proc(table: ^$T/Draw_Batch_Table($Inst)) {
@@ -1765,6 +1884,15 @@ _draw_batch_table_push :: proc(
     inst:       Inst,
     cull_rad:   f32,
 ) #no_bounds_check {
+    index, index_ok := _draw_batch_table_find_or_create(table, key)
+    if !index_ok {
+        return
+    }
+    batch := &table.batches[index]
+    _draw_batch_push(batch, inst, cull_rad)
+}
+
+_draw_batch_table_find_or_create :: proc(table: ^$T/Draw_Batch_Table($Inst), key: Draw_Batch_Key) -> (int, bool) #no_bounds_check {
     hash := #force_inline hash_splittable64(transmute(u64)key)
 
     lookup_index := u64(hash % DRAW_BATCH_TABLE_LOOKUP)
@@ -1792,13 +1920,13 @@ _draw_batch_table_push :: proc(
 
     if !found {
         assert(false)
-        return
+        return -1, false
     }
 
     if index == -1 {
         if table.len >= DRAW_BATCH_TABLE_BATCHES {
             assert(false)
-            return
+            return -1, false
         }
 
         index = int(table.len)
@@ -1809,10 +1937,14 @@ _draw_batch_table_push :: proc(
         table.len += 1
     }
 
-    ELEM_SIZE :: size_of(Inst)
+    return index, true
+}
 
-    batch := &table.batches[index]
-
+_draw_batch_push :: proc(
+    batch:      ^Draw_Batch($Inst),
+    inst:       Inst,
+    cull_rad:   f32,
+) #no_bounds_check {
     // Note: the reallocation should be extremely infrequent,
     // as we're tracking the last frame "waterline".
     if batch.len >= batch.cap {

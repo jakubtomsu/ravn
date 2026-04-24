@@ -2438,7 +2438,7 @@ pack_sprite_inst :: proc(
     mat_y:      [3]f32,
     uv_size:    [2]f32,
     add_col:    [4]f32,
-    param:      u32,
+    param:      u32 = 0,
     tex_slice:  u8,
 ) -> Sprite_Inst {
     return {
@@ -2751,27 +2751,27 @@ _is_nan_or_inf_f32 :: #force_inline proc(x: f32) -> bool {
 }
 
 @(disabled = !VALIDATION)
-validate_f32 :: proc(x: f32, loc := #caller_location) {
+validate_f32 :: #force_inline proc(x: f32, loc := #caller_location) {
     validate(_is_nan_or_inf_f32(x), loc = loc)
 }
 
 @(disabled = !VALIDATION)
-validate_vec2 :: proc(v: [2]f32, loc := #caller_location) {
+validate_vec2 :: #force_inline proc(v: [2]f32, loc := #caller_location) {
     validate(_is_nan_or_inf_f32(v.x) || _is_nan_or_inf_f32(v.y), loc = loc)
 }
 
 @(disabled = !VALIDATION)
-validate_vec3 :: proc(v: [3]f32, loc := #caller_location) {
+validate_vec3 :: #force_inline proc(v: [3]f32, loc := #caller_location) {
     validate(_is_nan_or_inf_f32(v.x) || _is_nan_or_inf_f32(v.y) || _is_nan_or_inf_f32(v.z), loc = loc)
 }
 
 @(disabled = !VALIDATION)
-validate_vec4 :: proc(v: [4]f32, loc := #caller_location) {
+validate_vec4 :: #force_inline proc(v: [4]f32, loc := #caller_location) {
     validate(_is_nan_or_inf_f32(v.x) || _is_nan_or_inf_f32(v.y) || _is_nan_or_inf_f32(v.z) || _is_nan_or_inf_f32(v.w), loc = loc)
 }
 
 @(disabled = !VALIDATION)
-validate_quat :: proc(q: quaternion128, loc := #caller_location) {
+validate_quat :: #force_inline proc(q: quaternion128, loc := #caller_location) {
     validate(_is_nan_or_inf_f32(q.x) || _is_nan_or_inf_f32(q.y) || _is_nan_or_inf_f32(q.z) || _is_nan_or_inf_f32(q.w), loc = loc)
 }
 

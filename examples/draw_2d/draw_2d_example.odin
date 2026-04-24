@@ -38,22 +38,22 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     delta := rv.get_delta_time()
 
-    rv.set_layer_params(0, rv.make_2d_camera(0, 0.1))
+    rv.set_layer_params(0, rv.make_2d_camera(0, 1))
     rv.set_layer_params(1, rv.make_screen_camera(0))
 
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.set_draw_blend(.Alpha)
     rv.set_draw_depth(.Depth)
 
-    { rv.scope_draw_state()
+    rv.set_draw_layer(0)
 
-        rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
-        rv.set_draw_blend(.Alpha)
-
-        rv.draw_sprite(0, scale = 0.1) // draw entire texture
-
-        rv.draw_text("Hello World!", {10, 0, 0})
-    }
+    // rv.draw_sprite(0, scale = 100, scaling = .Absolute)
+    rv.draw_line(0, {100, 0, 1}, rv.RED)
+    rv.draw_text("Hello World!", {0, 0, 0})
 
     rv.set_draw_layer(1)
+
+    rv.draw_text("Hello Screen!", {10, 10, 0})
 
     rv.submit_layers()
     rv.render_layer(0, clear_color = rv.Vec3{0, 0, 0.1}, clear_depth = true)
