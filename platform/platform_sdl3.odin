@@ -89,8 +89,36 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _get_gamepad_state :: proc(#any_int index: int) -> (result: Gamepad_State, ok: bool) {
-        // sdl3.GetGamepadFromPlayerIndex
-        return {}, false
+        gamepad := sdl3.GetGamepadFromPlayerIndex(i32(index))
+        if gamepad == nil {
+            return {}, false
+        }
+
+        result.axes = {
+            .Left_Trigger   = f32(sdl3.GetGamepadAxis(gamepad, .LEFT_TRIGGER))  / f32(max(i16)),
+            .Right_Trigger  = f32(sdl3.GetGamepadAxis(gamepad, .RIGHT_TRIGGER)) / f32(max(i16)),
+            .Left_Thumb_X   = f32(sdl3.GetGamepadAxis(gamepad, .LEFTX))         / f32(max(i16)),
+            .Left_Thumb_Y   = f32(sdl3.GetGamepadAxis(gamepad, .LEFTY))         / f32(max(i16)),
+            .Right_Thumb_X  = f32(sdl3.GetGamepadAxis(gamepad, .RIGHTX))        / f32(max(i16)),
+            .Right_Thumb_Y  = f32(sdl3.GetGamepadAxis(gamepad, .RIGHTY))        / f32(max(i16)),
+        }
+
+        if sdl3.GetGamepadButton(gamepad, .DPAD_UP) do result.buttons += {.DPad_Up}
+        if sdl3.GetGamepadButton(gamepad, .DPAD_DOWN) do result.buttons += {.DPad_Down}
+        if sdl3.GetGamepadButton(gamepad, .DPAD_LEFT) do result.buttons += {.DPad_Left}
+        if sdl3.GetGamepadButton(gamepad, .DPAD_RIGHT) do result.buttons += {.DPad_Right}
+        if sdl3.GetGamepadButton(gamepad, .START) do result.buttons += {.Start}
+        if sdl3.GetGamepadButton(gamepad, .BACK) do result.buttons += {.Back}
+        if sdl3.GetGamepadButton(gamepad, .LEFT_STICK) do result.buttons += {.Left_Thumb}
+        if sdl3.GetGamepadButton(gamepad, .RIGHT_STICK) do result.buttons += {.Right_Thumb}
+        if sdl3.GetGamepadButton(gamepad, .LEFT_SHOULDER) do result.buttons += {.Left_Shoulder}
+        if sdl3.GetGamepadButton(gamepad, .RIGHT_SHOULDER) do result.buttons += {.Right_Shoulder}
+        if sdl3.GetGamepadButton(gamepad, .SOUTH) do result.buttons += {.A}
+        if sdl3.GetGamepadButton(gamepad, .EAST) do result.buttons += {.B}
+        if sdl3.GetGamepadButton(gamepad, .WEST) do result.buttons += {.X}
+        if sdl3.GetGamepadButton(gamepad, .NORTH) do result.buttons += {.Y}
+
+        return result, true
     }
 
     @(require_results)
