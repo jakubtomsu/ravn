@@ -462,62 +462,6 @@ when BACKEND == BACKEND_WINDOWS {
 
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MARK: barrier
-    //
-    // https://devblogs.microsoft.com/oldnewthing/20151123-00/?p=92161
-    // https://devblogs.microsoft.com/oldnewthing/20160729-00/?p=93985
-    //
-
-    _win32_SYNCHRONIZATION_BARRIER :: struct {
-        Reserved1:  windows.DWORD,
-        Reserved2:  windows.DWORD,
-        Reserved3:  [2]windows.ULONG_PTR,
-        Reserved4:  windows.DWORD,
-        Reserved5:  windows.DWORD,
-    }
-
-    _win32_SYNCHRONIZATION_BARRIER_FLAG :: enum {
-        SPIN_ONLY  = 0,
-        BLOCK_ONLY = 1,
-        NO_DELETE  = 2,
-    }
-
-    _win32_SYNCHRONIZATION_BARRIER_FLAGS :: bit_set[_win32_SYNCHRONIZATION_BARRIER_FLAG; windows.DWORD]
-
-    @(default_calling_convention="system")
-    foreign kernel32 {
-    EnterSynchronizationBarrier :: proc(lpBarrier: ^_win32_SYNCHRONIZATION_BARRIER, dwFlags: _win32_SYNCHRONIZATION_BARRIER_FLAGS) -> windows.BOOL ---
-    InitializeSynchronizationBarrier :: proc(lpBarrier: ^_win32_SYNCHRONIZATION_BARRIER, lTotalThreads: windows.LONG, lSpinCount: windows.LONG) -> windows.BOOL ---
-    DeleteSynchronizationBarrier :: proc(lpBarrier: ^_win32_SYNCHRONIZATION_BARRIER) -> windows.BOOL ---
-    }
-
-    _Barrier :: struct {
-        state:  _win32_SYNCHRONIZATION_BARRIER,
-    }
-
-    _barrier_create :: proc(num_threads: int) -> (result: Barrier) {
-        _ = InitializeSynchronizationBarrier(
-            &result.state,
-            lTotalThreads = windows.LONG(num_threads),
-            lSpinCount = -1,
-        )
-        return result
-    }
-
-    _barrier_delete :: proc(barrier: ^Barrier) {
-        _ = DeleteSynchronizationBarrier(
-            &barrier.state,
-        )
-    }
-
-    _barrier_sync :: proc(barrier: ^Barrier) {
-        _ = EnterSynchronizationBarrier(
-            &barrier.state,
-            dwFlags = {},
-        )
-    }
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MARK: file dialog
     //
 

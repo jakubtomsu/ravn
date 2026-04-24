@@ -312,26 +312,6 @@ _poll_window_events :: proc(window: Window) -> (ok: bool) {
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Barrier
-//
-
-@(require_results)
-_barrier_create :: proc(num_threads: int) -> (result: Barrier) {
-    _js_unsupported()
-    return {}
-}
-
-_barrier_delete :: proc(barrier: ^Barrier) {
-    _js_unsupported()
-}
-
-_barrier_sync :: proc(barrier: ^Barrier) {
-    _js_unsupported()
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: File IO
 //
 

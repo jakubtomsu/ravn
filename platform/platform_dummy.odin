@@ -11,7 +11,6 @@ when BACKEND == BACKEND_DUMMY {
     _Async_File :: struct { _: u8 }
     _File_Watcher :: struct { _: u8 }
     _Directory_Iter :: struct { _: u8 }
-    _Barrier :: struct { _: u8 }
     _Thread :: struct { _: u8 }
     _Window :: struct { _: u8 }
     _Module :: struct { _: u8 }
@@ -80,15 +79,6 @@ when BACKEND == BACKEND_DUMMY {
     @(require_results) _is_window_focused :: proc(window: Window) -> bool { dummy() }
     @(require_results) _get_native_window_ptr :: proc(window: Window) -> rawptr { dummy() }
     @(require_results) _poll_window_events :: proc(window: Window) -> (ok: bool) { dummy() }
-
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MARK: Barrier
-    //
-
-    @(require_results) _barrier_create :: proc(num_threads: int) -> (result: Barrier) { dummy() }
-    _barrier_delete :: proc(barrier: ^Barrier) { dummy() }
-    _barrier_sync :: proc(barrier: ^Barrier) { dummy() }
 
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -56,11 +56,6 @@ Directory_Iter :: struct {
     using native:   _Directory_Iter,
 }
 
-Barrier :: struct {
-    using native: _Barrier,
-}
-
-
 Thread :: struct {
     using native: _Thread,
 }
@@ -415,31 +410,9 @@ get_current_thread_id :: proc() -> u64 {
 
 
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Barrier
-//
-// Synchronization primitive, useful for lockstep SMPD
-//
-
-@(require_results)
-barrier_create :: proc(num_threads: int) -> (result: Barrier) {
-    return barrier_create(num_threads)
-}
-
-barrier_delete :: proc(barrier: ^Barrier) {
-    barrier_delete(barrier)
-}
-
-barrier_sync :: proc(barrier: ^Barrier) {
-    barrier_sync(barrier)
-}
-
-
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Window
 //
-
 
 @(require_results)
 create_window :: proc(name: string, style: Window_Style = .Regular, full_rect: Rect = {}) -> Window {
@@ -661,8 +634,6 @@ _event_queue_clear :: proc() {
     _state.event_queue.offset = 0
 }
 
-
-// Misc
 
 clone_to_cstring :: proc(
     s: string,
