@@ -36,7 +36,7 @@ import debug_trace "core:debug/trace"
 // TODO: fix scene mesh normals
 // TODO: draw_2D variants
 
-RELEASE :: #config(RAVEN_RELEASE, false)
+RELEASE :: #config(RAVEN_RELEASE, base.RELEASE)
 VALIDATION :: #config(RAVEN_VALIDATION, !RELEASE)
 
 // Enable internal logs. Mostly useful for debugging internals.
@@ -516,7 +516,6 @@ init_state :: proc(allocator := context.allocator) {
     platform.register_default_exception_handler()
 
     _state.start_time = platform.get_time_ns()
-    platform.set_dpi_aware()
 
     base.log_info("Initializing audio...")
 
@@ -531,7 +530,7 @@ init_state :: proc(allocator := context.allocator) {
 
     base.log_info("Creating Window...")
 
-    _state.window = platform.create_window("Raven App", style = .Regular)
+    _state.window = platform.create_window("Raven App", style = .Regular, high_dpi = true)
 
     base.log_info("Initializing GPU...")
 
@@ -554,7 +553,7 @@ _post_gpu_init :: proc() {
 
     assert(_state != nil)
 
-    _state.screen_size = platform.get_window_frame_rect(_state.window).size
+    _state.screen_size = platform.get_window_rect(_state.window).size
     _state.screen_dirty = true
 
     pool128_ok := create_texture_pool(128, 64)
@@ -778,7 +777,7 @@ begin_frame :: proc() -> (keep_running: bool) {
     _state.ended_frame = false
 
     prev_screen_size := _state.screen_size
-    screen := platform.get_window_frame_rect(_state.window).size
+    screen := platform.get_window_rect(_state.window).size
     if screen.x > 0 && screen.y > 0 {
         _state.screen_size = screen
     }

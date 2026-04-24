@@ -150,12 +150,9 @@ _set_mouse_relative :: proc(window: Window, relative: bool) {
 _set_mouse_visible :: proc(visible: bool) {
 }
 
-_set_dpi_aware :: proc() {
-}
-
 @(require_results)
 _get_main_monitor_rect :: proc() -> Rect {
-    return _get_window_frame_rect({})
+    return _get_window_rect({})
 }
 
 @(require_results)
@@ -229,7 +226,7 @@ _get_current_thread_id :: proc() -> u64 {
 //
 
 @(require_results)
-_create_window :: proc(name: string, style: Window_Style = .Regular, full_rect: Rect = {}) -> Window {
+_create_window :: proc(name: string, style: Window_Style = .Regular, full_rect: Rect = {}, high_dpi := false) -> Window {
     _js_unsupported()
     return {}
 }
@@ -262,7 +259,7 @@ _set_window_size :: proc(window: Window, size: [2]i32) {
 }
 
 @(require_results)
-_get_window_frame_rect :: proc(window: Window) -> Rect {
+_get_window_rect :: proc(window: Window) -> Rect {
     rect := js.get_bounding_client_rect("body")
     dpi := js.device_pixel_ratio()
     return {
@@ -272,11 +269,6 @@ _get_window_frame_rect :: proc(window: Window) -> Rect {
             i32(f64(rect.height) * dpi),
         },
     }
-}
-
-@(require_results)
-_get_window_full_rect :: proc(window: Window) -> Rect {
-    return _get_window_frame_rect(window)
 }
 
 _set_mouse_pos_window_relative :: proc(window: Window, pos: [2]i32) {
@@ -507,7 +499,7 @@ _js_event_callbacks := [js.Event_Kind]_JS_Event_Callback {
 
     .Resize = proc(e: js.Event) {
         _event_queue_push(Event_Window_Size{
-            size = _get_window_frame_rect({}).size,
+            size = _get_window_rect({}).size,
         })
     },
 

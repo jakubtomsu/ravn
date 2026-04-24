@@ -190,7 +190,7 @@ when BACKEND == BACKEND_WINDOWS {
 
     _set_mouse_relative :: proc(window: Window, relative: bool) {
         if relative {
-            rect := get_window_frame_rect(window)
+            rect := get_window_rect(window)
             set_mouse_pos_window_relative(window, rect.size / 2)
 
             top_left: windows.POINT = {
@@ -252,16 +252,6 @@ when BACKEND == BACKEND_WINDOWS {
                 }
             }
         }
-    }
-
-    _set_dpi_aware :: proc() {
-        windows.SetProcessDpiAwareness(.PROCESS_PER_MONITOR_DPI_AWARE)
-    }
-
-    @(require_results)
-    _get_window_dpi_scale :: proc(window: Window) -> f32 {
-        // https://learn.microsoft.com/en-us/windows/win32/learnwin32/dpi-and-device-independent-pixels
-        return f32(windows.GetDpiForWindow(window.hwnd)) / 96.0
     }
 
     @(require_results)
@@ -888,8 +878,12 @@ when BACKEND == BACKEND_WINDOWS {
         return window.hwnd
     }
 
-    _create_window :: proc(name: string, style: Window_Style, rect: Rect) -> Window {
+    _create_window :: proc(name: string, style: Window_Style, rect: Rect, high_dpi: bool) -> Window {
         instance := windows.GetModuleHandleW(nil)
+
+        if high_dpi {
+            windows.SetProcessDpiAwareness(.PROCESS_PER_MONITOR_DPI_AWARE)
+        }
 
         wndclass := windows.WNDCLASSW{
             style = 0,
@@ -932,6 +926,12 @@ when BACKEND == BACKEND_WINDOWS {
         }
 
         return {hwnd = hwnd}
+    }
+
+    @(require_results)
+    _get_window_dpi_scale :: proc(window: Window) -> f32 {
+        // https://learn.microsoft.com/en-us/windows/win32/learnwin32/dpi-and-device-independent-pixels
+        return f32(windows.GetDpiForWindow(window.hwnd)) / 96.0
     }
 
     _destroy_window :: proc(window: Window) {
@@ -1315,7 +1315,7 @@ when BACKEND == BACKEND_WINDOWS {
         }
     }
 
-    _get_window_frame_rect :: proc(window: Window) -> Rect {
+    _get_window_rect :: proc(window: Window) -> Rect {
         rect: windows.RECT
         if !windows.GetClientRect(window.hwnd, &rect) {
             return {}
@@ -1332,25 +1332,6 @@ when BACKEND == BACKEND_WINDOWS {
             },
         }
     }
-
-    _get_window_full_rect :: proc(window: Window) -> Rect {
-        rect: windows.RECT
-        if !windows.GetWindowRect(window.hwnd, &rect) {
-            return {}
-        }
-
-        return {
-            min = {
-                rect.left,
-                rect.top,
-            },
-            size = {
-                rect.right - rect.left,
-                rect.bottom - rect.top,
-            },
-        }
-    }
-
 
     _set_mouse_pos_window_relative :: proc(window: Window, pos: [2]i32) {
         center := windows.POINT{

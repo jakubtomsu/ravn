@@ -145,10 +145,6 @@ when BACKEND == BACKEND_SDL3 {
         }
     }
 
-    _set_dpi_aware :: proc() {
-        unimplemented()
-    }
-
     @(require_results)
     _get_main_monitor_rect :: proc() -> Rect {
         r: sdl3.Rect
@@ -239,13 +235,17 @@ when BACKEND == BACKEND_SDL3 {
     //
 
     @(require_results)
-    _create_window :: proc(name: string, style: Window_Style, rect: Rect) -> Window {
+    _create_window :: proc(name: string, style: Window_Style, rect: Rect, high_dpi: bool) -> Window {
         flags: sdl3.WindowFlags = {
             .INPUT_FOCUS,
         }
 
         if style == .Borderless {
             flags += {.BORDERLESS}
+        }
+
+        if high_dpi {
+            flags += {.HIGH_PIXEL_DENSITY}
         }
 
         name_ptr := clone_to_cstring(name, context.temp_allocator)
@@ -287,17 +287,10 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     @(require_results)
-    _get_window_frame_rect :: proc(window: Window) -> (result: Rect) {
+    _get_window_rect :: proc(window: Window) -> (result: Rect) {
         sdl3.GetWindowSize(window.window, &result.size.x, &result.size.y)
         sdl3.GetWindowPosition(window.window, &result.min.x, &result.min.y)
         return result
-    }
-
-    @(require_results)
-    _get_window_full_rect :: proc(window: Window) -> (result: Rect) {
-        // sdl3.GetWindowSize(window.window, &result.size.x, &result.size.y)
-        // sdl3.GetWindowPosition(window.window, &result.min.x, &result.min.y)
-        unimplemented()
     }
 
     _set_mouse_pos_window_relative :: proc(window: Window, pos: [2]i32) {

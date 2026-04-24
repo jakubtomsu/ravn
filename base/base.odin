@@ -3,6 +3,8 @@ package raven_base
 import "base:runtime"
 import "ufmt"
 
+RELEASE :: #config(RELEASE, false)
+
 eprintf :: ufmt.eprintf
 eprintfln :: ufmt.eprintfln
 tprintf :: ufmt.tprintf

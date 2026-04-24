@@ -331,10 +331,6 @@ set_mouse_visible :: proc(visible: bool) {
     _set_mouse_visible(visible)
 }
 
-set_dpi_aware :: proc() {
-    _set_dpi_aware()
-}
-
 set_current_directory :: proc(path: string) -> bool {
     return _set_current_directory(path)
 }
@@ -403,7 +399,7 @@ get_current_thread_id :: proc() -> u64 {
 //
 
 @(require_results)
-create_window :: proc(name: string, style: Window_Style = .Regular, rect: Rect = {}) -> Window {
+create_window :: proc(name: string, style: Window_Style = .Regular, rect: Rect = {}, high_dpi := false) -> Window {
     rect := rect
 
     if rect.size == 0 {
@@ -420,7 +416,7 @@ create_window :: proc(name: string, style: Window_Style = .Regular, rect: Rect =
         }
     }
 
-    return _create_window(name, style, rect)
+    return _create_window(name, style, rect, high_dpi)
 }
 
 destroy_window :: proc(window: Window) {
@@ -444,12 +440,8 @@ set_window_size :: proc(window: Window, size: [2]i32) {
 }
 
 // Drawable area within the window, without decorators.
-get_window_frame_rect :: proc(window: Window) -> Rect {
-    return _get_window_frame_rect(window)
-}
-
-get_window_full_rect :: proc(window: Window) -> Rect {
-    return _get_window_full_rect(window)
+get_window_rect :: proc(window: Window) -> Rect {
+    return _get_window_rect(window)
 }
 
 set_mouse_pos_window_relative :: proc(window: Window, pos: [2]i32) {

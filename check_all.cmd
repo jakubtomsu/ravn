@@ -3,7 +3,7 @@ odin check build -debug || goto :err
 
 odin check examples/hello || goto :err
 odin check examples/hello -debug || goto :err
-odin check examples/hello -define:RAVEN_RELEASE=true || goto :err
+odin check examples/hello -define:RELEASE=true || goto :err
 
 odin check examples/hello -define:AUDIO_BACKEND=None || goto :err
 odin check examples/hello -define:AUDIO_BACKEND=WASAPI || goto :err

@@ -157,7 +157,7 @@ main :: proc() {
 
         clear(&g_verts)
 
-        drawable := platform.get_window_frame_rect(window)
+        drawable := platform.get_window_rect(window)
         g_screen_size.x = f32(drawable.size.x)
         g_screen_size.y = f32(drawable.size.y)
 

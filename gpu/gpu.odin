@@ -11,8 +11,7 @@ import "base:runtime"
 // TODO: the non-backend-specific code should use #caller_location for validation
 // TODO: compress pipelines
 
-_RAVEN_RELEASE :: #config(RAVEN_RELEASE, false)
-RELEASE :: #config(GPU_RELEASE, _RAVEN_RELEASE)
+RELEASE :: #config(GPU_RELEASE, base.RELEASE)
 VALIDATION :: #config(GPU_VALIDATION, !RELEASE)
 
 BACKEND :: #config(GPU_BACKEND, DEFAULT_BACKEND)
@@ -1144,17 +1143,17 @@ update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte) {
     if !res_ok {
         return
     }
-    
+
     total_len := 0
     for buf in buffers {
         total_len += len(buf)
     }
-    
+
     validate(res.kind == .Buffer || res.kind == .Index_Buffer)
     validate(total_len <= int(res.size.x))
     validate(res.size.y == 1 && res.size.z == 1)
     validate(res.usage != .Immutable)
-    
+
     _update_buffer(res, offset, buffers)
 }
 
@@ -1565,20 +1564,20 @@ _combine_buffer_writes_temp :: proc(buffers: [][]byte) -> (result: []byte) {
     if len(buffers) == 1 {
         return buffers[0]
     }
-    
+
     sum_len := 0
     for buf in buffers {
         sum_len += len(buf)
     }
-    
+
     result = make([]byte, sum_len, context.temp_allocator)
-    
+
     write_ptr := uintptr(raw_data(result))
     for buf in buffers {
         runtime.mem_copy_non_overlapping(rawptr(write_ptr), raw_data(buf), len(buf))
         write_ptr += uintptr(len(buf))
     }
-    
+
     return result
 }
 

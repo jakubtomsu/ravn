@@ -37,7 +37,7 @@ _compile_builtin_shader :: proc(
         stage = stage,
         release = true,
         defines = {
-            {"RAVEN_RELEASE", "1"},
+            {"RELEASE", "1"},
         },
         include_proc = _shader_include_bultin,
     })

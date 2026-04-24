@@ -39,7 +39,6 @@ when BACKEND == BACKEND_DUMMY {
     @(require_results) _get_user_data_dir :: proc(allocator := context.allocator) -> string { dummy() }
     _set_mouse_relative :: proc(window: Window, relative: bool) { dummy() }
     _set_mouse_visible :: proc(visible: bool) { dummy() }
-    _set_dpi_aware :: proc() { dummy() }
     @(require_results) _get_main_monitor_rect :: proc() -> Rect { dummy() }
     @(require_results) _set_current_directory :: proc(path: string) -> bool { dummy() }
     @(require_results) _get_executable_path :: proc(allocator := context.temp_allocator) -> string { dummy() }
@@ -64,15 +63,14 @@ when BACKEND == BACKEND_DUMMY {
     // MARK: Window
     //
 
-    @(require_results) _create_window :: proc(name: string, style: Window_Style = .Regular, full_rect: Rect = {}) -> Window { dummy() }
+    @(require_results) _create_window :: proc(name: string, style: Window_Style = .Regular, full_rect: Rect = {}, high_dpi: bool) -> Window { dummy() }
     _destroy_window :: proc(window: Window) { dummy() }
     @(require_results) _get_window_dpi_scale :: proc(window: Window) -> f32 { dummy() }
     _set_window_title :: proc(window: Window, name: string) { dummy() }
     _set_window_style :: proc(window: Window, style: Window_Style) { dummy() }
     _set_window_pos :: proc(window: Window, pos: [2]i32) { dummy() }
     _set_window_size :: proc(window: Window, size: [2]i32) { dummy() }
-    @(require_results) _get_window_frame_rect :: proc(window: Window) -> Rect { dummy() }
-    @(require_results) _get_window_full_rect :: proc(window: Window) -> Rect { dummy() }
+    @(require_results) _get_window_rect :: proc(window: Window) -> Rect { dummy() }
     _set_mouse_pos_window_relative :: proc(window: Window, pos: [2]i32) { dummy() }
     @(require_results) _is_window_minimized :: proc(window: Window) -> bool { dummy() }
     @(require_results) _is_window_focused :: proc(window: Window) -> bool { dummy() }
