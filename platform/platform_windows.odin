@@ -58,13 +58,6 @@ when BACKEND == BACKEND_WINDOWS {
         handle: windows.HANDLE,
     }
 
-    _Async_File :: struct {
-        pending:    bool,
-        handle:     windows.HANDLE,
-        overlapped: windows.OVERLAPPED,
-        buffer:     []u8,
-    }
-
     Win32_Message_Hook_Proc :: #type proc "system" (
         hwnd:   windows.HWND,
         msg:    windows.UINT,
@@ -746,110 +739,6 @@ when BACKEND == BACKEND_WINDOWS {
         return true == windows.CreateDirectoryW(windows.utf8_to_wstring(path, context.temp_allocator), nil)
     }
 
-    _read_file_by_path_async :: proc(file: ^Async_File, path: string, allocator := context.allocator) -> bool {
-        windows.SetLastError(0)
-
-        file.handle = windows.CreateFileW(
-            lpFileName = windows.utf8_to_wstring(path, context.temp_allocator),
-            dwDesiredAccess = windows.FILE_GENERIC_READ,
-            dwShareMode = windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE,
-            lpSecurityAttributes = nil,
-            dwCreationDisposition = windows.OPEN_EXISTING,
-            dwFlagsAndAttributes =
-                windows.FILE_ATTRIBUTE_NORMAL |
-                windows.FILE_FLAG_OVERLAPPED |
-                // windows.FILE_FLAG_NO_BUFFERING |
-                windows.FILE_FLAG_BACKUP_SEMANTICS,
-            hTemplateFile = nil,
-        )
-
-        if file.handle == windows.INVALID_HANDLE_VALUE {
-            _win32_log_last_error("CreateFile failed")
-            return false
-        }
-
-        windows.SetLastError(0)
-
-        size: windows.LARGE_INTEGER
-        if !windows.GetFileSizeEx(file.handle, &size) {
-            _win32_log_last_error("GetSize Failed")
-            return false
-        }
-
-        SECTOR_SIZE :: 4096 // assume it's no bigger than this
-
-        aligned_size := ((int(size) + SECTOR_SIZE - 1) / SECTOR_SIZE) * SECTOR_SIZE
-
-        err: runtime.Allocator_Error
-        file.buffer, err = runtime.mem_alloc_non_zeroed(aligned_size, SECTOR_SIZE, allocator)
-        if err != nil {
-            base.log_err("Failed to Allocate buffer of size %i bytes", size)
-            return false
-        }
-
-        windows.SetLastError(0)
-
-        if !windows.ReadFile(
-            hFile = file.handle,
-            lpBuffer = raw_data(file.buffer),
-            nNumberOfBytesToRead = windows.DWORD(len(file.buffer)),
-            lpNumberOfBytesRead = nil,
-            lpOverlapped = &file.overlapped,
-        ) {
-            if windows.GetLastError() != windows.ERROR_IO_PENDING {
-                _win32_log_last_error("ReadFile Failed")
-                return false
-            }
-        }
-
-        file.pending = true
-
-        return true
-    }
-
-    _async_file_wait :: proc(file: ^Async_File) -> (buffer: []byte, ok: bool) {
-        assert(file.pending)
-
-        defer windows.CloseHandle(file.handle)
-
-        size: windows.DWORD
-
-        // first check result with no wait
-        //  this also resets the event so that the next call to GOR works :
-
-        if windows.GetOverlappedResult(
-            hFile = file.handle,
-            lpOverlapped = &file.overlapped,
-            lpNumberOfBytesTransferred = &size,
-            bWait = false,
-        ) {
-            if size > 0 {
-                return file.buffer[:size], true
-            }
-        }
-
-        // if you don't do the GetOverlappedResult(FALSE)
-        //  then the GetOverlappedResult(TRUE) call here can return even though the IO is not actually done
-
-        // call GetOverlappedResult with TRUE -> this yields our thread if the IO is still pending
-        if !windows.GetOverlappedResult(
-            hFile = file.handle,
-            lpOverlapped = &file.overlapped,
-            lpNumberOfBytesTransferred = &size,
-            bWait = true,
-        ) {
-            if windows.GetLastError() == windows.ERROR_HANDLE_EOF {
-                if size > 0 {
-                    return file.buffer[:size], true
-                }
-            }
-
-            return nil, false
-        }
-
-        return file.buffer[:size], true
-    }
-
     _is_file :: proc(path: string) -> bool {
         buf: [256]u16
         attribs := windows.GetFileAttributesW(
@@ -1009,9 +898,7 @@ when BACKEND == BACKEND_WINDOWS {
         return window.hwnd
     }
 
-    _create_window :: proc(name: string, style: Window_Style, full_rect: Rect) -> Window {
-        full_rect := full_rect
-
+    _create_window :: proc(name: string, style: Window_Style, rect: Rect) -> Window {
         instance := windows.GetModuleHandleW(nil)
 
         wndclass := windows.WNDCLASSW{
@@ -1034,29 +921,15 @@ when BACKEND == BACKEND_WINDOWS {
         name_buf: [256]u16
         wname := windows.utf8_to_wstring_buf(name_buf[:], name)
 
-        if full_rect.size == 0 {
-            monitor := get_main_monitor_rect()
-            switch style {
-            case .Borderless:
-                full_rect = monitor
-
-            case .Regular:
-                full_rect = {
-                    min = monitor.min + monitor.size / 6,
-                    size = (monitor.size * 2) / 3,
-                }
-            }
-        }
-
         hwnd := windows.CreateWindowExW(
             dwExStyle = 0,
             lpClassName = "raven",
             lpWindowName = wname,
             dwStyle = _win32_window_style(style) | windows.WS_VISIBLE,
-            X = full_rect.min.x,
-            Y = full_rect.min.y,
-            nWidth = full_rect.size.x,
-            nHeight = full_rect.size.y,
+            X = rect.min.x,
+            Y = rect.min.y,
+            nWidth = rect.size.x,
+            nHeight = rect.size.y,
             hWndParent = nil,
             hMenu = nil,
             hInstance = cast(windows.HANDLE)instance,

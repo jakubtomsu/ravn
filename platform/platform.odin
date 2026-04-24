@@ -44,10 +44,6 @@ File_Handle :: struct {
     using native: _File_Handle,
 }
 
-Async_File :: struct {
-    using native: _Async_File,
-}
-
 File_Watcher :: struct {
     using native:   _File_Watcher,
 }
@@ -415,8 +411,24 @@ get_current_thread_id :: proc() -> u64 {
 //
 
 @(require_results)
-create_window :: proc(name: string, style: Window_Style = .Regular, full_rect: Rect = {}) -> Window {
-    return _create_window(name, style, full_rect)
+create_window :: proc(name: string, style: Window_Style = .Regular, rect: Rect = {}) -> Window {
+    rect := rect
+
+    if rect.size == 0 {
+        monitor := get_main_monitor_rect()
+        switch style {
+        case .Borderless:
+            rect = monitor
+
+        case .Regular:
+            rect = {
+                min = monitor.min + monitor.size / 6,
+                size = (monitor.size * 2) / 3,
+            }
+        }
+    }
+
+    return _create_window(name, style, rect)
 }
 
 destroy_window :: proc(window: Window) {
@@ -503,8 +515,6 @@ poll_window_events :: proc(window: Window) -> (event: Event, should_continue: bo
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: File IO
 //
-// NOTE: the async IO is totally unfinished
-//
 
 
 @(require_results)
@@ -540,16 +550,6 @@ read_file_by_path :: proc(path: string, allocator := context.allocator) -> (data
 
 write_file_by_path :: proc(path: string, data: []u8) -> bool {
     return _write_file_by_path(path, data)
-}
-
-@(require_results)
-read_file_by_path_async :: proc(file: ^Async_File, path: string, allocator := context.allocator) -> (bool) {
-    return _read_file_by_path_async(file, path, allocator)
-}
-
-@(require_results)
-async_file_wait :: proc(file: ^Async_File) -> (buffer: []byte, ok: bool) {
-    return _async_file_wait(file)
 }
 
 @(require_results)

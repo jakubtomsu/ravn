@@ -44,7 +44,7 @@ main :: proc() {
 
     swapchaindesc := dxgi.SWAP_CHAIN_DESC{
         { 0, 0, {}, .R8G8B8A8_UNORM, .UNSPECIFIED, .STRETCHED },
-        { 1, 0 }, {.RENDER_TARGET_OUTPUT}, 2, window.hwnd, true,
+        { 1, 0 }, {.RENDER_TARGET_OUTPUT}, 2, windows.HWND(platform.get_native_window_ptr(window)), true,
         .FLIP_DISCARD,
         {},
     }
@@ -128,6 +128,9 @@ main :: proc() {
 
                 if pressed {
                     #partial switch v.key {
+                    case .Escape:
+                        break main_loop
+
                     // case .M:
                         // platform.set_mouse_relative(window, !platform._state.mouse_relative)
 

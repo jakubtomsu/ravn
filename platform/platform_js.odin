@@ -24,10 +24,8 @@ _State :: struct {
 }
 
 _File_Handle :: struct { _: u8 }
-_Async_File :: struct { _: u8 }
 _File_Watcher :: struct { _: u8 }
 _Directory_Iter :: struct { _: u8 }
-_Barrier :: struct { _: u8 }
 _Thread :: struct { _: u8 }
 _Window :: struct { _: u8 }
 _Module :: struct { _: u8 }
@@ -358,18 +356,6 @@ _file_exists :: proc(path: string) -> bool {
 _clone_file :: proc(path: string, new_path: string, fail_if_exists := true) -> bool {
     _js_unsupported()
     return false
-}
-
-@(require_results)
-_read_file_by_path_async :: proc(file: ^Async_File, path: string, allocator := context.allocator) -> bool {
-    _js_unsupported()
-    return false
-}
-
-@(require_results)
-_async_file_wait :: proc(file: ^Async_File) -> (buffer: []byte, ok: bool) {
-    _js_unsupported()
-    return {}, false
 }
 
 @(require_results)
