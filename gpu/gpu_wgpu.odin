@@ -241,7 +241,7 @@ when BACKEND == BACKEND_WGPU {
         case .SuccessOptimal, .SuccessSuboptimal:
             // All good, could handle suboptimal here.
 
-        case .Timeout, .Outdated, .Lost:
+        case .Timeout, .Outdated, .Lost, .Occluded:
             base.log_info("%v", _state.surface_texture.status)
             // Skip this frame, and re-configure surface.
             if _state.surface_texture.texture != nil {
@@ -249,7 +249,7 @@ when BACKEND == BACKEND_WGPU {
             }
             return false
 
-        case .OutOfMemory, .DeviceLost, .Error:
+        case .Error:
             // Fatal error
             base.log_err("wgpu. Error: SurfaceGetCurrentTexture status = %v", _state.surface_texture.status)
             panic("wgpu. SurfaceGetCurrentTexture Fatal Error")
@@ -754,7 +754,7 @@ when BACKEND == BACKEND_WGPU {
             &wgpu.ComputePipelineDescriptor{
                 label = name,
                 layout = nil,
-                compute = wgpu.ProgrammableStageDescriptor{
+                compute = wgpu.ComputeState{
                     module = cs.module,
                     entryPoint = "cs_main",
                     constants = nil,
@@ -1126,7 +1126,7 @@ when BACKEND == BACKEND_WGPU {
 
     _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]byte) {
         temp := _combine_buffer_writes_temp(buffers)
-        
+
         wgpu.QueueWriteBuffer(_state.queue,
             res.buf,
             bufferOffset = u64(offset),
