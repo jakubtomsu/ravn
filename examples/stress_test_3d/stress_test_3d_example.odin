@@ -91,7 +91,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_draw_depth(.Depth)
 
     if rv.scope_draw_state() {
-        rv.set_draw_texture("default")
+        rv.set_draw_texture(rv.get_builtin_texture(.Default))
         rv.set_draw_layer(0)
 
 

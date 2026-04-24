@@ -281,13 +281,13 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     if state.screen == .Game {
         snake := state.snake
 
-        rv.set_draw_texture("default")
+        rv.set_draw_texture(rv.get_builtin_texture(.Default))
 
         sph := rv.get_builtin_mesh(.Icosphere_1)
 
         rv.draw_mesh(sph, 0, col = rv.Vec4{0.0, 0.6, 0.2, 1})
 
-        rv.set_draw_texture("white")
+        rv.set_draw_texture(rv.get_builtin_texture(.White))
 
         rv.draw_mesh(sph, snake.pos, scale = 0.15, col = rv.ORANGE + rv.YELLOW * 0.1)
         for seg, i in snake.segments[:snake.num_segments] {

@@ -976,8 +976,8 @@ begin_frame :: proc() -> (keep_running: bool) {
         blend_mode = .Opaque,
     }
 
-    set_draw_pixel_shader_by_handle({})
-    set_draw_vertex_shader_by_handle({})
+    set_draw_pixel_shader({})
+    set_draw_vertex_shader({})
     _set_draw_texture(_state.builtin_texture[.Default])
 
     if _state.shutdown_requested {
@@ -2585,7 +2585,7 @@ _perf_counter_flush :: proc(perf_counter: ^Perf_Counter_State) {
 // 'unit' is for converting e.g. nanoseconds into a reasonable range.
 draw_perf_counter :: proc(kind: Perf_Counter_Kind, pos: Vec3, scale: f32 = 1, col: Vec4 = 1, show_text := true) {
     scope_draw_state()
-    set_draw_texture_by_handle(_state.builtin_texture[.CGA8x8thick])
+    set_draw_texture(_state.builtin_texture[.CGA8x8thick])
     set_draw_blend(.Alpha)
     set_draw_depth(.Depth)
 

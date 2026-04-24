@@ -192,18 +192,18 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_3d_perspective_camera(state.pos_spr[0], cam_rot, rv.deg(fov)))
     rv.set_layer_params(1, rv.make_screen_camera())
 
-    rv.set_draw_texture("default")
+    rv.set_draw_texture(rv.get_builtin_texture(.Default))
     rv.set_draw_depth(.Depth)
     rv.set_draw_fill(.All)
 
-    rv.draw_mesh(rv.get_mesh("Cube"),
+    rv.draw_mesh(rv.get_builtin_mesh(.Cube),
         gun_pos,
         rot = gun_rot,
         scale = {0.03, 0.05, 0.25},
     )
 
     terrain_t := intersect_terrain(state.pos, mat[2])
-    rv.draw_mesh(rv.get_mesh("Cube"),
+    rv.draw_mesh(rv.get_builtin_mesh(.Cube),
         state.pos + mat[2] * terrain_t,
         scale = 0.2,
         col = rv.BLUE,

@@ -13,6 +13,9 @@ DRAW_BATCH_TABLE_LOOKUP :: 512
 DRAW_BATCH_TABLE_BATCHES :: 256 // this is limited by gpu.MAX_PIPELINES anyway.
 DRAW_BATCH_TABLE_MAX_PROBE :: 32
 
+GPU_SAMPLER_SLOTS :: 4
+GPU_CONSTANT_SLOTS :: 4
+GPU_RESOURCE_SLOTS :: 4
 
 DEFAULT_SAMPLER :: gpu.Sampler_Desc{
     filter = .Unfiltered,
@@ -966,46 +969,7 @@ set_draw_depth :: proc(depth: Depth_Mode) {
     _state.draw_state.depth_mode = depth
 }
 
-set_draw_pixel_shader :: proc {
-    set_draw_pixel_shader_by_name,
-    set_draw_pixel_shader_by_handle,
-}
-
-set_draw_vertex_shader :: proc {
-    set_draw_vertex_shader_by_name,
-    set_draw_vertex_shader_by_handle,
-}
-
-set_draw_texture :: proc {
-    set_draw_texture_by_const,
-    set_draw_texture_by_name,
-    set_draw_texture_by_handle,
-    set_draw_render_texture_by_handle,
-}
-
-
-set_draw_pixel_shader_by_name :: proc(name: string) -> bool {
-    set_draw_pixel_shader_by_handle(get_pixel_shader_by_name(name))
-    return true
-}
-
-set_draw_vertex_shader_by_name :: proc(name: string) -> bool {
-    set_draw_vertex_shader_by_handle(get_vertex_shader_by_name(name))
-    return true
-}
-
-set_draw_texture_by_const :: proc($Name: string) -> bool {
-    set_draw_texture_by_handle(get_texture_by_hash(hash_const_name(Name)))
-    return true
-}
-
-set_draw_texture_by_name :: proc(name: string) -> bool {
-    set_draw_texture_by_handle(get_texture_by_name(name))
-    return true
-}
-
-
-set_draw_pixel_shader_by_handle :: proc(handle: Pixel_Shader_Handle) {
+set_draw_pixel_shader :: proc(handle: Pixel_Shader_Handle) {
     if _, ok := get_internal_pixel_shader(handle); ok {
         _state.draw_state.ps = u8(handle.index)
     } else {
@@ -1013,7 +977,7 @@ set_draw_pixel_shader_by_handle :: proc(handle: Pixel_Shader_Handle) {
     }
 }
 
-set_draw_vertex_shader_by_handle :: proc(handle: Vertex_Shader_Handle) {
+set_draw_vertex_shader :: proc(handle: Vertex_Shader_Handle) {
     if _, ok := get_internal_vertex_shader(handle); ok {
         _state.draw_state.vs = u8(handle.index)
     } else {
@@ -1021,7 +985,7 @@ set_draw_vertex_shader_by_handle :: proc(handle: Vertex_Shader_Handle) {
     }
 }
 
-set_draw_texture_by_handle :: proc(handle: Texture_Handle) {
+set_draw_texture :: proc(handle: Texture_Handle) {
     if !_set_draw_texture(handle) {
         _set_draw_texture(_state.builtin_texture[.Error])
     }
@@ -1054,7 +1018,7 @@ _set_draw_texture :: proc(handle: Texture_Handle) -> bool {
 
 // Bind render texture for READING like a regular texture.
 // In order to WRITE to a render texture, use layers.
-set_draw_render_texture_by_handle :: proc(handle: Render_Texture_Handle) {
+set_draw_render_texture :: proc(handle: Render_Texture_Handle) {
     assert(handle != DEFAULT_RENDER_TEXTURE)
     tex, tex_ok := get_internal_render_texture(handle)
     if !tex_ok {
@@ -1135,7 +1099,6 @@ draw_sprite :: proc(
     }
 
     size.y = .Flip_Y in draw_layer.flags ? -size.y : size.y
-
 
     switch scaling {
     case .Pixel:
@@ -2127,10 +2090,6 @@ submit_layers :: proc() {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: GPU Drawing
 //
-
-GPU_SAMPLER_SLOTS :: 4
-GPU_CONSTANT_SLOTS :: 4
-GPU_RESOURCE_SLOTS :: 4
 
 // NOTE: the instance bind data only use a few of the available sots (consts/resources/blends/etc)
 // We could possibly expose a direct way for the user to control this on per-layer basis.
