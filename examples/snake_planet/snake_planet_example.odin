@@ -283,7 +283,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         rv.bind_texture("default")
 
-        sph := rv.get_mesh("Icosphere")
+        sph := rv.get_builtin_mesh(.Icosphere_1)
 
         rv.draw_mesh(sph, 0, col = rv.Vec4{0.0, 0.6, 0.2, 1})
 
