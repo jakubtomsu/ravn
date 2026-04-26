@@ -1577,31 +1577,28 @@ _input_digital_release :: proc(buf: ^Input_Digital_Buffer($T), elem: T) {
     buf.released += {elem}
 }
 
-// NOTE: [0, 0] is the bottom left corner.
-mouse_pos :: proc() -> [2]f32 {
-    return _state.input.mouse_pos
-}
 
-// Positive Y is up.
-mouse_delta :: proc() -> [2]f32 {
-    return _state.input.mouse_delta
-}
+// Keys
 
-scroll_delta :: proc() -> [2]f32 {
-    return _state.input.scroll_delta
-}
-
-
-key_down :: proc(key: Key) -> bool {
+get_key_down :: proc(key: Key) -> bool {
     return key in _state.input.keys.down
 }
 
 // Down time is 0 on pressed.
-key_down_time :: proc(key: Key) -> f32 {
+get_key_down_time :: proc(key: Key) -> f32 {
     return _state.input.keys.timer[key]
 }
 
-key_pressed :: proc(key: Key, buf: f32 = 0) -> bool {
+get_key_repeated :: proc(key: Key) -> bool {
+    return key in _state.input.keys.repeated
+}
+
+get_key_released :: proc(key: Key) -> bool {
+    return key in _state.input.keys.released
+}
+
+// buf: buffering window duration in seconds
+get_key_pressed :: proc(key: Key, buf: f32 = 0) -> bool {
     if buf > 0.0001 &&
         key in _state.input.keys.buffered &&
         _state.input.keys.timer[key] <= buf
@@ -1617,25 +1614,42 @@ key_pressed :: proc(key: Key, buf: f32 = 0) -> bool {
     return false
 }
 
-key_repeated :: proc(key: Key) -> bool {
-    return key in _state.input.keys.repeated
+
+// Mouse
+
+// NOTE: [0, 0] is the bottom left corner.
+get_mouse_pos :: proc() -> [2]f32 {
+    return _state.input.mouse_pos
 }
 
-key_released :: proc(key: Key) -> bool {
-    return key in _state.input.keys.released
+// Positive Y is up.
+get_mouse_delta :: proc() -> [2]f32 {
+    return _state.input.mouse_delta
 }
 
+get_scroll_delta :: proc() -> [2]f32 {
+    return _state.input.scroll_delta
+}
 
-mouse_down :: proc(button: Mouse_Button) -> bool {
+get_mouse_down :: proc(button: Mouse_Button) -> bool {
     return button in _state.input.mouse_buttons.down
 }
 
 // Down time is 0 on pressed.
-mouse_down_time :: proc(button: Mouse_Button) -> f32 {
+get_mouse_down_time :: proc(button: Mouse_Button) -> f32 {
     return _state.input.mouse_buttons.timer[button]
 }
 
-mouse_pressed :: proc(button: Mouse_Button, buf: f32 = 0) -> bool {
+get_mouse_repeated :: proc(button: Mouse_Button) -> bool {
+    return button in _state.input.mouse_buttons.repeated
+}
+
+get_mouse_released :: proc(button: Mouse_Button) -> bool {
+    return button in _state.input.mouse_buttons.released
+}
+
+// buf: buffering window duration in seconds
+get_mouse_pressed :: proc(button: Mouse_Button, buf: f32 = 0) -> bool {
     if buf > 0.0001 &&
         button in _state.input.mouse_buttons.buffered &&
         _state.input.mouse_buttons.timer[button] <= buf
@@ -1651,12 +1665,52 @@ mouse_pressed :: proc(button: Mouse_Button, buf: f32 = 0) -> bool {
     return false
 }
 
-mouse_repeated :: proc(button: Mouse_Button) -> bool {
-    return button in _state.input.mouse_buttons.repeated
+
+// Gamepads
+
+get_gamepad_axis :: proc(gamepad_index: int, axis: Gamepad_Axis, deadzone: f32 = 0.01) -> f32 {
+    gamepad := _state.input.gamepads[gamepad_index]
+    return gamepad.axes[axis]
 }
 
-mouse_released :: proc(button: Mouse_Button) -> bool {
-    return button in _state.input.mouse_buttons.released
+get_gamepad_down :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
+    gamepad := _state.input.gamepads[gamepad_index]
+    return button in gamepad.buttons.down
+}
+
+// Down time is 0 on pressed
+get_gamepad_down_time :: proc(gamepad_index: int, button: Gamepad_Button) -> f32 {
+    gamepad := _state.input.gamepads[gamepad_index]
+    return gamepad.buttons.timer[button]
+}
+
+get_gamepad_repeated :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
+    gamepad := _state.input.gamepads[gamepad_index]
+    return button in gamepad.buttons.repeated
+}
+
+get_gamepad_released :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
+    gamepad := _state.input.gamepads[gamepad_index]
+    return button in gamepad.buttons.released
+}
+
+// buf: buffering window duration in seconds
+get_gamepad_pressed :: proc(gamepad_index: int, button: Gamepad_Button, buf: f32 = 0) -> bool {
+    gamepad := _state.input.gamepads[gamepad_index]
+
+    if buf > 0.0001 &&
+        button in gamepad.buttons.buffered &&
+        gamepad.buttons.timer[button] <= buf
+    {
+        gamepad.buttons.buffered -= {button}
+        return true
+    }
+
+    if button in gamepad.buttons.pressed {
+        return true
+    }
+
+    return false
 }
 
 
