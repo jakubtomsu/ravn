@@ -5,6 +5,7 @@ import "base"
 import "shader_compiler"
 import "rscn"
 import "base:intrinsics"
+import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 import stbi "vendor:stb/image"
@@ -139,7 +140,7 @@ Draw_Layer :: struct {
 
 Draw_Batch_Table :: struct($T: typeid) {
     lookup:     [DRAW_BATCH_TABLE_LOOKUP]u16,
-    keys:       [DRAW_BATCH_TABLE_LOOKUP]Draw_Batch_Key,
+    keys:       [DRAW_BATCH_TABLE_BATCHES]Draw_Batch_Key,
     batches:    [DRAW_BATCH_TABLE_BATCHES]Draw_Batch(T),
     len:        u32,
 }
@@ -1853,15 +1854,10 @@ _draw_batch_table_init :: proc(table: ^$T/Draw_Batch_Table($Inst)) {
 
 _draw_batch_table_copy_batches :: proc(
     dst_table:  ^$T/Draw_Batch_Table($Inst),
-    src_table:  ^$T/Draw_Batch_Table($Inst),
+    src_table:  ^T,
 ) {
+    assert(dst_table != src_table)
     copied_len := min(src_table.len, DRAW_BATCH_TABLE_BATCHES - dst_table.len)
-
-    intrinsics.mem_copy_non_overlapping(
-        &dst_table.batches[dst_table.len],
-        &src_table.batches[0],
-        copied_len * size_of(dst_table.batches[0]),
-    )
 
     intrinsics.mem_copy_non_overlapping(
         &dst_table.keys[dst_table.len],
@@ -1869,7 +1865,40 @@ _draw_batch_table_copy_batches :: proc(
         copied_len * size_of(dst_table.keys[0]),
     )
 
+    for batch, i in src_table.batches[:src_table.len] {
+        dst_batch := &dst_table.batches[int(dst_table.len) + i]
+
+        dst_batch^ = {
+            consts_offset = 0,
+            last_len = batch.last_len,
+            len = batch.len,
+            cap = batch.cap,
+            inst_data = _clone(batch.inst_data, batch.len),
+            cull_data = _clone(batch.cull_data, ceil_div(batch.len, LANES)),
+        }
+
+        intrinsics.mem_copy_non_overlapping(
+            &dst_table.batches[dst_table.len],
+            &src_table.batches[0],
+            copied_len * size_of(dst_table.batches[0]),
+        )
+
+    }
+
     dst_table.len += copied_len
+
+    return
+
+    _clone :: proc(ptr: [^]$T, #any_int len: int) -> [^]T {
+        data, err := runtime.mem_alloc_non_zeroed(size_of(T) * len, align_of(T), context.temp_allocator)
+        if err != nil {
+            return nil
+        }
+
+        intrinsics.mem_copy_non_overlapping(raw_data(data), ptr, size_of(T) * len)
+
+        return cast([^]T)raw_data(data)
+    }
 }
 
 _draw_batch_table_push :: proc(
@@ -1934,6 +1963,10 @@ _draw_batch_table_find_or_create :: proc(table: ^$T/Draw_Batch_Table($Inst), key
     return index, true
 }
 
+ceil_div :: proc(a, b: $T) -> T where intrinsics.type_is_integer(T) {
+    return (a + b) / b
+}
+
 _draw_batch_push :: proc(
     batch:      ^Draw_Batch($Inst),
     inst:       Inst,
@@ -1944,11 +1977,11 @@ _draw_batch_push :: proc(
     if batch.len >= batch.cap {
         batch.cap = max(256 + batch.last_len, batch.cap * 2)
         new_inst := make([^]Inst, batch.cap, context.temp_allocator)
-        new_cull := make([^]Draw_Cull_Group, batch.cap, context.temp_allocator)
+        new_cull := make([^]Draw_Cull_Group, ceil_div(batch.cap, LANES), context.temp_allocator)
 
         if batch.len > 0 {
             intrinsics.mem_copy_non_overlapping(rawptr(new_inst), batch.inst_data, size_of(Inst) * batch.len)
-            intrinsics.mem_copy_non_overlapping(rawptr(new_cull), batch.cull_data, size_of(Draw_Cull_Group) * batch.len / LANES)
+            intrinsics.mem_copy_non_overlapping(rawptr(new_cull), batch.cull_data, ceil_div(size_of(Draw_Cull_Group) * batch.len, LANES))
         }
 
         // if batch.inst_data != nil {
