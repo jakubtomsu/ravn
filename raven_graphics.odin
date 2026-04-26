@@ -1851,6 +1851,27 @@ _draw_batch_table_init :: proc(table: ^$T/Draw_Batch_Table($Inst)) {
     }
 }
 
+_draw_batch_table_copy_batches :: proc(
+    dst_table:  ^$T/Draw_Batch_Table($Inst),
+    src_table:  ^$T/Draw_Batch_Table($Inst),
+) {
+    copied_len := min(src_table.len, DRAW_BATCH_TABLE_BATCHES - dst_table.len)
+
+    intrinsics.mem_copy_non_overlapping(
+        &dst_table.batches[dst_table.len],
+        &src_table.batches[0],
+        copied_len * size_of(dst_table.batches[0]),
+    )
+
+    intrinsics.mem_copy_non_overlapping(
+        &dst_table.keys[dst_table.len],
+        &src_table.keys[0],
+        copied_len * size_of(dst_table.keys[0]),
+    )
+
+    dst_table.len += copied_len
+}
+
 _draw_batch_table_push :: proc(
     table:      ^$T/Draw_Batch_Table($Inst),
     key:        Draw_Batch_Key,
@@ -2007,6 +2028,25 @@ _cull_draw_batch :: proc(
     batch.cap = 0
     batch.len = u32(culled_len)
 }
+
+copy_layer_batches :: proc(
+    #any_int dst_layer_index:   i32,
+    #any_int src_layer_index:   i32,
+) {
+    if dst_layer_index == src_layer_index {
+        assert(false, "Copy must be between two distinc layers, got same src/dst index")
+        return
+    }
+
+    dst_layer := &_state.draw_layers[dst_layer_index]
+    src_layer := &_state.draw_layers[src_layer_index]
+
+    _draw_batch_table_copy_batches(&dst_layer.meshes, &src_layer.meshes)
+    _draw_batch_table_copy_batches(&dst_layer.sprites, &src_layer.sprites)
+    _draw_batch_table_copy_batches(&dst_layer.triangles, &src_layer.triangles)
+    _draw_batch_table_copy_batches(&dst_layer.lines, &src_layer.lines)
+}
+
 
 
 
