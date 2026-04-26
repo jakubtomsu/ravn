@@ -60,7 +60,7 @@ sample_to_pixel :: proc(x: f32) -> f32 {
 }
 
 _update :: proc(_: rawptr) -> rawptr {
-    if rv.key_pressed(.Escape) {
+    if rv.get_key_pressed(.Escape) {
         rv.request_shutdown()
     }
 
@@ -69,12 +69,12 @@ _update :: proc(_: rawptr) -> rawptr {
     rv.set_draw_texture(rv.get_builtin_texture(.White))
 
     scroll: int = 0
-    if abs(rv.scroll_delta().y) > 0.1 {
-        scroll = int(rv.scroll_delta().y)
+    if abs(rv.get_scroll_delta().y) > 0.1 {
+        scroll = int(rv.get_scroll_delta().y)
     }
 
-    if rv.mouse_down(.Left) && abs(rv.mouse_delta().x) > 0.1 {
-        state.offset -= rv.mouse_delta().x * state.step
+    if rv.get_mouse_down(.Left) && abs(rv.get_mouse_delta().x) > 0.1 {
+        state.offset -= rv.get_mouse_delta().x * state.step
     }
 
     {
@@ -105,7 +105,7 @@ _update :: proc(_: rawptr) -> rawptr {
         )
     }
 
-    if rv.key_pressed(.Space) {
+    if rv.get_key_pressed(.Space) {
         state.sound = rv.create_sound(state.sound_res,
             pitch = rand.float32_range(0.05, 2),
             volume = 2,

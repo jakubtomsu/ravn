@@ -122,7 +122,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state = cast(^State)hot_state
     }
 
-    if rv.key_pressed(.Escape) {
+    if rv.get_key_pressed(.Escape) {
         rv.request_shutdown()
     }
 
@@ -134,18 +134,18 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     // TODO: abstract basic flycam controls into a simple util?
 
     move: rv.Vec2
-    if rv.key_down(.D) do move.x += 1
-    if rv.key_down(.A) do move.x -= 1
-    if rv.key_down(.W) do move.y += 1
-    if rv.key_down(.S) do move.y -= 1
+    if rv.get_key_down(.D) do move.x += 1
+    if rv.get_key_down(.A) do move.x -= 1
+    if rv.get_key_down(.W) do move.y += 1
+    if rv.get_key_down(.S) do move.y -= 1
 
-    state.angle.xy += rv.mouse_delta().yx * 0.002
+    state.angle.xy += rv.get_mouse_delta().yx * 0.002
     state.angle.x = clamp(state.angle.x, -math.PI * 0.49, math.PI * 0.49)
     state.angle.z = rv.lexp(state.angle.z, 0, delta * 5)
     state.angle.z += move.x * delta * -0.2
-    state.angle.z += rv.mouse_delta().x * -0.0001
+    state.angle.z += rv.get_mouse_delta().x * -0.0001
 
-    state.angle_spr[1].xy += rv.mouse_delta().yx * {-1, 1} * 0.006
+    state.angle_spr[1].xy += rv.get_mouse_delta().yx * {-1, 1} * 0.006
     state.angle_spr[1].z += move.x * delta * -30
 
     rv.spring2(&state.pos_spr, state.pos, 0.5, 22.0, delta)
@@ -160,7 +160,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     state.vel += mat[0] * move.x * delta * speed
     state.vel += mat[2] * move.y * delta * speed
 
-    if grounded && rv.key_pressed(.Space, buf = 0.2) {
+    if grounded && rv.get_key_pressed(.Space, buf = 0.2) {
         state.vel.y = 10
         grounded = false
     }
@@ -184,7 +184,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         gun_pos.y += 0.005 * math.sin_f32(rv.get_time() * 11) * rv.remap_clamped(linalg.length(state.vel.xz), 0, 2, 0, 1)
     }
 
-    if rv.mouse_pressed(.Left) {
+    if rv.get_mouse_pressed(.Left) {
         state.angle_spr[1].x -= 10
     }
 

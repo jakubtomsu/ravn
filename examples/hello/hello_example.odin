@@ -28,7 +28,7 @@ main :: proc() {
 //
 // NOTE: see simple_3d or other examples to learn how a full app with state does hotreload.
 _update :: proc(_: rawptr) -> rawptr {
-    if rv.key_pressed(.Escape) {
+    if rv.get_key_pressed(.Escape) {
         rv.request_shutdown()
     }
 
@@ -47,7 +47,7 @@ _update :: proc(_: rawptr) -> rawptr {
     rv.draw_text("Hello World! ☺", {100, 100, 0}, scale = 4, spacing = 1)
 
     // Draw the full font atlas texture, with color based on space key input.
-    col := rv.key_down(.Space) ? rv.GREEN : rv.WHITE
+    col := rv.get_key_down(.Space) ? rv.GREEN : rv.WHITE
     rv.draw_sprite({rv.get_screen_size().x * 0.5, rv.get_screen_size().y * 0.5, 0.1}, scale = 2, col = col)
 
     // The 'rv.draw_*' commands only record what geometry you want to render each frame.

@@ -170,7 +170,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state = cast(^State)hot_state
     }
 
-    if rv.key_pressed(.Escape) {
+    if rv.get_key_pressed(.Escape) {
         rv.request_shutdown()
     }
 
@@ -188,15 +188,15 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         // TODO: Gamepad
         move_inp: rv.Vec2
 
-        if rv.key_down(.D) do move_inp.x += 1
-        if rv.key_down(.A) do move_inp.x -= 1
-        if rv.key_down(.W) do move_inp.y += 1
-        if rv.key_down(.S) do move_inp.y -= 1
+        if rv.get_key_down(.D) do move_inp.x += 1
+        if rv.get_key_down(.A) do move_inp.x -= 1
+        if rv.get_key_down(.W) do move_inp.y += 1
+        if rv.get_key_down(.S) do move_inp.y -= 1
 
-        if rv.key_down(.Right) do move_inp.x += 1
-        if rv.key_down(.Left) do move_inp.x -= 1
-        if rv.key_down(.Up) do move_inp.y += 1
-        if rv.key_down(.Down) do move_inp.y -= 1
+        if rv.get_key_down(.Right) do move_inp.x += 1
+        if rv.get_key_down(.Left) do move_inp.x -= 1
+        if rv.get_key_down(.Up) do move_inp.y += 1
+        if rv.get_key_down(.Down) do move_inp.y -= 1
 
         // move_dir := move_inp.x * rv.Vec3{1, 0, 0} + mat[1] * rv.Vec3{0, 1, 0}
 
@@ -330,7 +330,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.draw_text(ufmt.tprintf("SCORE %i", score), {screen.x * 0.5, screen.y * 0.65, 0.1}, anchor = 0, scale = 2)
         rv.draw_text("Press SPACE to continue", {screen.x * 0.5, screen.y * 0.75, 0.1}, anchor = 0, scale = 2, col = rv.LIGHT_GRAY)
 
-        if rv.key_pressed(.Space) {
+        if rv.get_key_pressed(.Space) {
             state.screen = .Menu
         }
 
@@ -355,7 +355,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.draw_text(ufmt.tprintf("HIGHSCORE %i", state.max_score), {screen.x * 0.5, screen.y * 0.65, 0.1}, anchor = 0, scale = 2)
         rv.draw_text("Music by Nolram. Thank you!", {screen.x * 0.5, screen.y - 32, 0.1}, anchor = 0, scale = 2, col = rv.hex_color(0x06e4c2))
 
-        if rv.key_pressed(.Space) {
+        if rv.get_key_pressed(.Space) {
             new_game()
         }
     }

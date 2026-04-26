@@ -58,7 +58,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state = cast(^State)hot_state
     }
 
-    if rv.key_pressed(.Escape) {
+    if rv.get_key_pressed(.Escape) {
         rv.request_shutdown()
     }
 
@@ -68,23 +68,23 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     mat: rv.Mat3
     {
         move: rv.Vec3
-        if rv.key_down(.D) do move.x += 1
-        if rv.key_down(.A) do move.x -= 1
-        if rv.key_down(.W) do move.z += 1
-        if rv.key_down(.S) do move.z -= 1
-        if rv.key_down(.E) do move.y += 1
-        if rv.key_down(.Q) do move.y -= 1
+        if rv.get_key_down(.D) do move.x += 1
+        if rv.get_key_down(.A) do move.x -= 1
+        if rv.get_key_down(.W) do move.z += 1
+        if rv.get_key_down(.S) do move.z -= 1
+        if rv.get_key_down(.E) do move.y += 1
+        if rv.get_key_down(.Q) do move.y -= 1
 
-        state.cam_ang.xy += rv.mouse_delta().yx * 0.005
+        state.cam_ang.xy += rv.get_mouse_delta().yx * 0.005
         state.cam_ang.x = clamp(state.cam_ang.x, -math.PI * 0.49, math.PI * 0.49)
 
         cam_rot := rv.euler_rot(state.cam_ang)
         mat = linalg.matrix3_from_quaternion_f32(cam_rot)
 
         speed: f32 = 4.0
-        if rv.key_down(.Left_Shift) {
+        if rv.get_key_down(.Left_Shift) {
             speed *= 10
-        } else if rv.key_down(.Left_Control) {
+        } else if rv.get_key_down(.Left_Control) {
             speed *= 0.1
         }
 
@@ -98,7 +98,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.set_draw_depth(.Depth)
 
-    if rv.key_pressed(.Space) {
+    if rv.get_key_pressed(.Space) {
         state.anim_rot = !state.anim_rot
     }
 

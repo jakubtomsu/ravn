@@ -73,7 +73,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state = cast(^State)hot_state
     }
 
-    if rv.key_pressed(.Escape) {
+    if rv.get_key_pressed(.Escape) {
         rv.request_shutdown()
     }
 
@@ -83,16 +83,16 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.set_draw_blend(.Alpha)
 
-    if rv.mouse_down(.Left) {
+    if rv.get_mouse_down(.Left) {
         num := 64
         vel: f32 = 200
-        if rv.mouse_pressed(.Left) {
+        if rv.get_mouse_pressed(.Left) {
             num *= 2
         }
 
         for i in 0..<num {
             p: Particle = {
-                pos = rv.mouse_pos() + 5 * {
+                pos = rv.get_mouse_pos() + 5 * {
                     rand.float32() * 2.0 - 1.0,
                     rand.float32() * 2.0 - 1.0,
                 },
@@ -127,7 +127,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     sim_delta := delta
 
-    if rv.key_down(.Space) {
+    if rv.get_key_down(.Space) {
         sim_delta *= 5
     }
 

@@ -11,7 +11,7 @@ main :: proc() {
     defer rv.shutdown_state()
 
     for rv.begin_frame() {
-        if rv.key_pressed(.Escape) {
+        if rv.get_key_pressed(.Escape) {
             break
         }
 

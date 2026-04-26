@@ -32,7 +32,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state = cast(^State)hot_state
     }
 
-    if rv.key_pressed(.Escape) {
+    if rv.get_key_pressed(.Escape) {
         rv.request_shutdown()
     }
 

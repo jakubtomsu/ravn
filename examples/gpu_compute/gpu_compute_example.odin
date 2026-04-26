@@ -64,14 +64,14 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state = cast(^State)hot_state
     }
 
-    if rv.key_pressed(.Escape) {
+    if rv.get_key_pressed(.Escape) {
         rv.request_shutdown()
     }
 
     delta := rv.get_delta_time()
 
     cam_pos := rv.Vec3{-1, 1, -1} * 10
-    mouse := rv.mouse_pos() / rv.get_screen_size() - 0.5
+    mouse := rv.get_mouse_pos() / rv.get_screen_size() - 0.5
     cam_pos += rv.Vec3{1, 0, -1} * mouse.x * 10
     cam_pos += rv.Vec3{-1, 0, -1} * mouse.y * 10
 
@@ -83,7 +83,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         fov = 5,
     )
 
-    if rv.key_pressed(.Space) {
+    if rv.get_key_pressed(.Space) {
         state.tex_index = 0
         state.tex_len = 0
 

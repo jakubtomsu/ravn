@@ -752,26 +752,6 @@ begin_frame :: proc() -> (keep_running: bool) {
         base.log_info("Time to first frame: %f ms", f32((platform.get_time_ns() - _state.start_time) / 1e3) * 1e-3)
     }
 
-    if false && context.temp_allocator.procedure == runtime.default_temp_allocator_proc {
-        data := (cast(^runtime.Default_Temp_Allocator)context.temp_allocator.data).arena
-
-        curr := data.curr_block
-        num_blocks := 0
-        for curr != nil {
-            num_blocks += 1
-            curr = curr.prev
-        }
-
-        base.log_debug("[temp] curr: %v, blocksz: %v, blocknum: %v, cap: %v, used: %v (%f%%)",
-            data.curr_block,
-            data.minimum_block_size,
-            num_blocks,
-            data.total_capacity,
-            data.total_used,
-            f64(data.total_used) * 100.0 / f64(data.total_capacity),
-        )
-    }
-
     free_all(context.temp_allocator)
 
     keep_running = true
@@ -1670,7 +1650,8 @@ get_mouse_pressed :: proc(button: Mouse_Button, buf: f32 = 0) -> bool {
 
 get_gamepad_axis :: proc(gamepad_index: int, axis: Gamepad_Axis, deadzone: f32 = 0.01) -> f32 {
     gamepad := _state.input.gamepads[gamepad_index]
-    return gamepad.axes[axis]
+    val := gamepad.axes[axis]
+    return abs(val) < deadzone ? 0 : val
 }
 
 get_gamepad_down :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
