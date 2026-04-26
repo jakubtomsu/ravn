@@ -140,7 +140,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         for j in 0..<i32(THICK) {
             rv.draw_sprite(
                 {0, -f32(i * THICK + j) * 0.005, 0},
-                rot = linalg.quaternion_angle_axis_f32(math.PI * 0.5, {1, 0, 0}),
+                rot = linalg.matrix3_rotate_f32(math.PI * 0.5, {1, 0, 0}),
                 scale = 16,
                 col = i + j == 0 ? rv.LIGHT_PINK + 0.2 : rv.oklerp(rv.LIGHT_PINK, rv.DARK_BLUE * 0.5, t),
                 scaling = .Absolute,

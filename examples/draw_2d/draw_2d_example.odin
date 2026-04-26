@@ -48,7 +48,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_draw_layer(0)
 
     // rv.draw_sprite(0, scale = 100, scaling = .Absolute)
-    rv.draw_line(0, {100, 0, 1}, rv.RED)
+    rv.draw_line_2d(0, {100, 0}, rv.RED)
     rv.draw_text("Hello World!", {0, 0, 0})
 
     rv.set_draw_layer(1)

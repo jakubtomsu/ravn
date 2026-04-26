@@ -1136,51 +1136,24 @@ draw_sprite_2d :: proc(
     z:          f32 = 0,
     param:      u32 = 0,
 ) {
-    perf_scope()
-
-    validate_vec2(pos)
-
-    draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
-
-    rect_size := rect_full_size(rect)
-
-    size := scale * 0.5
-    size.y = .Flip_Y in draw_layer.flags ? -size.y : size.y
-
-    switch scaling {
-    case .Pixel:
-        size *= {
-            f32(_state.draw_state.texture_size.x) * rect_size.x,
-            f32(_state.draw_state.texture_size.y) * rect_size.y,
-        }
-
-    case .Absolute:
-        // No scaling
+    right := [2]f32{
+        math.cos_f32(rot),
+        math.sin_f32(rot),
     }
-
-    mat0 := Vec2{math.cos_f32(rot), math.sin_f32(rot)}
-    mat1 := Vec2{-mat0.y, mat0.x}
-
-    center := pos
-    center -= mat0 * anchor.x * size.x
-    center -= mat1 * anchor.y * size.y
-
-    inst := pack_sprite_inst(
-        pos = {center.x, center.y, z},
-        mat_x = {mat0.x * size.x, mat0.y * size.y, 0},
-        mat_y = {mat1.x * size.x, mat1.y * size.y, 0},
-        uv_min = rect.min + UV_EPS,
-        uv_size = rect_size - UV_EPS * 2,
+    draw_sprite(
+        pos = {pos.x, pos.y, z},
+        rect = rect,
         col = col,
+        rot = Mat3{
+            right.x, right.y, 0,
+            right.y, -right.x, 0,
+            0, 0, 1,
+        },
+        anchor = anchor,
         add_col = add_col,
-        tex_slice = _state.draw_state.texture_slice,
+        scaling = scaling,
         param = param,
     )
-
-    key := _state.draw_state.key
-    key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
-
-    _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
 }
 
 draw_rect_2d :: proc(

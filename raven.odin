@@ -484,14 +484,14 @@ get_context :: proc "contextless" () -> (result: runtime.Context) {
     return result
 }
 
-init_context_state :: proc(ctx: ^Context_State) {
-    mem.tracking_allocator_init(&_state.context_state.tracking, context.allocator, context.allocator)
+init_context_state :: proc(ctx: ^Context_State, allocator: runtime.Allocator) {
+    mem.tracking_allocator_init(&_state.context_state.tracking, allocator, allocator)
 
     debug_trace.init(&_state.debug_trace_ctx)
 }
 
 // Create state, init context, init subsystems.
-init_state :: proc(allocator := context.allocator) {
+init_state :: proc(allocator: runtime.Allocator) {
     ensure(_state == nil)
 
     state_err: runtime.Allocator_Error
@@ -503,7 +503,7 @@ init_state :: proc(allocator := context.allocator) {
 
     _state.allocator = allocator
 
-    init_context_state(&_state.context_state)
+    init_context_state(&_state.context_state, allocator)
 
     context = get_context()
 
@@ -580,7 +580,7 @@ _post_gpu_init :: proc() {
         usage = .Dynamic,
     ) or_else panic("gpu")
 
-    _state.dynamic_vert_upload_buf = make([]Vertex, MAX_TOTAL_DYNAMIC_VERTS, context.allocator)
+    _state.dynamic_vert_upload_buf = make([]Vertex, MAX_TOTAL_DYNAMIC_VERTS, _state.allocator)
 
     _state.mesh_inst_buf = gpu.create_buffer("rv-mesh-inst-buf",
         stride = size_of(Mesh_Inst),
@@ -633,15 +633,17 @@ shutdown_state :: proc() {
         end_frame(false)
     }
 
+    when PERF_SCOPES_ENABLED {
+        delete(_perf_scopes)
+    }
+
+    delete(_state.dynamic_vert_upload_buf, _state.allocator)
+
     _print_stats_report()
 
     audio.shutdown()
     gpu.shutdown()
     platform.shutdown()
-
-    when PERF_SCOPES_ENABLED {
-        delete(_perf_scopes)
-    }
 
     free(_state, _state.allocator)
     _state = nil
@@ -2218,7 +2220,7 @@ insert_sound_resource_by_hash :: proc(name: string, handle: Sound_Resource_Handl
 //
 
 @(require_results)
-alloc_slice_non_zeroed :: proc($T: typeid, init_len: int, alignment: int = 2 * align_of(rawptr), allocator := context.allocator) -> []T {
+alloc_slice_non_zeroed :: proc($T: typeid, init_len: int, alignment: int = 2 * align_of(rawptr), allocator: runtime.Allocator) -> []T {
     buf := runtime.mem_alloc_non_zeroed(size_of(T) * init_len, alignment = alignment, allocator = allocator) or_else panic("Failed to allocate")
     return ([^]T)(raw_data(buf))[:len(buf) / size_of(T)]
 }
