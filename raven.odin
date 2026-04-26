@@ -2562,6 +2562,17 @@ align_up :: proc(x: u32, align: u32) -> u32 {
 }
 
 
+// Order independent blend modes are a lot simpler on the renderer CPU side.
+is_blend_mode_order_dependent :: proc(mode: Blend_Mode) -> bool {
+    switch mode {
+    case .Opaque, .Add:
+        return false
+    case .Premultiplied_Alpha, .Alpha:
+        return true
+    }
+    return false
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Perf

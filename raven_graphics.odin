@@ -1,5 +1,6 @@
 package raven
 
+import "core:slice"
 import "gpu"
 import "base"
 import "shader_compiler"
@@ -118,11 +119,8 @@ Draw_State :: struct {
 }
 
 Draw_Layer_Flag :: enum u8 {
-    // Disable frustum culling.
-    No_Cull,
-    // Disable all sorting.
-    // NOTE: this doesn't affect just transparent objects, it's how batching optimization is done.
-    No_Reorder,
+    No_Frustum_Cull,
+    No_Transparent_Sort,
     // Flips the entire coordinate system vertically.
     // Toggled automatically based on the projection matrix.
     Flip_Y,
@@ -142,19 +140,25 @@ Draw_Batch_Table :: struct($T: typeid) {
     lookup:     [DRAW_BATCH_TABLE_LOOKUP]u16,
     keys:       [DRAW_BATCH_TABLE_BATCHES]Draw_Batch_Key,
     batches:    [DRAW_BATCH_TABLE_BATCHES]Draw_Batch(T),
-    len:        u32,
+    len:        i32,
 }
 
-// TODO: rename to batch something idk
-// TODO: #simd[4]f32 cull sphere
-// TODO: Sort key?
-Draw_Batch :: struct($Instance: typeid) {
+Draw_Batch :: struct($Instance: typeid) #all_or_none {
     consts_offset:  u32,
     last_len:       u32,
     len:            u32,
     cap:            u32,
     inst_data:      [^]Instance,
     cull_data:      [^]Draw_Cull_Group,
+}
+
+Draw_Batch_Sort_Key_Integer :: u64
+
+#assert(size_of(Draw_Batch_Sort_Key) == size_of(Draw_Batch_Sort_Key_Integer))
+Draw_Batch_Sort_Key :: struct {
+    index:  u16,
+    batch:  u16,
+    z:      f32,
 }
 
 // Per 8 instances
@@ -174,11 +178,6 @@ Depth_Mode :: enum u8 {
     Only_Test   = 0b01,
     Only_Write  = 0b10,
     Depth       = 0b11,
-}
-
-Draw_Sort_Key :: struct {
-    index:          u16,
-    dist:           u16,
 }
 
 #assert(size_of(Draw_Batch_Key) == 8)
@@ -2132,46 +2131,148 @@ submit_layers :: proc() {
     for &layer in _state.draw_layers {
         perf_scope("submit_layers cull")
 
-        if layer.camera == {} || .No_Cull in layer.flags {
+        if layer.camera == {} {
             continue
         }
 
-        fru := calc_camera_frustum(layer.camera)
+        if .No_Frustum_Cull not_in layer.flags {
+            fru := calc_camera_frustum(layer.camera)
 
-        fru_pos_vec := (fru.bounds_min + fru.bounds_max) * 0.5
-        fru_rad_vec := (fru.bounds_max - fru.bounds_min) * 0.5
+            fru_pos_vec := (fru.bounds_min + fru.bounds_max) * 0.5
+            fru_rad_vec := (fru.bounds_max - fru.bounds_min) * 0.5
 
-        fru_pos: [3]#simd[LANES]f32 = {fru_pos_vec.x, fru_pos_vec.y, fru_pos_vec.z}
-        fru_rad: [3]#simd[LANES]f32 = {fru_rad_vec.x, fru_rad_vec.y, fru_rad_vec.z}
+            fru_pos: [3]#simd[LANES]f32 = {fru_pos_vec.x, fru_pos_vec.y, fru_pos_vec.z}
+            fru_rad: [3]#simd[LANES]f32 = {fru_rad_vec.x, fru_rad_vec.y, fru_rad_vec.z}
 
-        fru_planes: [6][4]#simd[LANES]f32
-        for &pl, i in fru_planes {
-            pl = {
-                fru.planes[i].x,
-                fru.planes[i].y,
-                fru.planes[i].z,
-                fru.planes[i].w,
+            fru_planes: [6][4]#simd[LANES]f32
+            for &pl, i in fru_planes {
+                pl = {
+                    fru.planes[i].x,
+                    fru.planes[i].y,
+                    fru.planes[i].z,
+                    fru.planes[i].w,
+                }
+            }
+
+            for &batch in layer.meshes.batches[:layer.meshes.len] {
+                _cull_draw_batch(
+                    batch = &batch,
+                    frustum = fru,
+                    fru_pos = fru_pos,
+                    fru_rad = fru_rad,
+                    fru_planes = fru_planes,
+                )
+            }
+
+            for &batch in layer.sprites.batches[:layer.sprites.len] {
+                _cull_draw_batch(
+                    batch = &batch,
+                    frustum = fru,
+                    fru_pos = fru_pos,
+                    fru_rad = fru_rad,
+                    fru_planes = fru_planes,
+                )
             }
         }
 
-        for &batch in layer.meshes.batches[:layer.meshes.len] {
-            #force_inline _cull_draw_batch(
-                batch = &batch,
-                frustum = fru,
-                fru_pos = fru_pos,
-                fru_rad = fru_rad,
-                fru_planes = fru_planes,
-            )
-        }
+        // Transparent: combine, sort, re-batch. Also remove old non-sorted batches.
+        // This is expensive.
+        transparent_block: if .No_Transparent_Sort not_in layer.flags {
+            total_inst_len := 0
 
-        for &batch in layer.sprites.batches[:layer.sprites.len] {
-            #force_inline _cull_draw_batch(
-                batch = &batch,
-                frustum = fru,
-                fru_pos = fru_pos,
-                fru_rad = fru_rad,
-                fru_planes = fru_planes,
-            )
+            Batch :: struct {
+                key:            Draw_Batch_Key,
+                using batch:    Draw_Batch(Mesh_Inst),
+            }
+
+            sort_batches := make([dynamic]Batch, layer.meshes.len, context.temp_allocator)
+
+            for batch_index := 0; batch_index < int(layer.meshes.len); /**/ {
+                batch := layer.meshes.batches[batch_index]
+                key := layer.meshes.keys[batch_index]
+                if is_blend_mode_order_dependent(key.blend_mode) {
+                    total_inst_len += int(batch.len)
+                    append(&sort_batches, Batch{
+                        key = key,
+                        batch = batch,
+                    })
+
+                    // Unordered remove
+                    layer.meshes.batches[batch_index] = layer.meshes.batches[layer.meshes.len - 1]
+                    layer.meshes.len -= 1
+                } else {
+                    batch_index += 1
+                }
+            }
+
+            if len(sort_batches) == 0 || total_inst_len == 0 {
+                break transparent_block
+            }
+
+            sort_keys := make([]Draw_Batch_Sort_Key, total_inst_len, context.temp_allocator)
+            sort_write := 0
+
+            cam_pos := layer.camera.pos
+            cam_forw := linalg.quaternion128_mul_vector3(layer.camera.rot, [3]f32{0, 0, 1})
+
+            for &batch, batch_index in sort_batches {
+
+                for inst_index in 0..<int(batch.len) {
+                    pos := batch.inst_data[inst_index].pos
+                    depth := linalg.vector_dot(pos - cam_pos, cam_forw)
+
+                    sort_keys[sort_write] = {
+                        batch = u16(batch_index),
+                        index = u16(inst_index),
+                        z = depth,
+                    }
+
+                    sort_write += 1
+                }
+            }
+
+            slice.sort(transmute([]Draw_Batch_Sort_Key_Integer)sort_keys)
+
+            sort_insts := make([]Mesh_Inst, total_inst_len, context.temp_allocator)
+
+            for key, i in sort_keys {
+                inst := sort_batches[key.batch].inst_data[key.index]
+                sort_insts[i] = inst
+            }
+
+            base.log_warn("\n\n\n\n\n\nREBATCH")
+
+
+            prev_batch_index := sort_keys[0].batch
+            new_batch_len := 0
+            rebatch_loop: for key, i in sort_keys {
+                if key.batch != prev_batch_index { // Flush
+                    batch_index := layer.meshes.len
+
+                    if batch_index >= len(layer.meshes.batches) {
+                        break rebatch_loop
+                    }
+
+                    layer.meshes.len += 1
+
+                    layer.meshes.keys[batch_index] = sort_batches[prev_batch_index].key
+                    layer.meshes.batches[batch_index] = {
+                        consts_offset = 0,
+                        last_len = 0,
+                        len = u32(new_batch_len),
+                        cap = 0,
+                        inst_data = &sort_insts[i],
+                        cull_data = nil,
+                    }
+
+                    base.log_info("%v : %v : %v", key, layer.meshes.keys[batch_index], new_batch_len)
+
+                    new_batch_len = 0
+                    prev_batch_index = key.batch
+                }
+
+                new_batch_len += 1
+            }
         }
     }
 
@@ -2763,6 +2864,7 @@ is_sphere_in_frustum :: proc(fru: Frustum, pos: Vec3, rad: f32) -> bool #no_boun
     return true
 }
 
+// TODO: early out path? Most objects are small.
 is_sphere_in_frustum_simd :: proc(
     fru_pos:    [3]#simd[LANES]f32,
     fru_rad:    [3]#simd[LANES]f32,

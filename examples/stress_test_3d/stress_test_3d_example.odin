@@ -159,7 +159,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     return state
 }
 
-stress_draw :: proc(handle: rv.Mesh_Handle, pos: rv.Vec3, num: int = 512, col: rv.Vec4 = {1, 1, 1, 0.25}) {
+stress_draw :: proc(handle: rv.Mesh_Handle, pos: rv.Vec3, num: int = 256, col: rv.Vec4 = {1, 1, 1, 0.25}) {
     for i in 0..<num {
         rv.draw_mesh(handle,
             pos = pos + {0, 0, f32(i) * 3},
