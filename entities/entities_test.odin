@@ -1,6 +1,6 @@
 #+test
 #+vet shadowing unused
-package raven_entity_system
+package raven_entities
 
 import "core:testing"
 

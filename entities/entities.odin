@@ -6,10 +6,9 @@ manages a separate free-list-based pool for each entity variant.
 Entities can be iterated by types or by subtypes ("components").
 */
 #+vet shadowing explicit-allocators unused style semicolon cast
-package raven_entity_system
+package raven_entities
 
 import "base:intrinsics"
-import "base:runtime"
 
 UNION_LEN :: intrinsics.type_union_variant_count
 UNION_HAS :: intrinsics.type_is_variant_of
