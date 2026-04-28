@@ -9,6 +9,7 @@ Entities can be iterated by types or by subtypes ("components").
 package raven_entities
 
 import "base:intrinsics"
+import "base:runtime"
 
 UNION_LEN :: intrinsics.type_union_variant_count
 UNION_HAS :: intrinsics.type_is_variant_of

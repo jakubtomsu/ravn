@@ -37,7 +37,7 @@ odin check examples/standalone_gpu_sdl3_triangle || goto :err
 odin check examples/standalone_platform_d3d11 || goto :err
 
 odin test . -debug || goto :err
-odin test entity_system -debug || goto :err
+odin test entities -debug || goto :err
 
 @echo off
 echo All checks passed!

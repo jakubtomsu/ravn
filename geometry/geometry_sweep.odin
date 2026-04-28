@@ -3,6 +3,7 @@ package raven_geometry
 
 import "core:math/linalg"
 import "base:intrinsics"
+import "core:simd/x86"
 
 LANES :: 8
 
@@ -13,7 +14,7 @@ sweep_point_vs_plane :: proc "contextless" (
     normal: [3]f32,
     dist:   f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
     denom := linalg.vector_dot(normal, move)
     t = (dist - linalg.vector_dot(normal, pos)) * (1.0 / denom)
     ok = t >= 0 && t <= range && abs(denom) > 1e-10
@@ -27,7 +28,7 @@ sweep_point_vs_sphere :: proc "contextless" (
     center: [3]f32,
     rad:    f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
     m := pos - center
     b := linalg.vector_dot(m, move)
     c := linalg.vector_length2(m) - rad * rad
@@ -39,33 +40,37 @@ sweep_point_vs_sphere :: proc "contextless" (
     }
 
     t = -b - intrinsics.sqrt(discr)
-    t = max(0, t) / move_len2
-    ok = t * t <= range
+    t *= 1.0 / move_len2
+    ok = t <= range
 
     return ok ? t : range, ok
 }
 
+// NOTE: move vector must have length greater than zero.
 @(require_results)
 sweep_point_vs_sphere_simd :: proc "contextless" (
-    pos:        [3]#simd[LANES]f32,
-    move:       [3]#simd[LANES]f32,
-    center:     [3]#simd[LANES]f32,
-    rad:        #simd[LANES]f32,
-    range:      #simd[LANES]f32 = 1,
-) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32) {
+    pos:            [3]#simd[LANES]f32,
+    move:           [3]#simd[LANES]f32,
+    move_len2:      #simd[LANES]f32,
+    move_len2_inv:  #simd[LANES]f32,
+    center:         [3]#simd[LANES]f32,
+    rad:            #simd[LANES]f32,
+    range:          #simd[LANES]f32 = 1,
+) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32) #no_bounds_check {
     m := pos - center
     b := dot_simd(m, move)
     c := length2_simd(m) - rad * rad
-    move_len2 := length2_simd(move)
     discr := b * b - c * move_len2
 
-    t = -b - intrinsics.sqrt(discr)
-    t = intrinsics.simd_max(t, 0) * (1.0 / move_len2)
+    ok = ~(
+        (intrinsics.simd_lanes_gt(c, 0) &
+        intrinsics.simd_lanes_gt(b, 0)) |
+        intrinsics.simd_lanes_lt(discr, 0))
 
-    ok = (intrinsics.simd_lanes_gt(c, 0) & intrinsics.simd_lanes_gt(b, 0)) |
-        intrinsics.simd_lanes_eq(move_len2, 0) |
-        intrinsics.simd_lanes_lt(discr, 0)
-    ok &= intrinsics.simd_lanes_le(t * t, range)
+    t = -b - intrinsics.sqrt(discr)
+    t *= move_len2_inv
+
+    ok &= intrinsics.simd_lanes_le(t, range)
 
     t = intrinsics.simd_select(ok, t, range)
 
@@ -81,7 +86,7 @@ sweep_point_vs_aabb :: proc "contextless" (
     aabb_min:   [3]f32,
     aabb_max:   [3]f32,
     range:      f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
     inv_move := 1.0 / move
 
     t1 := (aabb_min - pos) * inv_move
@@ -102,7 +107,7 @@ sweep_point_vs_aabb_simd :: proc "contextless" (
     aabb_min:   [3]#simd[LANES]f32,
     aabb_max:   [3]#simd[LANES]f32,
     range:      #simd[LANES]f32 = 1,
-) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32) {
+) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32) #no_bounds_check {
     t1 := (aabb_min - pos) * inv_move
     t2 := (aabb_max - pos) * inv_move
 
@@ -137,7 +142,7 @@ sweep_point_vs_triangle :: proc "contextless" (
     move:       [3]f32,
     tri:        [3][3]f32,
     range:      f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
     ab := tri[1] - tri[0]
     ac := tri[2] - tri[0]
 
@@ -170,7 +175,7 @@ sweep_point_vs_triangle_simd :: proc "contextless" (
     move:       [3]#simd[LANES]f32,
     tri:        [3][3]#simd[LANES]f32,
     range:      #simd[LANES]f32 = 1,
-) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32) {
+) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32) #no_bounds_check {
     ab := tri[1] - tri[0]
     ac := tri[2] - tri[0]
 
@@ -213,7 +218,7 @@ sweep_point_vs_triangle_slab :: proc "contextless" (
     tri:        [3][3]f32,
     rad:        f32,
     range:      f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
     ab := tri[1] - tri[0]
     ac := tri[2] - tri[0]
 
@@ -252,7 +257,7 @@ sweep_point_vs_uncapped_cylinder :: proc "contextless" (
     points: [2][3]f32,
     rad:    f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
     d  := points[1] - points[0]
     m  := pos - points[0]
     dd := linalg.vector_length2(d)
@@ -287,7 +292,7 @@ sweep_point_vs_uncapped_cylinder_simd :: proc "contextless" (
     points: [2][3]#simd[LANES]f32,
     rad:    #simd[LANES]f32,
     range:  #simd[LANES]f32 = 1,
-) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32) {
+) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32) #no_bounds_check {
     d  := points[1] - points[0]
     m  := pos - points[0]
     dd := length2_simd(d)
@@ -324,7 +329,7 @@ sweep_point_vs_cylinder :: proc "contextless" (
     points: [2][3]f32,
     rad:    f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
     d := points[1] - points[0]
     m := pos - points[0]
     n := move * range
@@ -402,7 +407,7 @@ sweep_point_vs_capsule :: proc "contextless" (
     points: [2][3]f32,
     rad:    f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
     d := points[1] - points[0]
     m := pos - points[0]
     n := move * range
@@ -478,7 +483,7 @@ sweep_sphere_vs_triangle :: proc(
     rad:    f32,
     tri:    [3][3]f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
     v01 := tri[1] - tri[0]
     v02 := tri[2] - tri[0]
 
@@ -494,17 +499,6 @@ sweep_sphere_vs_triangle :: proc(
         t = sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t) or_continue
         ok = true
     }
-
-    // side := [2]f32{-1, 1}
-    // for s in side {
-    //     tt := tri
-    //     for &v in tt {
-    //         v += s * normal * rad
-    //     }
-    //     t = sweep_point_vs_triangle(pos, move, tt, t) or_continue
-    //     ok = true
-    // }
-
 
     tt, tok := sweep_point_vs_triangle_slab(pos, move, tri, rad, t)
     if tok && tt < t {
@@ -523,19 +517,102 @@ dirlen :: proc "contextless" (v: [3]f32) -> (dir: [3]f32, length: f32) {
     return dir, length
 }
 
+USE_FMA :: intrinsics.has_target_feature("fma")
+
 @(require_results)
-dot_simd :: proc "contextless" (a, b: [3]#simd[LANES]f32) -> #simd[LANES]f32 {
-    ab := a * b
-    return ab.x + ab.y + ab.z
+dot_simd :: #force_inline proc "contextless" (a, b: [3]#simd[LANES]f32) -> #simd[LANES]f32 {
+    when USE_FMA {
+        return intrinsics.fused_mul_add(
+            a.x, b.x,
+            intrinsics.fused_mul_add(
+                a.y, b.y,
+                a.z * b.z,
+            ),
+        )
+    } else {
+        ab := a * b
+        return ab.x + ab.y + ab.z
+    }
 }
 
 @(require_results)
-cross_simd :: proc "contextless" (a, b: [3]#simd[LANES]f32) -> [3]#simd[LANES]f32 {
-	return a.yzx*b.zxy - b.yzx*a.zxy
+cross_simd :: #force_inline proc "contextless" (a, b: [3]#simd[LANES]f32) -> [3]#simd[LANES]f32 {
+    when USE_FMA {
+        sub := -b.yzx*a.zxy
+        return {
+            intrinsics.fused_mul_add(a.y, b.z, sub.x),
+            intrinsics.fused_mul_add(a.z, b.x, sub.y),
+            intrinsics.fused_mul_add(a.x, b.y, sub.z),
+        }
+    } else {
+	    return a.yzx*b.zxy - b.yzx*a.zxy
+    }
 }
 
 @(require_results)
-length2_simd :: proc "contextless" (a: [3]#simd[LANES]f32) -> #simd[LANES]f32 {
-    aa := a * a
-    return aa.x + aa.y + aa.z
+length2_simd :: #force_inline proc "contextless" (a: [3]#simd[LANES]f32) -> #simd[LANES]f32 {
+    when USE_FMA {
+        return intrinsics.fused_mul_add(
+            a.x, a.x,
+            intrinsics.fused_mul_add(
+                a.y, a.y,
+                a.z * a.z,
+            ),
+        )
+    } else {
+        aa := a * a
+        return aa.x + aa.y + aa.z
+    }
+}
+
+
+@(require_results)
+approx_rsqrt_simd :: #force_inline proc "contextless" (x: #simd[$N]f32) -> #simd[LANES]f32 {
+    when ODIN_ARCH == .amd64 && N == 8 {
+        return x86._mm256_rsqrt_ps(x)
+    } when ODIN_ARCH == .amd64 && N == 4 {
+        return x86._mm_rsqrt_ps(x)
+    } else {
+        // Slow high-precision fallback
+        return 1.0 / intrinsics.sqrt(x)
+    }
+}
+
+@(require_results)
+approx_sqrt :: #force_inline proc "contextless" (x: #simd[LANES]f32) -> #simd[LANES]f32 {
+    when intrinsics.has_target_feature("avx") {
+        return approx_sqrt_avx(x)
+    } else when intrinsics.has_target_feature("sse") {
+        return approx_sqrt_sse(x)
+    } else {
+        return intrinsics.sqrt(x)
+    }
+}
+
+when ODIN_ARCH == .amd64 {
+    @(require_results, enable_target_feature="avx")
+    approx_sqrt_avx :: proc "contextless" (x: #simd[LANES]f32) -> #simd[LANES]f32 {
+        // sqrt(x) == x^0.5 == x * x^-0.5 == x * 1/sqrt(x)
+        when LANES == 8 {
+            return x * x86._mm256_rsqrt_ps(x)
+        } else {
+            #panic("Unimplemented")
+        }
+    }
+
+    @(require_results, enable_target_feature="sse")
+    approx_sqrt_sse :: proc "contextless" (x: #simd[LANES]f32) -> #simd[LANES]f32 {
+        when LANES == 4 {
+            return x * x86._mm_rsqrt_ps(x)
+        } else when LANES == 8 {
+            split := transmute([2]#simd[4]f32)x
+            comb := transmute(#simd[8]f32)[2]#simd[4]f32{
+                x86._mm_rsqrt_ps(split.x),
+                x86._mm_rsqrt_ps(split.y),
+            }
+            return x * comb
+        } else {
+            #panic("Unimplemented")
+        }
+    }
 }
