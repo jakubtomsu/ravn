@@ -1,10 +1,12 @@
 #+vet shadowing explicit-allocators
 package raven_collision
 
+import "core:math/linalg"
 import "base:intrinsics"
 import "base:runtime"
 import "../base"
 import "../geometry"
+import "../bvh"
 
 // TODO: no_bounds_check once stable
 
@@ -12,6 +14,9 @@ _state: ^State
 
 MAX_ARENAS :: 64
 MAX_MESHES :: 1024
+
+BVH_EPS :: 1e-6
+BVH_STACK :: 32
 
 Handle_Index :: u16
 Handle_Gen :: u8
@@ -46,13 +51,18 @@ Arena :: struct {
     backing:    runtime.Allocator,
 }
 
+LANES :: geometry.LANES
+
 Mesh :: struct {
     arena:          Arena_Handle,
+    bounds_min:     [3]f32,
+    bounds_max:     [3]f32,
     verts:          [][3]f32,
     triangles:      [][3]u16,
     edges:          [][2]u16,
     vert_tri:       []u16,
     edge_tri:       []u16,
+    blas:           bvh.BVH,
 }
 
 init :: proc(state: ^State) {
@@ -237,11 +247,25 @@ create_mesh :: proc(
 
     vert_tri := make([]u16, len(verts), allocator)
 
+    tri_bbs := make([][2][3]f32, len(triangles), context.temp_allocator)
+
     edge_map := make(map[[2]u16]u16, len(triangles) * 2, context.temp_allocator)
+
     for tri, tri_index in triangles {
         _insert_edge(&edge_map, tri[0], tri[1], u16(tri_index))
         _insert_edge(&edge_map, tri[0], tri[2], u16(tri_index))
         _insert_edge(&edge_map, tri[1], tri[2], u16(tri_index))
+
+        v := [3][3]f32{
+            verts[tri[0]],
+            verts[tri[1]],
+            verts[tri[2]],
+        }
+
+        tri_bbs[tri_index] = {
+            bvh.vec_min(v[0], bvh.vec_min(v[1], v[2])) - BVH_EPS,
+            bvh.vec_max(v[0], bvh.vec_max(v[1], v[2])) + BVH_EPS,
+        }
 
         for index in tri {
             assert(int(index) < len(verts))
@@ -265,10 +289,26 @@ create_mesh :: proc(
     mesh: Mesh = {
         arena = arena_handle,
         verts = verts,
+        bounds_min = max(f32),
+        bounds_max = min(f32),
         triangles = triangles,
         edges = edges,
         edge_tri = edge_tri,
         vert_tri = vert_tri,
+    }
+
+    bvh.init(&mesh.blas,
+        prims = tri_bbs,
+        nodes = runtime.make_aligned([]bvh.Node, bvh.max_nodes_for_prims(len(triangles)), 64, allocator),
+        indices = make([]u16, len(triangles), allocator),
+        max_leaf_prims = 4,
+    )
+
+    bvh.build_binned(&mesh.blas, num_bins = bvh.MAX_BINS)
+
+    for vert in verts {
+        mesh.bounds_min = linalg.min(mesh.bounds_min, vert)
+        mesh.bounds_max = linalg.max(mesh.bounds_max, vert)
     }
 
     _state.mesh_data[index] = mesh
@@ -321,7 +361,7 @@ sweep_point_vs_mesh_local :: proc(
     move:       [3]f32,
     handle:     Mesh_Handle,
     range:      f32 = 1,
-) -> (t: f32, prim: int, ok: bool) {
+) -> (t: f32, prim: int, ok: bool) #no_bounds_check {
     mesh, mesh_ok := get_mesh(handle)
     if !mesh_ok {
         return range, -1, false
@@ -330,50 +370,62 @@ sweep_point_vs_mesh_local :: proc(
     t = range
     prim = -1
 
-    tri_index := 0
 
-    if false { // Slow!
-        pos_simd := simd_scalar_vec(8, pos)
-        move_simd := simd_scalar_vec(8, move)
+    node := &mesh.blas.nodes[0]
+    stack: [BVH_STACK]^bvh.Node
+    stack_curr := 0
 
-        for ; tri_index + 7 < len(mesh.triangles); tri_index += 8 {
-            tri: [8][3]u16
-            for &t, i in tri {
-                t = mesh.triangles[tri_index + i]
+    for {
+        if node.len != 0 {
+            for offs in 0..<int(node.len) {
+                index := mesh.blas.indices[int(node.first) + offs]
+                tri := mesh.triangles[index]
+                verts := [3][3]f32{
+                    mesh.verts[tri[0]],
+                    mesh.verts[tri[1]],
+                    mesh.verts[tri[2]],
+                }
+
+                t = geometry.sweep_point_vs_triangle(pos, move, verts, t) or_continue
+                prim = int(index)
+                ok = true
             }
 
-            verts: [3][3]#simd[8]f32
-            for t, i in tri {
-                simd_insert_vec(&verts[0], mesh.verts[t[0]], i)
-                simd_insert_vec(&verts[1], mesh.verts[t[1]], i)
-                simd_insert_vec(&verts[2], mesh.verts[t[2]], i)
+            if stack_curr == 0 {
+                break
             }
 
-            tw, mask := geometry.sweep_point_vs_triangle_simd(pos_simd, move_simd, verts, t)
+            stack_curr -= 1
+            node = stack[stack_curr]
 
-            tmin := intrinsics.simd_reduce_min(transmute(#simd[8]f32)((transmute(#simd[8]u32)tw) &~ mask))
-
-            if tmin >= t {
-                continue
-            }
-
-            t = tmin
-            prim = tri_index
-            ok = true
-        }
-    }
-
-    for ; tri_index < len(mesh.triangles); tri_index += 1 {
-        tri := mesh.triangles[tri_index]
-        verts := [3][3]f32{
-            mesh.verts[tri[0]],
-            mesh.verts[tri[1]],
-            mesh.verts[tri[2]],
+            continue
         }
 
-        t = geometry.sweep_point_vs_triangle(pos, move, verts, t) or_continue
-        prim = tri_index
-        ok = true
+        child0 := &mesh.blas.nodes[node.first + 0]
+        child1 := &mesh.blas.nodes[node.first + 1]
+
+        t0 := geometry.sweep_point_vs_aabb(pos, move, child0.min, child0.max, t) or_else max(f32)
+        t1 := geometry.sweep_point_vs_aabb(pos, move, child1.min, child1.max, t) or_else max(f32)
+
+        if t0 > t1 {
+            t0, t1 = t1, t0
+            child0, child1 = child1, child0
+        }
+
+        if t0 == max(f32) {
+            if stack_curr == 0 {
+                break
+            }
+
+            stack_curr -= 1
+            node = stack[stack_curr]
+        } else {
+            node = child0
+            if t1 != max(f32) {
+                stack[stack_curr] = child1
+                stack_curr += 1
+            }
+        }
     }
 
     return t, prim, ok
@@ -386,7 +438,7 @@ sweep_sphere_vs_mesh_local :: proc(
     rad:        f32,
     handle:     Mesh_Handle,
     range:      f32 = 1,
-) -> (t: f32, prim: int, ok: bool) {
+) -> (t: f32, prim: int, ok: bool) #no_bounds_check {
     mesh, mesh_ok := get_mesh(handle)
     if !mesh_ok {
         return range, -1, false
@@ -395,54 +447,64 @@ sweep_sphere_vs_mesh_local :: proc(
     t = range
     prim = -1
 
-    vert_index := 0
-    hit_vert := -1
+    node := &mesh.blas.nodes[0]
+    stack: [BVH_STACK]^bvh.Node
+    stack_curr := 0
 
-    for ; vert_index < len(mesh.verts); vert_index += 1 {
-        vert := mesh.verts[vert_index]
-        t = geometry.sweep_point_vs_sphere(pos, move, vert, rad, t) or_continue
-        hit_vert = vert_index
-        ok = true
-    }
+    for {
+        if node.len != 0 {
+            for offs in 0..<int(node.len) {
+                index := mesh.blas.indices[int(node.first) + offs]
+                tri := mesh.triangles[index]
+                verts := [3][3]f32{
+                    mesh.verts[tri[0]],
+                    mesh.verts[tri[1]],
+                    mesh.verts[tri[2]],
+                }
 
-    if hit_vert != -1 {
-        prim = int(mesh.vert_tri[hit_vert])
-    }
+                t = geometry.sweep_sphere_vs_triangle(pos, move, rad, verts, t) or_continue
+                prim = int(index)
+                ok = true
+            }
 
-    edge_index := 0
-    hit_edge := -1
+            if stack_curr == 0 {
+                break
+            }
 
-    for ; edge_index < len(mesh.edges); edge_index += 1 {
-        edge := mesh.edges[edge_index]
-        verts := [2][3]f32{
-            mesh.verts[edge[0]],
-            mesh.verts[edge[1]],
-        }
-        t = geometry.sweep_point_vs_uncapped_cylinder(pos, move, verts, rad, t) or_continue
-        hit_vert = edge_index
-        ok = true
-    }
+            stack_curr -= 1
+            node = stack[stack_curr]
 
-    if hit_edge != -1 {
-        prim = int(mesh.edge_tri[hit_edge])
-    }
-
-    tri_index := 0
-
-    for ; tri_index < len(mesh.triangles); tri_index += 1 {
-        tri := mesh.triangles[tri_index]
-        verts := [3][3]f32{
-            mesh.verts[tri[0]],
-            mesh.verts[tri[1]],
-            mesh.verts[tri[2]],
+            continue
         }
 
-        t = geometry.sweep_point_vs_triangle_slab(pos, move, verts, rad, t) or_continue
-        prim = int(tri_index)
-        ok = true
+        child0 := &mesh.blas.nodes[node.first + 0]
+        child1 := &mesh.blas.nodes[node.first + 1]
+
+        t0 := geometry.sweep_point_vs_aabb(pos, move, child0.min - rad, child0.max + rad, t) or_else max(f32)
+        t1 := geometry.sweep_point_vs_aabb(pos, move, child1.min - rad, child1.max + rad, t) or_else max(f32)
+
+        if t0 > t1 {
+            t0, t1 = t1, t0
+            child0, child1 = child1, child0
+        }
+
+        if t0 == max(f32) {
+            if stack_curr == 0 {
+                break
+            }
+
+            stack_curr -= 1
+            node = stack[stack_curr]
+        } else {
+            node = child0
+            if t1 != max(f32) {
+                stack[stack_curr] = child1
+                stack_curr += 1
+            }
+        }
     }
 
-    return t, prim, ok
+    return max(t, 0), prim, ok
 }
 
 get_mesh_triangle :: proc(handle: Mesh_Handle, #any_int tri_index: int) -> (verts: [3][3]f32, ok: bool) #optional_ok {
@@ -461,63 +523,11 @@ get_mesh_triangle :: proc(handle: Mesh_Handle, #any_int tri_index: int) -> (vert
 }
 
 // Vs world
-overlap_point :: proc()
-overlap_sphere :: proc()
-overlap_aabb :: proc()
-overlap_mesh :: proc()
-overlap_capsule :: proc()
-
-/* API Ideas
-
-Load a level mesh - renderable and sphere sweepable
-
-SEPARATE PACKAGES:
-
-    rv.load_scene(&g, "foo")
-
-    foo := rv.get_mesh("foo")
-
-    mesh := rv.get_internal_mesh(foo)
-
-    arena := coll.create_arena()
-    cm := coll.create_mesh(&arena, mesh.verts, mesh.triangles)
-
-    sw := coll.sweep_sphere_vs_mesh(cm, ...)
-
-    ...
-
-    coll.push_mesh(cm, {1, 2, 3}, 1)
-    coll.push_sphere(0, 1, id = u64(123))
-
-    sw2 := coll.sweep_sphere(pos, dir, rad)
-
-
-
-IN RAVEN:
-
-    rv.load_scene(&g, "foo", collision = true)
-
-    foo := rv.get_mesh("foo")
-
-    rv.sweep_point_vs_mesh(foo, ...)
-
-    ...
-
-    rv.push_collision_mesh(foo, {1, 2, 3}, 1)
-    rv.push_collision_sphere(0, 1, id = u64(123))
-
-    sw2 := rv.sweep_sphere(pos, dir, rad)
-
-
-
-SEPARATE BUT IN RAVEN:
-
-    rv.load_scene(&g, "foo", collision = true)
-    foo := rv.get_mesh("foo")
-
-    rv.sweep_point_vs_mesh()
-
-*/
+// overlap_point :: proc()
+// overlap_sphere :: proc()
+// overlap_aabb :: proc()
+// overlap_mesh :: proc()
+// overlap_capsule :: proc()
 
 @(require_results)
 clone_slice :: proc(a: $T/[]$E, align: int, allocator := context.allocator, loc := #caller_location) -> ([]E, bool) #optional_ok {
@@ -535,6 +545,10 @@ simd_insert_vec :: proc "contextless" (vec: ^[$N]#simd[$W]$T, val: [N]T, #any_in
     #unroll for v, i in val {
         vec[i] = intrinsics.simd_replace(vec[i], index, v)
     }
+}
+
+simd_scalar :: proc "contextless" ($W: int, val: $T) -> (result: #simd[W]T) {
+    return cast(#simd[W]T)val
 }
 
 simd_scalar_vec :: proc "contextless" ($W: int, val: [$N]$T) -> (result: [N]#simd[W]T) {
