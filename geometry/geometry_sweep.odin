@@ -142,7 +142,7 @@ sweep_point_vs_triangle :: proc "contextless" (
     move:       [3]f32,
     tri:        [3][3]f32,
     range:      f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     ab := tri[1] - tri[0]
     ac := tri[2] - tri[0]
 
@@ -154,8 +154,8 @@ sweep_point_vs_triangle :: proc "contextless" (
 
     tangent := linalg.vector_cross3(move, rel)
     uv := [2]f32{
-        -linalg.vector_dot(ac, tangent),
         linalg.vector_dot(ab, tangent),
+        -linalg.vector_dot(ac, tangent),
     }
 
     if denom < 0 {
@@ -187,8 +187,8 @@ sweep_point_vs_triangle_simd :: proc "contextless" (
 
     tangent := cross_simd(move, rel)
     uv := [2]#simd[LANES]f32{
-        -dot_simd(ac, tangent),
         dot_simd(ab, tangent),
+        -dot_simd(ac, tangent),
     }
 
     negate := intrinsics.simd_lanes_le(denom, 0)
@@ -218,7 +218,7 @@ sweep_point_vs_triangle_slab :: proc "contextless" (
     tri:        [3][3]f32,
     rad:        f32,
     range:      f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, uv: [2]f32, ok: bool) #no_bounds_check {
     ab := tri[1] - tri[0]
     ac := tri[2] - tri[0]
 
@@ -233,20 +233,18 @@ sweep_point_vs_triangle_slab :: proc "contextless" (
     t = linalg.vector_dot(rel, normal) * inv_denom
 
     tangent := linalg.vector_cross3(move, rel)
-    uv := [2]f32{
-        -linalg.vector_dot(ac, tangent),
+    uv = [2]f32{
         linalg.vector_dot(ab, tangent),
+        -linalg.vector_dot(ac, tangent),
     }
 
-    if denom < 0 {
-        uv = -uv
-    }
+    uv *= inv_denom
 
     ok = t >= 0 && t < range &&
         abs(denom) > 1e-6 &&
-        uv.x >= 0 && uv.y >= 0 && uv.x + uv.y <= abs(denom)
+        uv.x >= 0 && uv.y >= 0 && uv.x + uv.y <= 1.0
 
-    return ok ? t : range, ok
+    return ok ? t : range, uv, ok
 }
 
 
@@ -489,23 +487,37 @@ sweep_sphere_vs_triangle :: proc(
 
     t = range
 
-    for v in tri {
-        t = sweep_point_vs_sphere(pos, move, v, rad, t) or_continue
+    tri_t, uv, tri_ok := sweep_point_vs_triangle_slab(pos, move, tri, rad, t)
+
+    if tri_ok {
+        return tri_t, tri_ok
+    }
+
+    vert_index := 0
+    if uv.x > 0.5 || uv.y > 0.5 {
+        vert_index = uv.x > uv.y ? 2 : 1
+    }
+
+    vert_t, vert_ok := sweep_point_vs_sphere(pos, move, tri[vert_index], rad, t)
+    if vert_ok {
+        t = vert_t
         ok = true
     }
 
-    for v0, i in tri {
-        v1 := tri[(i + 1) % 3]
-        t = sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t) or_continue
-        ok = true
+    edge_index := 0
+    if uv.x > uv.y {
+        edge_index = uv.x + uv.y * 2 > 1 ? 1 : 2
+    } else {
+        edge_index = uv.x * 2 + uv.y > 1 ? 1 : 0
     }
 
-    tt, tok := sweep_point_vs_triangle_slab(pos, move, tri, rad, t)
-    if tok && tt < t {
-        t = tt
+    v0 := tri[edge_index]
+    v1 := tri[(edge_index + 1) % 3]
+    edge_t, edge_ok := sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t)
+    if edge_ok {
+        t = edge_t
         ok = true
     }
-
 
     return t, ok
 }
