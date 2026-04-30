@@ -1,17 +1,22 @@
 <div align="center">
 
 # RAVEN
-A toolkit for making 2D and 3D games in Odin
+(working title)
 
-***WARNING: EARLY ALPHA VERSION***
-
-Do NOT use for anything serious yet. Major features aren't fully finished and might break. There will be large breaking API changes.
-
-Windows is most stable, WASM+WebGPU builds usually work but Linux and MacOS isn't supported yet.
+A toolkit for making 2D and 3D games in Odin.
 
 ### [Discord](https://discord.com/invite/wn5jMMMYe4)
 
 </div>
+
+> [!WARNING]
+> ***EARLY ALPHA VERSION***
+>
+> Do NOT use for anything serious yet. Major features aren't fully finished and might break. There will be large breaking API changes.
+>
+> Windows is stable, but WASM+WebGPU or Linux builds might have bugs.
+
+
 
 ## Goal
 A game library made specifically for small indie teams and fast iteration times.
@@ -21,7 +26,7 @@ Something *simple* you can prototype in, but also *stable* enough to make polish
 - Simple and hackable
 - Minimal dependencies
 
-Inspired by Sokol, PICO8 and Raylib.
+> Inspired by Sokol, PICO8 and Raylib.
 
 ## Features
 - First-class 3D support
@@ -40,9 +45,7 @@ Inspired by Sokol, PICO8 and Raylib.
 ```odin
 import rv "raven"
 
-@export _module_desc := rv.Module_Desc{
-    update = _update,
-}
+@export _module_desc := rv.Module_Desc{update = _update}
 
 main :: proc() {
     rv.run_main_loop(_module_desc)
@@ -53,8 +56,8 @@ _update :: proc(_: rawptr) -> rawptr {
 
     rv.set_layer_params(0, rv.make_screen_camera())
 
-    rv.bind_texture(rv.get_builtin_texture(.CGA8x8thick))
-    rv.draw_text("Hello World! ☺", {100, 100, 0}, scale = 4, spacing = 1)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.draw_text_2d("Hello World! ☺", {100, 100}, scale = 4, spacing = 1)
 
     rv.submit_layers()
     rv.render_layer(0, clear_color = rv.DARK_BLUE.rgb, clear_depth = true)
@@ -70,67 +73,27 @@ Install [Odin](https://github.com/odin-lang/Odin) and make sure it's in your pat
 
 There are no additional dependencies.
 
+## Project Setup
+The recommended approach is using [git subtrees](https://github.com/git/git/blob/master/contrib/subtree/git-subtree.adoc), a nicer alternative to submodules or manual copy-pasting.
+
+Here are the commands to clone the library into your project, and to pull the latest upstream changes. It will appear just as a regular directory.
+```
+git subtree add --prefix=raven https://github.com/jakubtomsu/raven main --squash
+git subtree pull --prefix=raven https://github.com/jakubtomsu/raven main --squash
+```
+> In case you want to delete the entire subtree, just remove the folder. There shouldn't be any hidden metadata.
+
 ## Examples
 
 You can run demos from the [examples/](examples) directory with something like the following command:
 ```
 odin run examples\hello
-```
-
-Alternatively you can run them in hot-reload mode:
-```
 odin run build -- run_hot examples\hello
 ```
-
-Recommended examples:
-- [hello](examples/hello/hello_example.odin)
-- [simple_3d](examples/simple_3d/simple_3d_example.odin)
-- [snake_planet game](examples/snake_planet/snake_planet_example.odin)
-
-## Project Setup
-The recommended approach is using [git subtrees](https://github.com/git/git/blob/master/contrib/subtree/git-subtree.adoc), a nicer alternative to submodules or manual copy-pasting.
-
-From your project's root folder, clone the repo with this command:
-```
-git subtree add --prefix=raven https://github.com/jakubtomsu/raven main --squash
-```
-
-Now Raven appears just as a regular directory in your git repo, and you're good to go.
-
-To pull the latest changes, use the following command:
-```
-git subtree pull --prefix=raven https://github.com/jakubtomsu/raven main --squash
-```
-
-> In case you want to delete the entire subtree, just remove the folder. There shouldn't be any hidden metadata.
-
-
-
-
-## Roadmap
-- Finish/Rewrite Asset system
-  - Scene asset pipeline
-  - Blender exporter plugin/lib
-- Lightweight shader transpiler
-- SDL3 platform and GPU backend as a fallback
-- Finish Audio system
-  - Web Audio
-- Better fonts
-    - Draw text iterator
-    - Unicode font support (currently only CP437 atlases are supported)
-- Simple GUI and gizmo system
-- Geometry and Collision package
-- Skinned meshes and animations
-- Pakfiles
+Try the [hello](examples/hello/hello_example.odin) or [Snake Planet game](examples/snake_planet/snake_planet_example.odin) examples!
 
 
 # Docs
-
-## Hot-reload
-
-All assets are hotreloaded automatically, just pass `watch = true` flag when loading an asset directory.
-
-Code can be hot reloaded by running `odin run build -- run_hot my_package`.
 
 ## Web builds
 
@@ -138,44 +101,18 @@ You can run the following command to export your game to web:
 ```
 odin run build -- export-web my_package
 ```
+To run the app locally, you must also create a tiny HTTP file server. VSCode live server extension or `python -m http.server <port>` is recommended.
 
-To run the app locally, you must also create a tiny HTTP file server (to fetch the WASM) due to CORS policy. Something like this works:
-```
-python -m http.server 8000
-```
-And now just enter `localhost:8000` into a browser search bar. Alternatively you can use the VSCode live server extension which makes this even nicer.
+> [!NOTE]
+> In case you're having issues with rendering, you can test WebGPU is behaving correctly locally with `odin run my_package -define:GPU_BACKEND=WGPU`, however the wgpu-native used on desktop can be slightly different than the Chrome Dawn implementation.
 
-To see the output log, open up the Developer Tools Console (F12 usually).
-
-In case you're having issues with rendering, you can test WebGPU is behaving correctly locally with `odin run my_package -define:GPU_BACKEND=WGPU`, however the wgpu-native used on desktop can be slightly different than the Chrome Dawn implementation.
-
-For more detailed information see the source code directly.
-
-## Engine Structure
-- raven
-  - platform - majority of OS specific code
-    - win32
-    - js
-  - gpu - Low-level GPU Rendering layer
-    - d3d11
-    - wgpu
-  - audio
-    - miniaudio
-- base - lightweight core utils with no dependencies, used by other packages
-- build - tool for exporting builds and hot-reloading
 
 ## Cheatsheet
 
 List of most common functions in an easily searchable way.
 
-NOT COMPLETE YET
-
-### Assets
-
-```odin
-load_asset_directory(path: string, watch: bool)
-load_constant_asset_directory(#load_directory(path: string))
-```
+> [!WARNING]
+> INCOMPLETE/OUTDATED
 
 ### Drawing
 
@@ -185,29 +122,6 @@ draw_mesh(...)
 draw_triangle(...)
 draw_line(...)
 draw_text(...)
-```
-
-### Input
-
-```odin
-mouse_pos() -> [2]f32
-mouse_delta() -> [2]f32
-scroll_delta() -> [2]f32
-key_down(key: Key) -> bool
-key_down_time(key: Key) -> f32
-key_pressed(key: Key, buf: f32 = 0) -> bool
-key_repeated(key: Key) -> bool
-key_released(key: Key) -> bool
-mouse_down(button: Mouse_Button) -> bool
-mouse_down_time(button: Mouse_Button) -> f32
-mouse_pressed(button: Mouse_Button, buf: f32 = 0) -> bool
-mouse_repeated(button: Mouse_Button) -> bool
-mouse_released(button: Mouse_Button) -> bool
-```
-
-### Sounds
-```odin
-play_sound(resource: Sound_Resource_Handle, ...) -> Sound_Handle
 ```
 
 ### Utils
