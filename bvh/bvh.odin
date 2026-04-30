@@ -15,10 +15,15 @@ BVH :: struct {
 }
 
 Node :: struct #align(32) {
-    min:            [3]f32,
-    max:            [3]f32,
-    first:          u16, // Left child of first prim
-    len:            u16, // Num prims if leaf else 0
+    min:    [3]f32,
+    first:  i32, // Left child of first prim
+    max:    [3]f32,
+    len:    i32, // Num prims if leaf else 0
+}
+
+Node_SIMD4 :: struct #align(32) {
+    min:    #simd[4]f32,
+    max:    #simd[4]f32,
 }
 
 
@@ -29,14 +34,13 @@ max_nodes_for_prims :: proc "contextless" (#any_int num_prims: int) -> int {
 
 init :: proc(
     bvh:                    ^BVH,
-    prims:                  [][2][3]f32,
     nodes:                  []Node,
     indices:                []u16,
+    prims:                  [][2][3]f32 = nil,
     #any_int max_leaf_prims := 3,
 ) {
-    assert(len(prims) < int(max(u16)))
     assert(max_leaf_prims > 0)
-    assert(len(prims) == len(indices))
+    assert(len(nodes) < int(max(u16)))
 
     bvh^ = {
         nodes = nodes,
@@ -46,18 +50,29 @@ init :: proc(
         max_leaf_prims = i32(max_leaf_prims),
     }
 
-    for &ind, i in indices {
-        ind = u16(i)
+    if prims != nil {
+        init_prims(bvh, prims)
+    }
+}
+
+// Re-initialize the primitive buffer only and clears the existing nodes.
+init_prims :: proc(bvh: ^BVH, prims: [][2][3]f32) {
+    assert(len(prims) < int(max(u16)))
+    assert(len(bvh.indices) >= len(prims))
+
+    bvh.prims = prims
+
+    for i in 0..<len(prims) {
+        bvh.indices[i] = u16(i)
     }
 
     // 1 for the root, another unused one to fill the first cache line
     bvh.nodes_used = 2
     bvh.nodes[0] = {
         first = 0,
-        len = u16(len(prims))
+        len = i32(len(prims))
     }
 }
-
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -357,6 +372,77 @@ build_binned :: proc(bvh: ^BVH, num_bins := 8, curr_index := 0) #no_bounds_check
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Iter
+//
+
+/* Example usage:
+
+it := bvh.iter(&my_bvh)
+
+for {
+    if it.len == 0 {
+        // intersect leaf ...
+        bvh.iter_pop(&it) or_break
+    } else {
+        t0, t1 := itersect_two_children(it.node)
+        bvh.iter_next(&) or_break
+    }
+}
+
+*/
+Iter :: struct {
+    bvh:        ^BVH,
+    using node: ^Node,
+    stack:      [64 * 2]u16,
+    stack_len:  i32,
+}
+
+iter :: proc(bvh: ^BVH) -> Iter {
+    return {
+        bvh = bvh,
+        node = bvh.nodes_used > 0 ? &bvh.nodes[0] : nil,
+    }
+}
+
+iter_pop :: proc(iter: ^Iter) -> bool {
+    if iter.stack_len == 0 {
+        return false
+    }
+    iter.stack_len -= 1
+    iter.node = &iter.bvh.nodes[iter.stack[iter.stack_len]]
+    return true
+}
+
+// t0, t1: intersection times for the children of the current node. Use max(f32) on miss.
+iter_next :: proc(iter: ^Iter, t0, t1: f32) -> bool {
+    t0 := t0
+    t1 := t1
+    child0 := iter.first + 0
+    child1 := iter.first + 1
+
+    assert(child0 < iter.bvh.nodes_used)
+
+    if t0 > t1 {
+        t0, t1 = t1, t0
+        child0, child1 = child1, child0
+    }
+
+    if t0 == max(f32) {
+        iter_pop(iter) or_return
+    } else {
+        if t1 != max(f32) {
+            iter.stack[iter.stack_len] = u16(child1)
+            iter.stack_len += 1
+        }
+        iter.node = &iter.bvh.nodes[child0]
+    }
+
+    return true
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Utils
 //
 
@@ -437,11 +523,11 @@ _split_leaf :: proc(bvh: ^BVH, node: ^Node, axis: int, split_pos: f32) -> bool #
     bvh.nodes_used += 2
 
     bvh.nodes[first_child + 0].first = node.first
-    bvh.nodes[first_child + 0].len = u16(left_count)
-    bvh.nodes[first_child + 1].first = u16(i)
-    bvh.nodes[first_child + 1].len = u16(int(node.len) - left_count)
+    bvh.nodes[first_child + 0].len = i32(left_count)
+    bvh.nodes[first_child + 1].first = i32(i)
+    bvh.nodes[first_child + 1].len = i32(int(node.len) - left_count)
 
-    node.first = u16(first_child)
+    node.first = i32(first_child)
     node.len = 0 // not a leaf anymore
 
     return true
