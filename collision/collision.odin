@@ -19,6 +19,8 @@ MAX_SHAPES :: 1024
 BVH_EPS :: 1e-6
 BVH_STACK :: 32
 
+NO_RAD_EPS :: 0.001
+
 Handle_Index :: u16
 Handle_Gen :: u8
 
@@ -76,17 +78,27 @@ Body :: struct {
     vel:    [3]f32,
 }
 
-Shape :: struct {
-    kind:   Shape_Kind,
-    pos:    [3]f32,
+#assert(size_of(Shape) == 64)
+Shape :: struct #all_or_none #align(64) {
+    using _: struct #raw_union {
+        pos:        [3]f32,
+        pos_simd:   #simd[4]f32,
+    },
+    using _: struct #raw_union {
+        ext:        [3]f32,
+        ext_simd:   #simd[4]f32,
+    },
+    rot:    quaternion128,
     rad:    f32,
-    scale:  [3]f32,
-    rot:    matrix[3, 3]f32,
     handle: Mesh_Handle,
+    kind:   Shape_Kind,
 }
 
 Shape_Kind :: enum u8 {
     Sphere,
+    Aligned_Box,
+    Oriented_Box,
+    Capsule,
     Mesh,
 }
 
@@ -95,6 +107,7 @@ Sweep :: struct {
     pos:    [3]f32,
     normal: [3]f32,
     shape:  i32,
+    prim:   i32,
 }
 
 
@@ -109,7 +122,7 @@ init :: proc(state: ^State, allocator := context.allocator) {
             prims = nil,
             nodes = runtime.make_aligned([]bvh.Node, bvh.max_nodes_for_prims(MAX_SHAPES), 64, allocator),
             indices = make([]u16, MAX_SHAPES, allocator),
-            max_leaf_prims = 3,
+            max_leaf_prims = 1,
         )
     }
 }
@@ -161,37 +174,8 @@ end_step :: proc() {
 
     prims := make([][2][3]f32, step.shape_used, context.temp_allocator)
     for shape, i in step.shape_data[:step.shape_used] {
-        bb: [2][3]f32
-
-        switch shape.kind {
-        case .Sphere:
-            bb = {
-                shape.pos - shape.rad,
-                shape.pos + shape.rad,
-            }
-
-        case .Mesh:
-            mesh, mesh_ok := get_mesh(shape.handle)
-            assert(mesh_ok)
-
-            mid := (mesh.bounds_min + mesh.bounds_max) * 0.5
-            ext := (mesh.bounds_max - mesh.bounds_min) * 0.5 * 0.5
-
-            bb = {
-                shape.pos + mesh.bounds_min - shape.rad,
-                shape.pos + mesh.bounds_max + shape.rad,
-            }
-
-            // min, max := geometry.get_oriented_box_bounds(
-            //     pos = shape.pos + mid,
-            //     rad = ext + shape.scale + shape.rad,
-            //     rot = 1,
-            // )
-
-            // bb = {min, max}
-        }
-
-        prims[i] = bb
+        bb_min, bb_max := get_shape_aabb(shape)
+        prims[i] = {bb_min, bb_max}
     }
 
     bvh.init_prims(&step.tlas, prims)
@@ -436,22 +420,47 @@ destroy_mesh :: proc(handle: Mesh_Handle) -> bool {
 //
 
 
-/*
-
-update_entity :: proc(ent: ^Entity) {
-    coll.body(&ent, mass = max(f32))
-    coll.box_shape(ent.pos, ent.size)
-}
-
-*/
-
 sphere_shape :: proc(pos: [3]f32, rad: f32) {
     _push_shape({
         kind = .Sphere,
         pos = pos,
         rad = rad,
-        scale = 1,
+        ext = 0,
         rot = 1,
+        handle = {},
+    })
+}
+
+capsule_shape :: proc(p0, p1: [3]f32, rad: f32) {
+    _push_shape({
+        kind = .Capsule,
+        pos = p0,
+        ext = p1,
+        rad = rad,
+        rot = 1,
+        handle = {},
+    })
+}
+
+box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0) {
+    _push_shape({
+        kind = .Aligned_Box,
+        pos = pos,
+        rad = rad,
+        ext = scale,
+        rot = 1,
+        handle = {},
+    })
+}
+
+oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: f32 = 0.0) {
+    _push_shape({
+        kind = .Oriented_Box,
+        pos = pos,
+        ext = scale,
+        rad = rad,
+        rot = rot,
+        handle = {},
     })
 }
 
@@ -459,7 +468,7 @@ mesh_shape :: proc(
     handle: Mesh_Handle,
     pos:    [3]f32,
     scale:  [3]f32 = 1,
-    rot:    matrix[3, 3]f32 = 1,
+    rot:    quaternion128 = 1,
     rad:    f32 = 0.0,
 ) {
     _, ok := get_mesh(handle)
@@ -469,7 +478,7 @@ mesh_shape :: proc(
     _push_shape({
         kind = .Mesh,
         pos = pos,
-        scale = scale,
+        ext = scale,
         rot = rot,
         rad = rad,
         handle = handle,
@@ -595,22 +604,46 @@ sweep_point_vs_shape :: proc(
     case .Sphere:
         return geometry.sweep_point_vs_sphere(pos, move, shape.pos, shape.rad, range = range)
 
+    case .Capsule:
+        return geometry.sweep_point_vs_capsule(pos, move, {shape.pos, shape.ext}, shape.rad, range = range)
+
+    case .Aligned_Box:
+        if shape.rad < NO_RAD_EPS {
+            return geometry.sweep_point_vs_aabb(pos, move, shape.pos - shape.ext, shape.pos + shape.ext, range = range)
+        } else {
+            return geometry.sweep_sphere_vs_aabb(pos, move, shape.rad, shape.pos - shape.ext, shape.pos + shape.ext, range = range)
+        }
+
+    case .Oriented_Box:
+        inv := conj(shape.rot)
+        local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
+        local_move := linalg.quaternion128_mul_vector3(inv, move)
+        if shape.rad < NO_RAD_EPS {
+            return geometry.sweep_point_vs_aabb(local_pos, local_move, -shape.ext, +shape.ext, range = range)
+        } else {
+            return geometry.sweep_sphere_vs_aabb(local_pos, local_move, shape.rad, -shape.ext, +shape.ext, range = range)
+        }
+
     case .Mesh:
+        inv := conj(shape.rot)
+        local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
+        local_move := linalg.quaternion128_mul_vector3(inv, move)
         prim: int
-        if shape.rad < 0.001 {
+        if shape.rad < NO_RAD_EPS {
             t, prim, ok = sweep_point_vs_mesh_local(
-                pos - shape.pos,
-                move = move,
+                pos = local_pos,
+                move = local_move,
                 handle = shape.handle,
                 range = range,
             )
         } else {
+            inv_scale := 1.0 / shape.ext
             t, prim, ok = sweep_sphere_vs_mesh_local(
-                pos - shape.pos,
-                move = move,
+                pos = local_pos * inv_scale,
+                move = local_move * inv_scale,
                 rad = shape.rad,
                 handle = shape.handle,
-                scale = shape.scale,
+                scale = shape.ext,
                 range = range,
             )
         }
@@ -629,18 +662,35 @@ sweep_sphere_vs_shape :: proc(
 ) -> (t: f32, ok: bool) #optional_ok {
     t = range
 
+    r := shape.rad + rad
+
     switch shape.kind {
     case .Sphere:
-        return geometry.sweep_point_vs_sphere(pos, move, shape.pos, shape.rad + rad, range = range)
+        return geometry.sweep_point_vs_sphere(pos, move, shape.pos, r, range = range)
+
+    case .Capsule:
+        return geometry.sweep_point_vs_capsule(pos, move, {shape.pos, shape.ext}, r, range = range)
+
+    case .Aligned_Box:
+        return geometry.sweep_sphere_vs_aabb(pos, move, r, shape.pos - shape.ext, shape.pos + shape.ext, range = range)
+
+    case .Oriented_Box:
+        inv := conj(shape.rot)
+        local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
+        local_move := linalg.quaternion128_mul_vector3(inv, move)
+        return geometry.sweep_sphere_vs_aabb(local_pos, local_move, r, -shape.ext, +shape.ext, range = range)
 
     case .Mesh:
+        inv := conj(shape.rot)
+        local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
+        local_move := linalg.quaternion128_mul_vector3(inv, move)
         prim: int
         t, prim, ok = sweep_sphere_vs_mesh_local(
-            pos - shape.pos,
-            move = move,
-            rad = rad + shape.rad,
+            pos = local_pos,
+            move = local_move,
+            rad = r,
             handle = shape.handle,
-            scale = 1,
+            scale = shape.ext,
             range = range,
         )
         return t, ok
@@ -755,6 +805,47 @@ sweep_sphere_vs_mesh_local :: proc(
     return max(t, 0), prim, ok
 }
 
+
+
+// MARK: Util
+
+get_shape_aabb :: proc(shape: Shape) -> (bb_min, bb_max: [3]f32) {
+    switch shape.kind {
+    case .Sphere:
+        return shape.pos - shape.rad,
+               shape.pos + shape.rad
+
+    case .Aligned_Box:
+        return shape.pos - shape.ext - shape.rad,
+               shape.pos + shape.ext + shape.rad
+
+    case .Oriented_Box:
+        mat := linalg.matrix3_from_quaternion_f32(shape.rot)
+        return geometry.get_oriented_box_bounds(shape.pos, shape.ext, mat)
+
+    case .Capsule:
+        return bvh.vec_min(shape.pos, shape.ext) - shape.rad,
+               bvh.vec_max(shape.pos, shape.ext) + shape.rad
+
+    case .Mesh:
+        mesh, mesh_ok := get_mesh(shape.handle)
+        assert(mesh_ok)
+
+        mat := linalg.matrix3_from_quaternion_f32(shape.rot)
+
+        mid := (mesh.bounds_min + mesh.bounds_max) * 0.5
+        ext := (mesh.bounds_max - mesh.bounds_min) * 0.5
+
+        return geometry.get_oriented_box_bounds(
+            pos = shape.pos + mat * mid,
+            rad = ext * shape.ext + shape.rad,
+            rot = mat,
+        )
+    }
+
+    assert(false)
+    return 0, 0
+}
 
 get_mesh_triangle :: proc(handle: Mesh_Handle, #any_int tri_index: int) -> (verts: [3][3]f32, ok: bool) #optional_ok {
     mesh := get_mesh(handle) or_return
