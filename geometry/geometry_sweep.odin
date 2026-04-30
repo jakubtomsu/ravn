@@ -501,6 +501,63 @@ sweep_point_vs_capsule :: proc "contextless" (
 // Inspired by:
 // https://github.com/blat-blatnik/Snippets/blob/main/capsule_triangle_sweep.glsl
 
+sweep_sphere_vs_aabb :: proc "contextless" (
+    pos:        [3]f32,
+    move:       [3]f32,
+    rad:        f32,
+    aabb_min:   [3]f32,
+    aabb_max:   [3]f32,
+    range:      f32 = 1,
+) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+    move := move
+    inv_move := 1.0 / move
+    center := (aabb_min + aabb_max) * 0.5
+    extent := aabb_max - center
+    rpos := pos - center
+
+    t1 := (aabb_min - rad - pos) * inv_move
+    t2 := (aabb_max + rad - pos) * inv_move
+    tmin := max(min(t1.x, t2.x), min(t1.y, t2.y), min(t1.z, t2.z))
+    tmax := min(max(t1.x, t2.x), max(t1.y, t2.y), max(t1.z, t2.z))
+
+    if !(tmax >= max(0.0, tmin) && tmin < range) {
+        return range, false
+    }
+
+    hit := rpos + move * tmin
+    octant := [3]f32{
+        hit.x < 0 ? -1 : 1,
+        hit.y < 0 ? -1 : 1,
+        hit.z < 0 ? -1 : 1,
+    }
+
+    hit *= octant
+    move *= octant
+    rpos *= octant
+
+    face: int =
+        (hit.x > extent.x ? 1 << 0 : 0) |
+        (hit.y > extent.y ? 1 << 1 : 0) |
+        (hit.z > extent.z ? 1 << 2 : 0)
+
+    switch intrinsics.count_ones(face) {
+    case 0, 1:
+        return tmin, true
+
+    case 2:
+        other_corner := extent * [3]f32{
+            bool(face & (1 << 0)) ? 1 : -1,
+            bool(face & (1 << 1)) ? 1 : -1,
+            bool(face & (1 << 2)) ? 1 : -1,
+        }
+        return sweep_point_vs_uncapped_cylinder(rpos, move, {extent, other_corner}, rad, range)
+
+    case 3:
+        return sweep_point_vs_sphere(rpos, move, extent, rad, range)
+    }
+
+    return range, false
+}
 
 sweep_sphere_vs_triangle :: proc "contextless" (
     pos:    [3]f32,

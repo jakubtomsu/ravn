@@ -1,5 +1,6 @@
 package raven_geometry_example
 
+import "core:fmt"
 import "core:math/rand"
 import rv "../.."
 import "../../platform"
@@ -32,6 +33,7 @@ Shape_Kind :: enum u8 {
     Capsule,
     Uncapped_Cylinder,
     Rounded_Triangle,
+    Rounded_Box,
 }
 
 main :: proc() {
@@ -263,9 +265,32 @@ draw_shape :: proc(shape: Shape_Kind, center: rv.Vec3) {
         rv.draw_triangle(tri, col = rv.GRAY)
 
     case .Rounded_Triangle:
-        rv.draw_triangle(tri, col = rv.GRAY)
+        nor := linalg.normalize0(linalg.cross(tri[1] - tri[0], tri[2] - tri[0]))
+        for s in 0..=1 {
+            rv.draw_triangle(
+                {
+                    tri[0] + nor * (f32(s) - 0.5),
+                    tri[1] + nor * (f32(s) - 0.5),
+                    tri[2] + nor * (f32(s) - 0.5),
+                },
+                col = rv.GRAY,
+            )
+        }
         for v in tri {
             rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), v, scale = 0.5, col = rv.GRAY)
+        }
+
+    case .Rounded_Box:
+        rv.draw_mesh(rv.get_builtin_mesh(.Cube), center, scale = {1.5, 1, 1}, col = rv.GRAY)
+        rv.draw_mesh(rv.get_builtin_mesh(.Cube), center, scale = {1, 1.5, 1}, col = rv.GRAY)
+        rv.draw_mesh(rv.get_builtin_mesh(.Cube), center, scale = {1, 1, 1.5}, col = rv.GRAY)
+        for x in 0..<8 {
+            offs := [3]f32{
+                bool(x & 1) ? 1 : -1,
+                bool(x & 2) ? 1 : -1,
+                bool(x & 4) ? 1 : -1,
+            }
+            rv.draw_mesh(rv.get_builtin_mesh(.UV_Sphere_1), center + offs, scale = 0.5, col = rv.GRAY)
         }
     }
 }
@@ -319,6 +344,11 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
         t, ok = geom.sweep_sphere_vs_triangle(start, move, 0.5, tri, range = range)
         hit = start + move * t
         _, nor = geom.get_triangle_dist_grad(hit, tri)
+
+    case .Rounded_Box:
+        t, ok = geom.sweep_sphere_vs_aabb(start, move, rad = 0.5, aabb_min = center - 1, aabb_max = center + 1, range = range)
+        hit = start + move * t
+        _, nor = geom.get_box_dist_grad(hit, center, 1)
     }
 
     return t, hit, nor, ok
