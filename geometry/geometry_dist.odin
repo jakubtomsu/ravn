@@ -113,13 +113,13 @@ get_triangle_dist_grad :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (d
     // inside/outside test
     if inside_factor < 2.0 { // Outside
         // 3 edges
-        
+
         d12, g12 := get_line_dist_grad(pos, {tri[0], tri[1]})
         d13, g13 := get_line_dist_grad(pos, {tri[0], tri[2]})
         d23, g23 := get_line_dist_grad(pos, {tri[1], tri[2]})
-        
+
         dist = min(d12, d13, d23)
-        
+
         if dist == d12 {
             grad = g12
         } else if dist == d13 {
