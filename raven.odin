@@ -2260,7 +2260,6 @@ alloc_slice_non_zeroed :: proc($T: typeid, init_len: int, alignment: int = 2 * a
     return ([^]T)(raw_data(buf))[:len(buf) / size_of(T)]
 }
 
-@(optimization_mode="favor_size")
 hash_fnv64a :: proc "contextless" (data: []byte, seed: u64) -> u64 {
     h: u64 = seed
     for b in data {

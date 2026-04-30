@@ -1451,6 +1451,7 @@ _push_draw_dynamic_verts :: proc(verts: []Vertex) -> (offset: int, length: int) 
 
 // Returns a slice of the GPU sprite instances.
 // TODO: real text draw iterator?
+// TODO: text only bind state texture
 draw_text :: proc(
     text:       string, // UTF-8
     pos:        [3]f32,
@@ -1524,12 +1525,17 @@ draw_text :: proc(
             center -= rot[0] * anchor.x * size.x
             center -= rot[1] * anchor.y * size.y
 
+            eps := [2]f32{
+                rect_size.x > 0 ? UV_EPS : -UV_EPS,
+                rect_size.y > 0 ? UV_EPS : -UV_EPS,
+            }
+
             inst := pack_sprite_inst(
                 pos = center,
                 mat_x = rot[0] * size.x,
                 mat_y = rot[1] * size.y,
-                uv_min = rect.min + UV_EPS,
-                uv_size = rect_size - UV_EPS * 2,
+                uv_min = rect.min + eps,
+                uv_size = rect_size - eps * 2,
                 col = col,
                 add_col = add_col,
                 tex_slice = _state.draw_state.texture_slice,
@@ -1542,6 +1548,28 @@ draw_text :: proc(
     }
 
     return batch.inst_data[:batch.len][initial_offs:]
+}
+
+draw_text_2d :: proc(
+    text:       string, // UTF-8
+    pos:        Vec2,
+    scale:      Vec2 = 1,
+    anchor:     Vec2 = -1,
+    spacing:    Vec2 = {0, 8},
+    col:        Vec4 = 1,
+    add_col:    Vec4 = 0,
+    z:          f32 = 0,
+) -> []Sprite_Inst {
+    return draw_text(
+        text = text,
+        pos = {pos.x, pos.y, z},
+        scale = scale,
+        anchor = anchor,
+        spacing = spacing,
+        col = col,
+        add_col = add_col,
+        rot = 1,
+    )
 }
 
 rune_is_drawable :: proc(r: rune) -> bool {
@@ -2177,7 +2205,7 @@ submit_layers :: proc() {
 
         // Transparent: combine, sort, re-batch. Also remove old non-sorted batches.
         // This is expensive.
-        transparent_block: if .No_Transparent_Sort not_in layer.flags {
+        transparent_block: if false && .No_Transparent_Sort not_in layer.flags {
             total_inst_len := 0
 
             Batch :: struct {
@@ -2240,9 +2268,6 @@ submit_layers :: proc() {
                 sort_insts[i] = inst
             }
 
-            base.log_warn("\n\n\n\n\n\nREBATCH")
-
-
             prev_batch_index := sort_keys[0].batch
             new_batch_len := 0
             rebatch_loop: for key, i in sort_keys {
@@ -2264,8 +2289,6 @@ submit_layers :: proc() {
                         inst_data = &sort_insts[i],
                         cull_data = nil,
                     }
-
-                    base.log_info("%v : %v : %v", key, layer.meshes.keys[batch_index], new_batch_len)
 
                     new_batch_len = 0
                     prev_batch_index = key.batch
