@@ -257,9 +257,9 @@ draw_shape :: proc(shape: Shape_Kind, center: rv.Vec3) {
         rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), center, col = rv.GRAY)
 
     case .Capsule:
-        rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), center, col = rv.GRAY)
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, 1, 0}, col = rv.GRAY)
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, -1, 0}, col = rv.GRAY)
+        // rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), center, col = rv.GRAY)
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, 0, 1}, col = rv.GRAY)
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, 0, -1,}, col = rv.GRAY)
 
     case .Triangle:
         rv.draw_triangle(tri, col = rv.GRAY)
@@ -320,13 +320,13 @@ sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, c
         }
 
     case .Capsule:
-        points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
+        points := [2][3]f32{center + {0, 0, -1}, center + {0, 0, 1}}
         t, ok = geom.sweep_point_vs_capsule(start, move, points, 1, range = range)
         hit = start + move * t
         _, nor = geom.get_line_dist_grad(hit, points)
 
     case .Cylinder:
-        points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 0}}
+        points := [2][3]f32{center + {0, -1, 0}, center + {0, 1, 1}}
         t, ok = geom.sweep_point_vs_cylinder(start, move, points, 1, range = range)
         hit = start + move * t
 

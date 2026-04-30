@@ -124,16 +124,12 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
                     anim := rv.Vec3{0, rv.nsin(rv.get_time() + (offs.x + offs.y + offs.z) * 0.03), 0}
 
-                    // stress_draw(rv.get_mesh("Disk"), offs + anim)
-                    // offs += {5, 0, 0}
 
                     stress_draw(rv.get_builtin_mesh(.Cylinder), offs + anim)
                     offs += {5, 0, 0}
 
                     stress_draw(rv.get_builtin_mesh(.Icosphere), offs + anim)
                     offs += {5, 0, 0}
-
-
                 }
             }
         }

@@ -41,7 +41,6 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_layer_params(0, rv.make_2d_camera(0, 1))
     rv.set_layer_params(1, rv.make_screen_camera(0))
 
-    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.set_draw_blend(.Alpha)
     rv.set_draw_depth(.Depth)
 
@@ -49,11 +48,13 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     // rv.draw_sprite(0, scale = 100, scaling = .Absolute)
     rv.draw_line_2d(0, {100, 0}, rv.RED)
-    rv.draw_text("Hello World!", {0, 0, 0})
+    rv.draw_line_2d(0, {0, 100}, rv.GREEN)
+    rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
+    rv.draw_text_2d("Hello World!\n(worldspace text)", {20, 20})
 
     rv.set_draw_layer(1)
 
-    rv.draw_text("Hello Screen!", {10, 10, 0})
+    rv.draw_text_2d("Hello Screen!\n(screenspace text)", {10, 10})
 
     rv.submit_layers()
     rv.render_layer(0, clear_color = rv.Vec3{0, 0, 0.1}, clear_depth = true)
