@@ -252,7 +252,7 @@ Sprite_Inst :: struct #all_or_none #align(16) {
 }
 
 #assert(size_of(Mesh_Inst) == 64)
-Mesh_Inst :: struct #all_or_none #align(16) {
+Mesh_Inst :: struct #all_or_none #align(64) {
     pos:        [3]f32,
     col:        [4]u8,
 
