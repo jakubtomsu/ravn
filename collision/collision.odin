@@ -11,10 +11,10 @@ import "../bvh"
 
 _state: ^State
 
-MAX_ARENAS :: 64
-MAX_MESHES :: 1024
-MAX_SHAPES :: 1024
-NUM_LAYERS :: 32
+MAX_ARENAS :: #config(COLLISIION_MAX_ARENAS, 64)
+MAX_MESHES :: #config(COLLISIION_MAX_MESHES, 1024)
+MAX_SHAPES :: #config(COLLISIION_MAX_SHAPES, 1024)
+NUM_LAYERS :: #config(COLLISIION_NUM_LAYERS, 64)
 
 BVH_EPS :: 1e-6
 BVH_STACK :: 32
@@ -98,7 +98,7 @@ Shape :: struct #all_or_none #align(64) {
 
     // id:             u64,
     // ignored_layers: bit_set[0..<NUM_LAYERS],
-    // layer:          u8,
+    layer:          u8,
     kind:           Shape_Kind,
 }
 
@@ -136,6 +136,7 @@ Test :: struct {
     prim:   i32,
 }
 
+// Overlap query result
 Overlap :: struct {
     pos:    [3]f32,
     rad:    f32,
@@ -452,7 +453,7 @@ destroy_mesh :: proc(handle: Mesh_Handle) -> bool {
 //
 
 
-sphere_shape :: proc(pos: [3]f32, rad: f32) {
+sphere_shape :: proc(pos: [3]f32, rad: f32, #any_int layer: u8 = 0) {
     _push_shape({
         kind = .Sphere,
         pos = pos,
@@ -460,10 +461,11 @@ sphere_shape :: proc(pos: [3]f32, rad: f32) {
         ext = 0,
         rot = 1,
         handle = {},
+        layer = layer,
     })
 }
 
-capsule_shape :: proc(p0, p1: [3]f32, rad: f32) {
+capsule_shape :: proc(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0) {
     _push_shape({
         kind = .Capsule,
         pos = p0,
@@ -471,10 +473,11 @@ capsule_shape :: proc(p0, p1: [3]f32, rad: f32) {
         rad = rad,
         rot = 1,
         handle = {},
+        layer = layer,
     })
 }
 
-box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0) {
+box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer: u8 = 0) {
     _push_shape({
         kind = .Aligned_Box,
         pos = pos,
@@ -482,10 +485,11 @@ box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0) {
         ext = scale,
         rot = 1,
         handle = {},
+        layer = layer,
     })
 }
 
-oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: f32 = 0.0) {
+oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: f32 = 0.0, #any_int layer: u8 = 0) {
     _push_shape({
         kind = .Oriented_Box,
         pos = pos,
@@ -493,6 +497,7 @@ oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: 
         rad = rad,
         rot = rot,
         handle = {},
+        layer = layer,
     })
 }
 
@@ -502,6 +507,7 @@ mesh_shape :: proc(
     scale:  [3]f32 = 1,
     rot:    quaternion128 = 1,
     rad:    f32 = 0.0,
+    #any_int layer: u8 = 0
 ) {
     _, ok := get_mesh(handle)
     if !ok {
@@ -514,6 +520,7 @@ mesh_shape :: proc(
         rot = rot,
         rad = rad,
         handle = handle,
+        layer = layer,
     })
 }
 
@@ -554,9 +561,10 @@ make_sweep :: proc(pos: [3]f32, move: [3]f32, rad: f32 = 0, range: f32 = 1) -> S
 // World raycast
 @(require_results)
 sweep_point :: proc(
-    pos:    [3]f32,
-    move:   [3]f32,
-    range:  f32 = 1,
+    pos:            [3]f32,
+    move:           [3]f32,
+    range:          f32 = 1,
+    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
 ) -> (result: Sweep, ok: bool) #no_bounds_check {
     result = make_sweep(pos, move, rad = 0, range = range)
 
@@ -571,6 +579,9 @@ sweep_point :: proc(
             for offs in 0..<int(iter.len) {
                 index := step.tlas.indices[int(iter.first) + offs]
                 shape := step.shape_data[index]
+                if int(shape.layer) in ignore_layers {
+                    continue
+                }
 
                 result.t, result.prim = sweep_point_vs_shape(pos, move, shape, result.t) or_continue
                 result.shape = i32(index)
@@ -599,10 +610,11 @@ sweep_point :: proc(
 // World spherecast
 @(require_results)
 sweep_sphere :: proc(
-    pos:    [3]f32,
-    move:   [3]f32,
-    rad:    f32,
-    range:  f32 = 1,
+    pos:            [3]f32,
+    move:           [3]f32,
+    rad:            f32,
+    range:          f32 = 1,
+    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
 ) -> (result: Sweep, ok: bool) #no_bounds_check {
     result = make_sweep(pos, move, rad = rad, range = range)
 
@@ -617,6 +629,9 @@ sweep_sphere :: proc(
             for offs in 0..<int(iter.len) {
                 index := step.tlas.indices[int(iter.first) + offs]
                 shape := step.shape_data[index]
+                if int(shape.layer) in ignore_layers {
+                    continue
+                }
 
                 result.t, result.prim = sweep_sphere_vs_shape(pos, move, rad, shape, result.t) or_continue
                 result.shape = i32(index)
@@ -662,7 +677,11 @@ eval_sweep :: proc(sweep: ^Sweep) {
 //
 
 @(require_results)
-test_sphere :: proc(pos: [3]f32, rad: f32) -> (result: Test, ok: bool) #no_bounds_check {
+test_sphere :: proc(
+    pos:            [3]f32,
+    rad:            f32,
+    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+) -> (result: Test, ok: bool) #no_bounds_check {
     result = {
         pos = pos,
         rad = rad,
@@ -679,6 +698,9 @@ test_sphere :: proc(pos: [3]f32, rad: f32) -> (result: Test, ok: bool) #no_bound
             for offs in 0..<int(iter.len) {
                 index := step.tlas.indices[int(iter.first) + offs]
                 shape := step.shape_data[index]
+                if int(shape.layer) in ignore_layers {
+                    continue
+                }
 
                 prim, overlaps := test_sphere_vs_shape(pos, rad, shape)
                 if overlaps {
@@ -717,14 +739,20 @@ overlap_sphere :: proc(
     pos:            [3]f32,
     rad:            f32,
     max_overlaps    := 16,
-    allocator   := context.temp_allocator,
+    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    allocator       := context.temp_allocator,
 ) -> (result: Overlap, ok: bool) #optional_ok #no_bounds_check {
     buf := make([]i32, max_overlaps, allocator)
-    return overlap_sphere_buf(pos, rad, buf)
+    return overlap_sphere_buf(pos, rad, buf, ignore_layers)
 }
 
 @(require_results)
-overlap_sphere_buf :: proc(pos: [3]f32, rad: f32, shapes: []i32) -> (result: Overlap, ok: bool) #optional_ok #no_bounds_check {
+overlap_sphere_buf :: proc(
+    pos:            [3]f32,
+    rad:            f32,
+    shapes:         []i32,
+    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+) -> (result: Overlap, ok: bool) #optional_ok #no_bounds_check {
     assert(len(shapes) > 0)
     result = {
         pos = pos,
@@ -740,6 +768,9 @@ overlap_sphere_buf :: proc(pos: [3]f32, rad: f32, shapes: []i32) -> (result: Ove
             for offs in 0..<int(iter.len) {
                 index := step.tlas.indices[int(iter.first) + offs]
                 shape := step.shape_data[index]
+                if int(shape.layer) in ignore_layers {
+                    continue
+                }
 
                 _, overlaps := test_sphere_vs_shape(pos, rad, shape)
                 if overlaps {
