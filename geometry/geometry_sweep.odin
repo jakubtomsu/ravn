@@ -1,3 +1,7 @@
+// Swept shape intersection tests.
+// Swept point is the same as raycast.
+//
+// The move+range instead of traditional ray dir allows the procs to work both as ray and line intersection.
 #+vet shadowing
 package raven_geometry
 

@@ -11,7 +11,7 @@ import "core:math/linalg"
 get_box_dist :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: [3]f32) -> f32 {
   q := linalg.abs(pos - center) - rad
   m := max(q.x, q.y, q.z)
-  return m > 0 ? linalg.length(q) : m
+  return m > 0 ? linalg.vector_length(q) : m
 }
 
 @(require_results)
@@ -41,10 +41,15 @@ get_box_dist_grad :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: [3]f3
 // Capsule
 @(require_results)
 get_line_dist :: proc "contextless" (pos: [3]f32, points: [2][3]f32) -> f32 {
-  pa := pos - points[0]
-  ba := points[1] - points[0]
-  h := clamp(linalg.vector_dot(pa, ba) / linalg.vector_length2(ba), 0.0, 1.0)
-  return linalg.vector_length(pa - ba * h)
+    return intrinsics.sqrt(get_line_dist_sq(pos, points))
+}
+
+@(require_results)
+get_line_dist_sq :: proc "contextless" (pos: [3]f32, points: [2][3]f32) -> f32 {
+    pa := pos - points[0]
+    ba := points[1] - points[0]
+    h := clamp(linalg.vector_dot(pa, ba) / linalg.vector_length2(ba), 0.0, 1.0)
+    return linalg.vector_length2(pa - ba * h)
 }
 
 // Capsule
