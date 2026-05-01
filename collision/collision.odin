@@ -2,7 +2,6 @@
 package raven_collision
 
 import "core:math/linalg"
-import "base:intrinsics"
 import "base:runtime"
 import "../base"
 import "../geometry"
@@ -15,6 +14,7 @@ _state: ^State
 MAX_ARENAS :: 64
 MAX_MESHES :: 1024
 MAX_SHAPES :: 1024
+NUM_LAYERS :: 32
 
 BVH_EPS :: 1e-6
 BVH_STACK :: 32
@@ -81,17 +81,25 @@ Body :: struct {
 #assert(size_of(Shape) == 64)
 Shape :: struct #all_or_none #align(64) {
     using _: struct #raw_union {
-        pos:        [3]f32,
+        using _:    struct {
+            pos:    [3]f32,
+            handle: Mesh_Handle,
+        },
         pos_simd:   #simd[4]f32,
     },
     using _: struct #raw_union {
-        ext:        [3]f32,
+        using _: struct {
+            ext:    [3]f32,
+            rad:    f32,
+        },
         ext_simd:   #simd[4]f32,
     },
-    rot:    quaternion128,
-    rad:    f32,
-    handle: Mesh_Handle,
-    kind:   Shape_Kind,
+    rot:            quaternion128,
+
+    // id:             u64,
+    // ignored_layers: bit_set[0..<NUM_LAYERS],
+    // layer:          u8,
+    kind:           Shape_Kind,
 }
 
 Shape_Kind :: enum u8 {
@@ -103,11 +111,18 @@ Shape_Kind :: enum u8 {
 }
 
 Sweep :: struct {
-    t:      f32,
-    pos:    [3]f32,
-    normal: [3]f32,
-    shape:  i32,
-    prim:   i32,
+    // Initial
+    pos:        [3]f32,
+    move:       [3]f32,
+    rad:        f32,
+    range:      f32,
+
+    t:          f32,
+    shape:      i32,
+    prim:       i32,
+
+    hit:        [3]f32,
+    normal:     [3]f32,
 }
 
 
@@ -504,6 +519,21 @@ _push_shape :: proc(shape: Shape) {
 // MARK: Sweep queries
 //
 
+@(require_results)
+make_sweep :: proc(pos: [3]f32, move: [3]f32, rad: f32 = 0, range: f32 = 1) -> Sweep {
+    return {
+        pos = pos,
+        move = move,
+        rad = rad,
+        range = range,
+        t = range,
+        shape = -1,
+        prim = -1,
+        hit = pos + move * range,
+        normal = {0, 1, 0},
+    }
+}
+
 // World raycast
 @(require_results)
 sweep_point :: proc(
@@ -511,7 +541,7 @@ sweep_point :: proc(
     move:   [3]f32,
     range:  f32 = 1,
 ) -> (result: Sweep, ok: bool) #no_bounds_check {
-    result.t = range
+    result = make_sweep(pos, move, rad = 0, range = range)
 
     step := &_state.step_data[_state.step_read]
 
@@ -525,9 +555,7 @@ sweep_point :: proc(
                 index := step.tlas.indices[int(iter.first) + offs]
                 shape := step.shape_data[index]
 
-                t := sweep_point_vs_shape(pos, move, shape, result.t) or_continue
-
-                result.t = t
+                result.t, result.prim = sweep_point_vs_shape(pos, move, shape, result.t) or_continue
                 result.shape = i32(index)
                 ok = true
             }
@@ -545,6 +573,8 @@ sweep_point :: proc(
         }
     }
 
+    eval_sweep(&result)
+
     return result, ok
 }
 
@@ -557,7 +587,7 @@ sweep_sphere :: proc(
     rad:    f32,
     range:  f32 = 1,
 ) -> (result: Sweep, ok: bool) #no_bounds_check {
-    result.t = range
+    result = make_sweep(pos, move, rad = rad, range = range)
 
     step := &_state.step_data[_state.step_read]
 
@@ -571,7 +601,7 @@ sweep_sphere :: proc(
                 index := step.tlas.indices[int(iter.first) + offs]
                 shape := step.shape_data[index]
 
-                result.t = sweep_sphere_vs_shape(pos, move, rad, shape, result.t) or_continue
+                result.t, result.prim = sweep_sphere_vs_shape(pos, move, rad, shape, result.t) or_continue
                 result.shape = i32(index)
                 ok = true
             }
@@ -589,7 +619,21 @@ sweep_sphere :: proc(
         }
     }
 
+    eval_sweep(&result)
+
     return result, ok
+}
+
+eval_sweep :: proc(sweep: ^Sweep) {
+    if sweep.shape == -1 {
+        return
+    }
+
+    step := get_step_state()
+    shape := &step.shape_data[sweep.shape]
+
+    sweep.hit = sweep.pos + sweep.move * sweep.t
+    sweep.normal = get_shape_gradient(shape^, sweep.pos, sweep.hit, sweep.prim)
 }
 
 sweep_point_vs_shape :: proc(
@@ -597,38 +641,41 @@ sweep_point_vs_shape :: proc(
     move:   [3]f32,
     shape:  Shape,
     range:  f32,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, prim: i32, ok: bool) #no_bounds_check {
     t = range
 
     switch shape.kind {
     case .Sphere:
-        return geometry.sweep_point_vs_sphere(pos, move, shape.pos, shape.rad, range = range)
+        t, ok = geometry.sweep_point_vs_sphere(pos, move, shape.pos, shape.rad, range = range)
+        return t, 0, ok
 
     case .Capsule:
-        return geometry.sweep_point_vs_capsule(pos, move, {shape.pos, shape.ext}, shape.rad, range = range)
+        t, ok = geometry.sweep_point_vs_capsule(pos, move, {shape.pos, shape.ext}, shape.rad, range = range)
+        return t, 0, ok
 
     case .Aligned_Box:
         if shape.rad < NO_RAD_EPS {
-            return geometry.sweep_point_vs_aabb(pos, move, shape.pos - shape.ext, shape.pos + shape.ext, range = range)
+            t, ok = geometry.sweep_point_vs_aabb(pos, move, shape.pos - shape.ext, shape.pos + shape.ext, range = range)
         } else {
-            return geometry.sweep_sphere_vs_aabb(pos, move, shape.rad, shape.pos - shape.ext, shape.pos + shape.ext, range = range)
+            t, ok = geometry.sweep_sphere_vs_aabb(pos, move, shape.rad, shape.pos - shape.ext, shape.pos + shape.ext, range = range)
         }
+        return t, 0, ok
 
     case .Oriented_Box:
         inv := conj(shape.rot)
         local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
         local_move := linalg.quaternion128_mul_vector3(inv, move)
         if shape.rad < NO_RAD_EPS {
-            return geometry.sweep_point_vs_aabb(local_pos, local_move, -shape.ext, +shape.ext, range = range)
+            t, ok = geometry.sweep_point_vs_aabb(local_pos, local_move, -shape.ext, +shape.ext, range = range)
         } else {
-            return geometry.sweep_sphere_vs_aabb(local_pos, local_move, shape.rad, -shape.ext, +shape.ext, range = range)
+            t, ok = geometry.sweep_sphere_vs_aabb(local_pos, local_move, shape.rad, -shape.ext, +shape.ext, range = range)
         }
+        return t, 0, ok
 
     case .Mesh:
         inv := conj(shape.rot)
         local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
         local_move := linalg.quaternion128_mul_vector3(inv, move)
-        prim: int
         if shape.rad < NO_RAD_EPS {
             t, prim, ok = sweep_point_vs_mesh_local(
                 pos = local_pos,
@@ -647,10 +694,10 @@ sweep_point_vs_shape :: proc(
                 range = range,
             )
         }
-        return t, ok
+        return t, prim, ok
     }
 
-    return 0, false
+    return 0, 0, false
 }
 
 sweep_sphere_vs_shape :: proc(
@@ -659,33 +706,35 @@ sweep_sphere_vs_shape :: proc(
     rad:    f32,
     shape:  Shape,
     range:  f32,
-) -> (t: f32, ok: bool) #optional_ok {
+) -> (t: f32, prim: i32, ok: bool) {
     t = range
-
     r := shape.rad + rad
 
     switch shape.kind {
     case .Sphere:
-        return geometry.sweep_point_vs_sphere(pos, move, shape.pos, r, range = range)
+        t, ok = geometry.sweep_point_vs_sphere(pos, move, shape.pos, r, range = range)
+        return t, 0, ok
 
     case .Capsule:
-        return geometry.sweep_point_vs_capsule(pos, move, {shape.pos, shape.ext}, r, range = range)
+        t, ok = geometry.sweep_point_vs_capsule(pos, move, {shape.pos, shape.ext}, r, range = range)
+        return t, 0, ok
 
     case .Aligned_Box:
-        return geometry.sweep_sphere_vs_aabb(pos, move, r, shape.pos - shape.ext, shape.pos + shape.ext, range = range)
+        t, ok = geometry.sweep_sphere_vs_aabb(pos, move, r, shape.pos - shape.ext, shape.pos + shape.ext, range = range)
+        return t, 0, ok
 
     case .Oriented_Box:
         inv := conj(shape.rot)
         local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
         local_move := linalg.quaternion128_mul_vector3(inv, move)
-        return geometry.sweep_sphere_vs_aabb(local_pos, local_move, r, -shape.ext, +shape.ext, range = range)
+        t, ok = geometry.sweep_sphere_vs_aabb(local_pos, local_move, r, -shape.ext, +shape.ext, range = range)
+        return t, 0, ok
 
     case .Mesh:
         inv := conj(shape.rot)
         local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
         local_move := linalg.quaternion128_mul_vector3(inv, move)
-        prim: int
-        t, prim, ok = sweep_sphere_vs_mesh_local(
+        return sweep_sphere_vs_mesh_local(
             pos = local_pos,
             move = local_move,
             rad = r,
@@ -693,10 +742,9 @@ sweep_sphere_vs_shape :: proc(
             scale = shape.ext,
             range = range,
         )
-        return t, ok
     }
 
-    return 0, false
+    return 0, 0, false
 }
 
 
@@ -706,7 +754,7 @@ sweep_point_vs_mesh_local :: proc(
     move:       [3]f32,
     handle:     Mesh_Handle,
     range:      f32 = 1,
-) -> (t: f32, prim: int, ok: bool) #no_bounds_check {
+) -> (t: f32, prim: i32, ok: bool) #no_bounds_check {
     mesh, mesh_ok := get_mesh(handle)
     if !mesh_ok {
         return range, -1, false
@@ -731,7 +779,7 @@ sweep_point_vs_mesh_local :: proc(
                 }
 
                 t = geometry.sweep_point_vs_triangle(pos, move, verts, t) or_continue
-                prim = int(index)
+                prim = i32(index)
                 ok = true
             }
 
@@ -760,7 +808,7 @@ sweep_sphere_vs_mesh_local :: proc(
     handle:     Mesh_Handle,
     scale:      [3]f32 = 1,
     range:      f32 = 1,
-) -> (t: f32, prim: int, ok: bool) #no_bounds_check {
+) -> (t: f32, prim: i32, ok: bool) #no_bounds_check {
     mesh, mesh_ok := get_mesh(handle)
     if !mesh_ok {
         return range, -1, false
@@ -785,7 +833,7 @@ sweep_sphere_vs_mesh_local :: proc(
                 }
 
                 t = geometry.sweep_sphere_vs_triangle(pos, move, rad, verts, t) or_continue
-                prim = int(index)
+                prim = i32(index)
                 ok = true
             }
 
@@ -807,8 +855,11 @@ sweep_sphere_vs_mesh_local :: proc(
 
 
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Util
+//
 
+@(require_results)
 get_shape_aabb :: proc(shape: Shape) -> (bb_min, bb_max: [3]f32) {
     switch shape.kind {
     case .Sphere:
@@ -845,6 +896,55 @@ get_shape_aabb :: proc(shape: Shape) -> (bb_min, bb_max: [3]f32) {
 
     assert(false)
     return 0, 0
+}
+
+@(require_results)
+get_shape_gradient :: proc(shape: Shape, origin_pos: [3]f32, hit: [3]f32, prim: i32) -> (result: [3]f32) {
+    switch shape.kind {
+    case .Sphere:
+        return linalg.normalize(hit - shape.pos)
+
+    case .Capsule:
+        _, result = geometry.get_line_dist_grad(hit, {shape.pos, shape.ext})
+        return result
+
+    case .Aligned_Box:
+        _, result = geometry.get_box_dist_grad(hit, shape.pos, shape.ext)
+        return result
+
+    case .Oriented_Box:
+        inv := conj(shape.rot)
+        local_pos := linalg.quaternion128_mul_vector3(inv, hit - shape.pos)
+        _, result = geometry.get_box_dist_grad(local_pos, 0, shape.ext)
+        return result
+
+    case .Mesh:
+        mesh, mesh_ok := get_mesh(shape.handle)
+        assert(mesh_ok)
+        assert(prim >= 0 && prim <= i32(len(mesh.triangles)))
+
+        inv := conj(shape.rot)
+        inv_scale := 1.0 / shape.ext
+        local_pos := linalg.quaternion128_mul_vector3(inv, hit - shape.pos) * inv_scale
+
+        tri := mesh.triangles[prim]
+        verts := [3][3]f32{
+            mesh.verts[tri[0]],
+            mesh.verts[tri[1]],
+            mesh.verts[tri[2]],
+        }
+
+        _, result = geometry.get_triangle_dist_grad(local_pos, verts)
+
+        result = linalg.quaternion128_mul_vector3(shape.rot, result)
+        if linalg.dot(result, origin_pos - hit) < 0 {
+            result = -result
+        }
+
+        return result
+    }
+
+    return 0
 }
 
 get_mesh_triangle :: proc(handle: Mesh_Handle, #any_int tri_index: int) -> (verts: [3][3]f32, ok: bool) #optional_ok {

@@ -440,6 +440,32 @@ iter_next :: proc(iter: ^Iter, t0, t1: f32) -> bool {
     return true
 }
 
+iter_unsorted_next :: proc(iter: ^Iter, hit0, hit1: bool) -> bool {
+    child0 := iter.first + 0
+    child1 := iter.first + 1
+
+    assert(child0 < iter.bvh.nodes_used)
+
+    if hit0 {
+        if hit1 {
+            iter.stack[iter.stack_len] = u16(child1)
+            iter.stack_len += 1
+            iter.node = &iter.bvh.nodes[child0]
+        } else {
+            iter.node = &iter.bvh.nodes[child0]
+        }
+    } else {
+        if hit1 {
+            iter.node = &iter.bvh.nodes[child1]
+        } else {
+            iter_pop(iter) or_return
+        }
+    }
+
+    return true
+}
+
+
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
