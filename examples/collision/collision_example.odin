@@ -169,6 +169,22 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     sweep, sweep_ok := coll.sweep_point(state.cam_pos, mat[2], range = 100)
     hit := state.cam_pos + mat[2] * sweep.t
 
+    {
+        p := [3]f32{
+            math.cos_f32(rv.get_time()) * 5,
+            2,
+            math.sin_f32(rv.get_time()) * 5,
+        }
+
+        test, ok := coll.test_sphere(p, 1)
+
+        rv.draw_mesh(
+            rv.get_builtin_mesh(.UV_Sphere_1),
+            p,
+            scale = 0.5,
+            col = ok ? rv.GREEN : rv.RED,
+        )
+    }
 
     area: f32
     {
