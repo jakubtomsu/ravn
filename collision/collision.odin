@@ -136,6 +136,13 @@ Test :: struct {
     prim:   i32,
 }
 
+Overlap :: struct {
+    pos:    [3]f32,
+    rad:    f32,
+
+    shapes: []i32,
+}
+
 
 init :: proc(state: ^State, allocator := context.allocator) {
     _state = state
@@ -654,7 +661,6 @@ eval_sweep :: proc(sweep: ^Sweep) {
 // Checks for *any* collider overlap.
 //
 
-// World spherecast
 @(require_results)
 test_sphere :: proc(pos: [3]f32, rad: f32) -> (result: Test, ok: bool) #no_bounds_check {
     result = {
@@ -697,6 +703,71 @@ test_sphere :: proc(pos: [3]f32, rad: f32) -> (result: Test, ok: bool) #no_bound
 
     return result, ok
 }
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Overlap Query
+//
+// Returns all overlapping colliders
+//
+
+
+@(require_results)
+overlap_sphere :: proc(
+    pos:            [3]f32,
+    rad:            f32,
+    max_overlaps    := 16,
+    allocator   := context.temp_allocator,
+) -> (result: Overlap, ok: bool) #optional_ok #no_bounds_check {
+    buf := make([]i32, max_overlaps, allocator)
+    return overlap_sphere_buf(pos, rad, buf)
+}
+
+@(require_results)
+overlap_sphere_buf :: proc(pos: [3]f32, rad: f32, shapes: []i32) -> (result: Overlap, ok: bool) #optional_ok #no_bounds_check {
+    assert(len(shapes) > 0)
+    result = {
+        pos = pos,
+        rad = rad,
+    }
+
+    step := &_state.step_data[_state.step_read]
+    used_shapes := 0
+    pos_simd := transmute(#simd[4]f32)pos.xyzz
+
+    node_loop: for iter := bvh.iter(&step.tlas); iter.node != nil; {
+        if iter.len != 0 {
+            for offs in 0..<int(iter.len) {
+                index := step.tlas.indices[int(iter.first) + offs]
+                shape := step.shape_data[index]
+
+                _, overlaps := test_sphere_vs_shape(pos, rad, shape)
+                if overlaps {
+                    shapes[used_shapes] = i32(index)
+                    used_shapes += 1
+                    if int(used_shapes) >= len(shapes) {
+                        break node_loop
+                    }
+                }
+            }
+
+            bvh.iter_pop(&iter) or_break
+
+        } else {
+
+            child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
+            child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
+            t0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
+            t1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+
+            bvh.iter_unordered_next(&iter, t0, t1) or_break
+        }
+    }
+
+    result.shapes = shapes[:used_shapes]
+    return result, used_shapes > 0
+}
+
 
 
 
