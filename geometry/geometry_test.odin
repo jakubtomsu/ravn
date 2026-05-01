@@ -31,6 +31,12 @@ test_point_vs_sphere :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: f3
     return linalg.length2(pos - center) <= rad * rad
 }
 
+@(require_results)
+test_point_vs_capsule :: proc "contextless" (pos: [3]f32, points: [2][3]f32, rad: f32) -> bool {
+    dist_sq := get_line_dist_sq(pos, points)
+    return dist_sq <= rad * rad
+}
+
 
 // MARK: Sphere
 
@@ -47,8 +53,8 @@ test_sphere_vs_box :: proc "contextless" (pos: [3]f32, rad: f32, center, extent:
 }
 
 @(require_results)
-test_sphere_vs_capsule :: proc "contextless" (pos: [3]f32, rad: f32, points: [2][3]f32) -> bool {
-    dist_sq := get_line_dist_sq(pos, points)
+test_sphere_vs_triangle :: proc "contextless" (pos: [3]f32, rad: f32, tri: [3][3]f32) -> bool {
+    dist_sq := get_triangle_dist_sq(pos, tri)
     return dist_sq <= rad * rad
 }
 

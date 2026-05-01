@@ -440,7 +440,7 @@ iter_next :: proc(iter: ^Iter, t0, t1: f32) -> bool {
     return true
 }
 
-iter_unsorted_next :: proc(iter: ^Iter, hit0, hit1: bool) -> bool {
+iter_unordered_next :: proc(iter: ^Iter, hit0, hit1: bool) -> bool {
     child0 := iter.first + 0
     child1 := iter.first + 1
 

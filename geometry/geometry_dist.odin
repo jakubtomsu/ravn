@@ -65,6 +65,11 @@ get_line_dist_grad :: proc "contextless" (pos: [3]f32,  points: [2][3]f32) -> (d
 
 @(require_results)
 get_triangle_dist :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (dist: f32) {
+    return intrinsics.sqrt(get_triangle_dist_sq(pos, tri))
+}
+
+@(require_results)
+get_triangle_dist_sq :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (dist: f32) {
     // prepare data
     v10 := tri[1] - tri[0]
     v23 := tri[2] - tri[1]
@@ -91,10 +96,10 @@ get_triangle_dist :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (dist: 
     } else {
         // 1 face
         d := linalg.vector_dot(normal, p1)
-        dist = d * d / linalg.vector_length2(normal)
+        dist = d / linalg.vector_length2(normal)
     }
 
-    return intrinsics.sqrt(dist)
+    return dist
 }
 
 
