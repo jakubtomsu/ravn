@@ -158,3 +158,18 @@ reinterpret_bytes :: proc "contextless" ($T: typeid, bytes: []byte, loc := #call
 to_bytes :: proc "contextless" (data: []$T) -> []byte {
     return (cast([^]byte)raw_data(data))[:size_of(T) * len(data)]
 }
+
+// Quickly checks if x is not NaN or Inf
+@(require_results)
+is_finite_f32 :: #force_inline proc(x: f32) -> bool {
+    return ((transmute(u32)x) & 0x7F800000) != 0x7F800000
+}
+
+@(require_results)
+is_finite_vec :: #force_inline proc(v: [$N]f32) -> bool {
+    res := true
+    for x in v {
+        res &= is_finite_f32(x)
+    }
+    return res
+}

@@ -1,9 +1,11 @@
 package raven_collision_example
 
+import "core:fmt"
 import rv "../.."
 import "../../platform"
 import coll "../../collision"
 import geom "../../geometry"
+import "../../base"
 
 import "core:math/linalg"
 import "core:math"
@@ -105,17 +107,17 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     coll.begin_step()
 
     N :: 64
-    SCALE :: 20
+    SCALE :: 8
     HEIGHT :: 20
 
-    point_t: [N][N]f32
-    sphere_t: [N][N]f32
+    point_t: [N][N]coll.Sweep
+    sphere_t: [N][N]coll.Sweep
 
     state.radius = rv.nsin(rv.get_time() * 0.25)
 
-    // coll.mesh_shape(state.mesh, 5, rad = 0.5)
+    coll.mesh_shape(state.mesh, 5, rad = 0.5)
     coll.mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
-    coll.mesh_shape(state.mesh, {-3, 2, 0})
+    coll.mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
     coll.sphere_shape({0, 2, 5}, 2)
     coll.sphere_shape({0, 1, 8}, 1)
     coll.sphere_shape({0, 1, 9}, 1)
@@ -126,10 +128,10 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     coll.box_shape({-5, 0, -8}, {2, 1, 2}, 1)
     coll.oriented_box_shape({5, 2, -8}, {2, 1, 2}, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}), rad = 1)
 
-    // for i in 0..<100 {
-    //     coll.sphere_shape(f32(i) * 3, 2)
-    //     coll.mesh_shape(state.mesh, f32(-i) * 2, rad = 0.5)
-    // }
+    for i in 0..<100 {
+        coll.sphere_shape(f32(i) * 3, 2)
+        coll.mesh_shape(state.mesh, f32(-i) * 2, rad = 0.5)
+    }
 
     {
         rv.perf_scope("Point Sweeps")
@@ -138,7 +140,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             for y in 0..<N {
                 p := [3]f32{((f32(x) / N) - 0.5) * SCALE, HEIGHT, ((f32(y) / N) - 0.5) * SCALE}
                 sweep, hit_ok := coll.sweep_point(p, {0, -1, 0}, range = HEIGHT)
-                point_t[x][y] = sweep.t
+                point_t[x][y] = sweep
             }
         }
     }
@@ -150,7 +152,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             for y in 0..<N {
                 p := [3]f32{((f32(x) / N) - 0.5) * SCALE, HEIGHT, ((f32(y) / N) - 0.5) * SCALE}
                 sweep, hit_ok := coll.sweep_sphere(p, {0, -1, 0}, 0.25, range = HEIGHT)
-                sphere_t[x][y] = sweep.t
+                sphere_t[x][y] = sweep
             }
         }
     }
@@ -158,11 +160,22 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     for x in 0..<N {
         for y in 0..<N {
             p := [3]f32{((f32(x) / N) - 0.5) * SCALE, HEIGHT, ((f32(y) / N) - 0.5) * SCALE}
-            hit0 := p + {0, -point_t[x][y], 0}
-            hit1 := p + {0, -sphere_t[x][y], 0}
 
-            rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_0), hit0, scale = 0.001 * SCALE, col = rv.GREEN)
-            rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_0), hit1, scale = 0.001 * SCALE, col = rv.CYAN)
+            ps := point_t[x][y]
+            ss := point_t[x][y]
+
+            hit0 := p + {0, -ps.t, 0}
+            hit1 := p + {0, -ss.t, 0}
+
+            // rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_0), hit0, scale = 0.001 * SCALE, col = rv.GREEN)
+            // rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_0), hit1, scale = 0.001 * SCALE, col = rv.CYAN)
+
+            col := [4]f32{expand_values(ps.normal), 1}
+            // if rv._is_nan_or_inf_vec3(ps.hit) {
+            //     rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_0), hit0, scale = 0.005 * SCALE, col = rv.RED)
+            // } else {
+                rv.draw_line(ps.hit, ps.hit + ps.normal * 0.5, col = col)
+            // }
         }
     }
 

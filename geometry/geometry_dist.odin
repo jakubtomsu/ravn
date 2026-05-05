@@ -2,6 +2,7 @@ package raven_geometry
 
 import "base:intrinsics"
 import "core:math/linalg"
+import "../base"
 
 // https://iquilezles.org/articles/distgradfunctions3d/
 // https://iquilezles.org/articles/distfunctions/
@@ -60,7 +61,8 @@ get_line_dist_grad :: proc "contextless" (pos: [3]f32,  points: [2][3]f32) -> (d
     h := clamp(linalg.vector_dot(pa, ba) / linalg.vector_length2(ba), 0.0, 1.0)
     q := pa - h * ba
     d := linalg.vector_length(q)
-    return d, q / d
+    grad = d > 0 ? q / d : 0
+    return d, grad
 }
 
 @(require_results)

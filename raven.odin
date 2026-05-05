@@ -972,7 +972,7 @@ begin_frame :: proc() -> (keep_running: bool) {
 end_frame :: proc(vsync := true) {
     perf_scope()
 
-    validate(!_state.ended_frame)
+    assert(!_state.ended_frame)
 
     _state.ended_frame = true
     curr_time := platform.get_time_ns()
@@ -1135,8 +1135,8 @@ get_window :: proc() -> platform.Window {
 
 @(require_results)
 atlas_cell :: proc(split: [2]i32, coord: [2]i32, scale: [2]f32 = 1.0) -> Rect {
-    validate(split.x >= 1)
-    validate(split.y >= 1)
+    assert(split.x >= 1)
+    assert(split.y >= 1)
 
     p := Vec2{
         linalg.fract(f32(coord.x) / f32(split.x)),
@@ -1159,8 +1159,8 @@ atlas_cell :: proc(split: [2]i32, coord: [2]i32, scale: [2]f32 = 1.0) -> Rect {
 
 @(require_results)
 atlas_slot :: proc(split: [2]i32, #any_int index: i32) -> Rect {
-    validate(split.x >= 1)
-    validate(split.y >= 1)
+    assert(split.x >= 1)
+    assert(split.y >= 1)
 
     coord := [2]i32{
         index % split.x,
@@ -1223,8 +1223,8 @@ load_scene :: proc(name: string, dst_group: Group_Handle) -> (result_group: Grou
 }
 
 load_scene_from_data :: proc(txt: string, bin: []byte, dst_group: Group_Handle) -> (Group_Handle, bool) {
-    validate(len(txt) >= 5)
-    validate(len(bin) >= 5)
+    assert(len(txt) >= 5)
+    assert(len(bin) >= 5)
 
     base.log_info("Loading Scene")
 
@@ -2761,88 +2761,6 @@ draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
         }
     }
 }
-
-
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Validation
-//
-// Ensures the data user passed in is in somewhat reasonable state.
-//
-
-@(disabled=!VALIDATION)
-validate :: proc(cond: bool, msg := #caller_expression(cond), loc := #caller_location) {
-    if !cond {
-        // NOTE(bill): This is wrapped in a procedure call
-        // to improve performance to make the CPU not
-        // execute speculatively, making it about an order of
-        // magnitude faster
-        @(cold)
-        internal :: #force_no_inline proc(msg: string, loc: runtime.Source_Code_Location) {
-            p := context.assertion_failure_proc
-            if p == nil {
-                p = runtime.default_assertion_failure_proc
-            }
-
-            p("Raven: Validation Failed", message = msg, loc = loc)
-        }
-        internal(msg, loc)
-    }
-}
-
-
-_is_nan_or_inf_f32 :: #force_inline proc(x: f32) -> bool {
-    // Fast NaN or Inf check
-    return x == x && (x * 0.5 != x || x == 0)
-}
-
-@(disabled = !VALIDATION)
-validate_f32 :: #force_inline proc(x: f32, loc := #caller_location) {
-    validate(_is_nan_or_inf_f32(x), loc = loc)
-}
-
-@(disabled = !VALIDATION)
-validate_vec2 :: #force_inline proc(v: [2]f32, loc := #caller_location) {
-    validate(_is_nan_or_inf_f32(v.x) || _is_nan_or_inf_f32(v.y), loc = loc)
-}
-
-@(disabled = !VALIDATION)
-validate_vec3 :: #force_inline proc(v: [3]f32, loc := #caller_location) {
-    validate(_is_nan_or_inf_f32(v.x) || _is_nan_or_inf_f32(v.y) || _is_nan_or_inf_f32(v.z), loc = loc)
-}
-
-@(disabled = !VALIDATION)
-validate_vec4 :: #force_inline proc(v: [4]f32, loc := #caller_location) {
-    validate(_is_nan_or_inf_f32(v.x) || _is_nan_or_inf_f32(v.y) || _is_nan_or_inf_f32(v.z) || _is_nan_or_inf_f32(v.w), loc = loc)
-}
-
-@(disabled = !VALIDATION)
-validate_quat :: #force_inline proc(q: quaternion128, loc := #caller_location) {
-    validate(_is_nan_or_inf_f32(q.x) || _is_nan_or_inf_f32(q.y) || _is_nan_or_inf_f32(q.z) || _is_nan_or_inf_f32(q.w), loc = loc)
-}
-
-@(disabled = !VALIDATION)
-validate_mat2 :: proc(m: Mat2, loc := #caller_location) {
-    validate_vec2(m[0], loc)
-    validate_vec2(m[1], loc)
-}
-
-@(disabled = !VALIDATION)
-validate_mat3 :: proc(m: Mat3, loc := #caller_location) {
-    validate_vec3(m[0], loc)
-    validate_vec3(m[1], loc)
-    validate_vec3(m[2], loc)
-}
-
-@(disabled = !VALIDATION)
-validate_mat4 :: proc(m: Mat4, loc := #caller_location) {
-    validate_vec4(m[0], loc)
-    validate_vec4(m[1], loc)
-    validate_vec4(m[2], loc)
-    validate_vec4(m[3], loc)
-}
-
 
 
 

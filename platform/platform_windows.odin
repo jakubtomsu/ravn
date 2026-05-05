@@ -2,6 +2,8 @@
 #+vet explicit-allocators shadowing unused
 package raven_platform
 
+// TODO: FIXME: on very low FPS input messages seem to get dropped
+
 import "../base"
 import "base:intrinsics"
 import "base:runtime"

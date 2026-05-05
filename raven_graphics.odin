@@ -1083,7 +1083,7 @@ draw_sprite :: proc(
     param:      u32 = 0,
 ) {
     perf_scope()
-    validate_vec3(pos)
+    assert(base.is_finite_vec(pos))
 
     rect_size := rect_full_size(rect)
     draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
@@ -1121,7 +1121,7 @@ draw_sprite :: proc(
     key := _state.draw_state.key
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
-    _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
+    _draw_batch_table_push(&draw_layer.sprites, key, inst)
 }
 
 draw_sprite_2d :: proc(
@@ -1183,7 +1183,7 @@ draw_rect_2d :: proc(
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
 
     draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
-    _draw_batch_table_push(&draw_layer.sprites, key, inst, max(size.x, size.y))
+    _draw_batch_table_push(&draw_layer.sprites, key, inst)
 }
 
 
@@ -1198,10 +1198,9 @@ draw_mesh :: proc(
 ) {
     perf_scope()
 
-    validate_vec3(pos)
-
     mesh, mesh_ok := get_internal_mesh(handle)
-    validate(mesh_ok)
+
+    assert(mesh_ok && base.is_finite_vec(pos))
 
     mat := linalg.matrix3_from_quaternion_f32(rot)
 
@@ -1230,10 +1229,8 @@ draw_mesh :: proc(
         add_col = add_col,
     )
 
-    rad := mesh.bounds_rad * max(scale.x, scale.y, scale.z)
-
     draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
-    _draw_batch_table_push(&draw_layer.meshes, key, inst, rad)
+    _draw_batch_table_push(&draw_layer.meshes, key, inst)
 }
 
 draw_triangles :: proc(
@@ -1247,11 +1244,8 @@ draw_triangles :: proc(
 ) {
     perf_scope()
 
-    validate_vec3(pos)
-    validate_quat(rot)
-    validate_vec4(col)
-    validate_vec4(add_col)
-    validate(len(verts) % 3 == 0)
+    assert(base.is_finite_vec(pos) && base.is_finite_vec(transmute([4]f32)rot))
+    assert(len(verts) % 3 == 0)
 
     if len(verts) == 0 {
         return
@@ -1276,7 +1270,7 @@ draw_triangles :: proc(
         add_col = add_col,
     )
 
-    _draw_batch_table_push(&draw_layer.triangles, key, inst, 0)
+    _draw_batch_table_push(&draw_layer.triangles, key, inst)
 }
 
 draw_lines :: proc(
@@ -1290,11 +1284,8 @@ draw_lines :: proc(
 ) {
     perf_scope()
 
-    validate(len(verts) % 2 == 0)
-    validate_vec3(pos)
-    validate_quat(rot)
-    validate_vec4(col)
-    validate_vec4(add_col)
+    assert(len(verts) % 2 == 0)
+    assert(base.is_finite_vec(pos) && base.is_finite_vec(transmute([4]f32)rot))
 
     if len(verts) == 0 {
         return
@@ -1319,7 +1310,7 @@ draw_lines :: proc(
         add_col = add_col,
     )
 
-    _draw_batch_table_push(&draw_layer.lines, key, inst, 0)
+    _draw_batch_table_push(&draw_layer.lines, key, inst)
 }
 
 // Prefer draw_triangles if you need to efficiently draw many triangles.
@@ -1330,9 +1321,7 @@ draw_triangle :: proc(
     add_col:    Vec4 = BLACK,
     normals:    Maybe([3]Vec3) = nil,
 ) {
-    validate_vec3(pos[0])
-    validate_vec3(pos[1])
-    validate_vec3(pos[2])
+    assert(base.is_finite_vec(pos[0]) && base.is_finite_vec(pos[1]) && base.is_finite_vec(pos[2]))
 
     norm, norm_ok := normals.?
     if !norm_ok {
@@ -1380,8 +1369,8 @@ draw_line :: proc(
     add_col:    Vec4 = BLACK,
     normals:    Maybe([2]Vec3) = nil,
 ) {
-    validate_vec3(pos0)
-    validate_vec3(pos1)
+    assert(base.is_finite_vec(pos0))
+    assert(base.is_finite_vec(pos1))
 
     norm, norm_ok := normals.?
     if !norm_ok {
@@ -1541,7 +1530,7 @@ draw_text :: proc(
                 tex_slice = _state.draw_state.texture_slice,
             )
 
-            _draw_batch_push(batch, inst, max(size.x, size.y))
+            _draw_batch_push(batch, inst)
         }
 
         offs = text_glyph_apply(offs, r, scale = scale, char_size = char_size, spacing = spacing)
@@ -1928,18 +1917,13 @@ _draw_batch_table_copy_batches :: proc(
     }
 }
 
-_draw_batch_table_push :: proc(
-    table:      ^$T/Draw_Batch_Table($Inst),
-    key:        Draw_Batch_Key,
-    inst:       Inst,
-    cull_rad:   f32,
-) #no_bounds_check {
+_draw_batch_table_push :: proc(table: ^$T/Draw_Batch_Table($Inst), key: Draw_Batch_Key, inst: Inst) #no_bounds_check {
     index, index_ok := _draw_batch_table_find_or_create(table, key)
     if !index_ok {
         return
     }
     batch := &table.batches[index]
-    _draw_batch_push(batch, inst, cull_rad)
+    #force_inline _draw_batch_push(batch, inst)
 }
 
 _draw_batch_table_find_or_create :: proc(table: ^$T/Draw_Batch_Table($Inst), key: Draw_Batch_Key) -> (int, bool) #no_bounds_check {
@@ -1953,39 +1937,27 @@ _draw_batch_table_find_or_create :: proc(table: ^$T/Draw_Batch_Table($Inst), key
         batch_index := table.lookup[lookup_index]
 
         if batch_index == max(u16) {
-            found = true
+            index = 0
             break
         }
 
-        batch_key := table.keys[batch_index]
-
-        if batch_key == key {
-            index = int(batch_index)
-            found = true
-            break
+        if key == table.keys[batch_index] {
+            return int(batch_index), true
         }
 
-        lookup_index = (lookup_index + 1) % DRAW_BATCH_TABLE_LOOKUP
+        lookup_index += 1
+        lookup_index = lookup_index == DRAW_BATCH_TABLE_LOOKUP ? 0 : lookup_index
     }
 
-    if !found {
-        assert(false)
+    if index == -1 || table.len >= DRAW_BATCH_TABLE_BATCHES {
+        assert(false, "Failed to create draw batch")
         return -1, false
     }
 
-    if index == -1 {
-        if table.len >= DRAW_BATCH_TABLE_BATCHES {
-            assert(false)
-            return -1, false
-        }
-
-        index = int(table.len)
-
-        table.keys[index] = key
-        table.lookup[lookup_index] = u16(index)
-
-        table.len += 1
-    }
+    index = int(table.len)
+    table.keys[index] = key
+    table.lookup[lookup_index] = u16(index)
+    table.len += 1
 
     return index, true
 }
@@ -1994,11 +1966,7 @@ ceil_div :: proc(a, b: $T) -> T where intrinsics.type_is_integer(T) {
     return (a + b) / b
 }
 
-_draw_batch_push :: proc(
-    batch:      ^Draw_Batch($Inst),
-    inst:       Inst,
-    cull_rad:   f32,
-) #no_bounds_check {
+_draw_batch_push :: proc(batch: ^Draw_Batch($Inst), inst: Inst) #no_bounds_check {
     // Note: the reallocation should be extremely infrequent,
     // as we're tracking the last frame "waterline".
     if batch.len >= batch.cap {
@@ -2011,22 +1979,11 @@ _draw_batch_push :: proc(
             intrinsics.mem_copy_non_overlapping(rawptr(new_cull), batch.cull_data, ceil_div(size_of(Draw_Cull_Group) * batch.len, LANES))
         }
 
-        // if batch.inst_data != nil {
-        //     base.log_warn("REALLOC %x %i %i", uintptr(batch), batch.last_len, batch.cap)
-        // }
-
         batch.inst_data = new_inst
         batch.cull_data = new_cull
     }
 
     batch.inst_data[batch.len] = inst
-
-    lane_id := batch.len % LANES
-    batch.cull_data[batch.len / LANES].pos_scalar.x[lane_id] = inst.pos.x
-    batch.cull_data[batch.len / LANES].pos_scalar.y[lane_id] = inst.pos.y
-    batch.cull_data[batch.len / LANES].pos_scalar.z[lane_id] = inst.pos.z
-    batch.cull_data[batch.len / LANES].rad_scalar[lane_id] = cull_rad
-
     batch.len += 1
 }
 
@@ -2182,25 +2139,26 @@ submit_layers :: proc() {
                 }
             }
 
-            for &batch in layer.meshes.batches[:layer.meshes.len] {
-                _cull_draw_batch(
-                    batch = &batch,
-                    frustum = fru,
-                    fru_pos = fru_pos,
-                    fru_rad = fru_rad,
-                    fru_planes = fru_planes,
-                )
-            }
+            // TEMP
+            // for &batch in layer.meshes.batches[:layer.meshes.len] {
+            //     _cull_draw_batch(
+            //         batch = &batch,
+            //         frustum = fru,
+            //         fru_pos = fru_pos,
+            //         fru_rad = fru_rad,
+            //         fru_planes = fru_planes,
+            //     )
+            // }
 
-            for &batch in layer.sprites.batches[:layer.sprites.len] {
-                _cull_draw_batch(
-                    batch = &batch,
-                    frustum = fru,
-                    fru_pos = fru_pos,
-                    fru_rad = fru_rad,
-                    fru_planes = fru_planes,
-                )
-            }
+            // for &batch in layer.sprites.batches[:layer.sprites.len] {
+            //     _cull_draw_batch(
+            //         batch = &batch,
+            //         frustum = fru,
+            //         fru_pos = fru_pos,
+            //         fru_rad = fru_rad,
+            //         fru_planes = fru_planes,
+            //     )
+            // }
         }
 
         // Transparent: combine, sort, re-batch. Also remove old non-sorted batches.
