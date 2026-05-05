@@ -8,6 +8,7 @@ import mathutils
 import numpy as np
 from bpy.props import BoolProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper
+from pathlib import Path
 
 VERSION_MAJOR = 0
 VERSION_MINOR = 1
@@ -130,11 +131,13 @@ def export_rscn(context):
     elems.append("\n@imgs\n")
 
     for mat in bpy.data.materials:
+        print(mat.name)
         for node in mat.node_tree.nodes:
             if node.type != 'TEX_IMAGE' or not node.image:
                 continue
 
-            texname = os.path.basename(node.image.filepath)
+            texname = Path(node.image.filepath).name
+            print(mat.name, node.type, node.image.filepath, texname)
 
             if texname in image_table:
                 continue
@@ -160,7 +163,7 @@ def export_rscn(context):
 
         mesh = obj.data
 
-        mesh_name = norm_name(mesh.name)
+        mesh_name = norm_name(obj.name)
 
         if mesh_name in mesh_table:
             print(f"WARNING: skipping {obj.name}")
@@ -205,7 +208,7 @@ def export_rscn(context):
         uv_layer = mesh.uv_layers.active.data
         loop_uvs = np.empty((len(mesh.loops), 2), dtype=np.float32)
         uv_layer.foreach_get('uv', loop_uvs.ravel())
-        loop_uvs[:, 1] = 1.0 - loop_uvs[:, 1]
+        # loop_uvs[:, 1] = 1.0 - loop_uvs[:, 1]
         loop_verts['uv'] = loop_uvs[tri_loops.ravel()]
 
         prof("Mesh uvs")
@@ -292,7 +295,7 @@ def export_rscn(context):
         if obj.type == 'EMPTY':
             elems.append(f"emp ")
         elif obj.type == 'MESH':
-            mesh_index = mesh_table[norm_name(obj.data.name)]
+            mesh_index = mesh_table[norm_name(obj.name)]
             elems.append(f"msh {mesh_index} ")
         elif obj.type == 'CURVE':
             elems.append(f"spl ")

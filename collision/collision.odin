@@ -362,6 +362,8 @@ get_mesh :: proc(handle: Mesh_Handle) -> (^Mesh, bool) {
     return &_state.mesh_data[handle.index], true
 }
 
+// NOTE: doesn't clone the data. You must allocate it yourself with the
+// specified arena or ensure it's alive for the lifetime of this mesh.
 @(require_results)
 create_mesh :: proc(
     arena_handle:   Arena_Handle,
@@ -382,11 +384,6 @@ create_mesh :: proc(
 
     allocator := arena_allocator(arena_handle)
 
-    // NOTE: is this necessary?
-    cloned_verts := clone_slice(verts, 64, allocator)
-    cloned_triangles := clone_slice(triangles, 64, allocator)
-
-    vert_tri := make([]u16, len(verts), allocator)
     tri_bbs := make([][2][3]f32, len(triangles), context.temp_allocator)
 
     for tri, tri_index in triangles {
@@ -399,12 +396,6 @@ create_mesh :: proc(
         tri_bbs[tri_index] = {
             bvh.vec_min(v[0], bvh.vec_min(v[1], v[2])) - BVH_EPS,
             bvh.vec_max(v[0], bvh.vec_max(v[1], v[2])) + BVH_EPS,
-        }
-
-        for index in tri {
-            assert(int(index) < len(verts))
-
-            vert_tri[index] = u16(tri_index)
         }
     }
 

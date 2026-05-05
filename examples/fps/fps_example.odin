@@ -20,7 +20,7 @@ State :: struct {
     angle:          rv.Vec3,
     pos_spr:        [2]rv.Vec3,
     angle_spr:      [2]rv.Vec3,
-    group:          rv.Group_Handle,
+    arena:          rv.Arena_Handle,
     terrain_mesh:   rv.Mesh_Handle,
     terrain:        [TERRAIN_SIZE][TERRAIN_SIZE]f16
 }
@@ -108,9 +108,9 @@ _init :: proc() {
         }
     }
 
-    state.group = rv.create_group()
+    state.arena = rv.create_arena()
 
-    state.terrain_mesh = rv.create_mesh_from_data("terrain", state.group, verts, inds)
+    state.terrain_mesh = rv.create_mesh_from_data("terrain", state.arena, verts, inds)
 }
 
 _shutdown :: proc() {

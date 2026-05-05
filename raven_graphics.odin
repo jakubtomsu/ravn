@@ -47,33 +47,6 @@ Fill_Mode :: enum u8 {
     Wire, // Two-sided wireframe mode
 }
 
-Mesh :: struct {
-    group:          Group_Handle,
-
-    vert_num:       i32,
-    vert_offs:      i32,
-    index_num:      i32,
-    index_offs:     i32,
-
-    param:          u64, // user param
-
-    bounds_min:     Vec3,
-    bounds_max:     Vec3,
-    bounds_rad:     f32, // Centered sphere
-}
-
-Spline :: struct {
-    group:          Group_Handle,
-
-    vert_num:       i32,
-    vert_offs:      i32,
-
-    param:          u64, // user param
-
-    bounds_min:     Vec3,
-    bounds_max:     Vec3,
-}
-
 // TODO: pack vertex data into the following format:
 // [3]u16    pos         6
 // [2]u8     normal      2
@@ -184,7 +157,7 @@ Depth_Mode :: enum u8 {
 Draw_Batch_Key :: struct #all_or_none {
     asset_index:    u16,
     texture:        u8,
-    group:          u8,
+    arena:          u8,
     ps:             u8,
     vs:             u8,
     using packed:   bit_field u16 {
@@ -277,173 +250,36 @@ Sprite_Scaling :: enum u8 {
 
 
 
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Group
-//
-
-@(require_results)
-get_internal_group :: proc(handle: Group_Handle) -> (result: ^Group, ok: bool) {
-    return _table_get(&_state.groups, _state.groups_gen, handle)
-}
-
-@(require_results)
-create_group :: proc(
-    max_mesh_verts:     i32 = 1024 * 16,
-    max_mesh_indices:   i32 = 1024 * 32,
-    max_spline_verts:   i32 = 1024,
-    max_total_children: i32 = 1024,
-    vertex_data:        []Vertex = {},
-    index_data:         []Vertex_Index = {},
-) -> (result: Group_Handle, ok: bool) #optional_ok {
-    used_set := (transmute(u64)_state.groups_used) | 1
-    index := intrinsics.count_trailing_zeros(~used_set)
-    if index == 64 {
-        base.log_err("Failed to create group: There is already max number of groups")
-        return {}, false
-    }
-
-    group := &_state.groups[index]
-
-    _state.groups_used += {int(index)}
-
-    group^ = Group{
-        object_child_buf    = make([]Object_Handle, max_total_children, _state.allocator),
-        spline_vert_buf     = make([]Spline_Vertex, max_spline_verts, _state.allocator),
-    }
-
-    // TODO: allow creating mutable groups with default data..?
-    if vertex_data != nil {
-        group.vbuf, ok = gpu.create_buffer("rv-group-vert-buf",
-            stride  = size_of(Vertex),
-            // size    = size_of(Vertex) * len(vertex_data),
-            usage   = .Immutable,
-            data    = gpu.slice_bytes(vertex_data),
-        )
-    } else {
-        group.vbuf, ok = gpu.create_buffer("rv-group-vert-buf",
-            stride  = size_of(Vertex),
-            size    = size_of(Vertex) * max_mesh_verts,
-            usage   = .Default,
-        )
-    }
-
-    assert(ok)
-
-    if index_data != nil {
-        group.ibuf, ok = gpu.create_index_buffer("rv-group-index-buf",
-            // size = size_of(Vertex_Index) * len(index_data),
-            data = gpu.slice_bytes(index_data),
-            usage = .Immutable,
-        )
-    } else {
-        group.ibuf, ok = gpu.create_index_buffer("rv-group-index-buf",
-            size = size_of(Vertex_Index) * max_mesh_indices,
-            usage = .Default,
-        )
-    }
-
-    assert(ok)
-
-    handle := Group_Handle{
-        index = Handle_Index(index),
-        gen = _state.groups_gen[index],
-    }
-
-    return handle, true
-}
-
-clear_group :: proc(handle: Group_Handle) {
-    group, group_ok := get_internal_group(handle)
-    if !group_ok {
-        return
-    }
-
-    group.spline_vert_num = 0
-    group.mesh_vert_num = 0
-    group.mesh_index_num = 0
-    group.object_child_num = 0
-}
-
-destroy_group :: proc(handle: Group_Handle) {
-    group, group_ok := get_internal_group(handle)
-    if !group_ok {
-        return
-    }
-
-    gpu.destroy_resource(group.vbuf)
-    gpu.destroy_resource(group.ibuf)
-
-    for i in 0..<MAX_MESHES {
-        mesh := &_state.meshes[i]
-        if mesh.group != handle {
-            continue
-        }
-
-        mesh^ = {}
-        _state.meshes_hash[i] = 0
-        _state.meshes_gen[i] += 1
-    }
-
-
-    for i in 0..<MAX_OBJECTS {
-        object := &_state.objects[i]
-        if object.group != handle {
-            continue
-        }
-
-        object^ = {}
-        _state.objects_hash[i] = 0
-        _state.objects_gen[i] += 1
-    }
-
-    for i in 0..<MAX_SPLINES {
-        spline := &_state.splines[i]
-        if spline.group != handle {
-            continue
-        }
-
-        spline^ = {}
-        _state.splines_hash[i] = 0
-        _state.splines_gen[i] += 1
-    }
-
-    delete(group.spline_vert_buf, _state.allocator)
-    delete(group.object_child_buf, _state.allocator)
-
-    _state.groups[handle.index] = {}
-    _state.groups_gen[handle.index] += 1
-    _state.groups_used -= {int(handle.index)}
-}
-
-
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Meshes
 //
 
 create_mesh_from_data :: proc(
-    name:           string,
-    group_handle:   Group_Handle,
-    vertices:       []Vertex,
-    indices:        []Vertex_Index,
+    name:               string,
+    arena_handle:       Arena_Handle,
+    verts:              []Vertex,
+    indices:            []Vertex_Index,
+    // Internal use
+    update_gpu_buffers  := true,
 ) -> (result: Mesh_Handle, ok: bool) #optional_ok {
-    base.log_debug("Creating Mesh '%s' with %i verts and %i tris", name, len(vertices), len(indices) / 3)
+    base.log_debug("Creating Mesh '%s' with %i verts and %i tris", name, len(verts), len(indices) / 3)
 
-    group := get_internal_group(group_handle) or_return
+    arena := get_internal_arena(arena_handle) or_return
 
-    mesh: Mesh
-    mesh.group = group_handle
+    mesh := Mesh{
+        arena = arena_handle,
+        vert_num = i32(len(verts)),
+        index_num = i32(len(indices)),
+        vert_offs = arena.mesh_vert_num,
+        index_offs = arena.mesh_index_num,
+        bounds_min = max(f32),
+        bounds_max = min(f32),
+        bounds_rad = 0.001,
+        verts = verts,
+        indices = indices,
+    }
 
-    mesh.vert_num = i32(len(vertices))
-    mesh.index_num = i32(len(indices))
-    mesh.vert_offs = group.mesh_vert_num
-    mesh.index_offs = group.mesh_index_num
-
-    mesh.bounds_min = max(f32)
-    mesh.bounds_max = min(f32)
-    mesh.bounds_rad = 0.001
-    for vert in vertices {
+    for vert in verts {
         mesh.bounds_min = linalg.min(mesh.bounds_min, vert.pos)
         mesh.bounds_max = linalg.max(mesh.bounds_max, vert.pos)
         mesh.bounds_rad = max(mesh.bounds_rad, linalg.length(vert.pos))
@@ -455,11 +291,17 @@ create_mesh_from_data :: proc(
         return {}, false
     }
 
-    gpu.update_buffer(group.vbuf, int(mesh.vert_offs) * size_of(Vertex), gpu.slice_bytes(vertices))
-    gpu.update_buffer(group.ibuf, int(mesh.index_offs) * size_of(Vertex_Index), gpu.slice_bytes(indices))
+    if update_gpu_buffers {
+        gpu.update_buffer(arena.vbuf, int(mesh.vert_offs) * size_of(Vertex), gpu.slice_bytes(verts))
+        gpu.update_buffer(arena.ibuf, int(mesh.index_offs) * size_of(Vertex_Index), gpu.slice_bytes(indices))
+    }
+
+    arena.mesh_vert_num += i32(len(verts))
+    arena.mesh_index_num += i32(len(indices))
 
     return handle, true
 }
+
 
 
 
@@ -1206,7 +1048,7 @@ draw_mesh :: proc(
 
     key := _state.draw_state.key
     key.asset_index = u16(handle.index)
-    key.group = u8(mesh.group.index)
+    key.arena = u8(mesh.arena.index)
 
     // Scale diag mat determinant
     if scale.x * scale.y * scale.z < 0 {
@@ -2358,8 +2200,8 @@ submit_layers :: proc() {
 render_layer :: proc(
     #any_int layer_index:   i32,
     ren_tex_handle:         Render_Texture_Handle = DEFAULT_RENDER_TEXTURE,
-    clear_color:            Maybe(Vec3),
-    clear_depth:            bool,
+    clear_color:            Maybe(Vec3) = nil,
+    clear_depth:            bool = true,
     // User configurable GPU parameters.
     // Only first few slots are consumed by built-in raven resources,
     // so the rest is free to use.
@@ -2505,8 +2347,8 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
         batch := layer.meshes.batches[batch_index]
         _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
 
-        pip_desc.index.resource = _state.groups[key.group].ibuf
-        pip_desc.resources[1] = _state.groups[key.group].vbuf
+        pip_desc.index.resource = _state.arenas[key.arena].ibuf
+        pip_desc.resources[1] = _state.arenas[key.arena].vbuf
 
         pipeline, pipeline_ok := gpu.create_pipeline("mesh-pip", pip_desc)
         if !pipeline_ok {

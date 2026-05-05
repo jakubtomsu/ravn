@@ -307,7 +307,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.set_draw_layer(1)
     rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
 
-    screen := rv.get_viewport()
+    screen := rv.get_screen_size()
 
     score := state.snake.num_segments / 2
     state.max_score = max(score, state.max_score)
