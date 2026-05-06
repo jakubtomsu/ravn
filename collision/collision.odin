@@ -122,7 +122,7 @@ Sweep :: struct {
     shape:      i32,
     prim:       i32,
 
-    hit:        [3]f32,
+    end:        [3]f32, // Hit point
     normal:     [3]f32,
 }
 
@@ -293,6 +293,7 @@ _arena_allocator_proc :: proc(
 ) -> ([]byte, runtime.Allocator_Error) {
     handle := transmute(Arena_Handle)u32(uintptr(allocator_data))
     arena, arena_ok := get_arena(handle)
+    assert(arena_ok)
     if !arena_ok {
         return nil, .Invalid_Argument
     }
@@ -502,6 +503,7 @@ mesh_shape :: proc(
 ) {
     _, ok := get_mesh(handle)
     if !ok {
+        base.log_warn("Pushing invalid mesh: %v", handle)
         return
     }
     _push_shape({
@@ -544,7 +546,7 @@ make_sweep :: proc(pos: [3]f32, move: [3]f32, rad: f32 = 0, range: f32 = 1) -> S
         t = range,
         shape = -1,
         prim = -1,
-        hit = pos + move * range,
+        end = pos + move * range,
         normal = {0, 1, 0},
     }
 }
@@ -606,7 +608,7 @@ sweep_sphere :: proc(
     rad:            f32,
     range:          f32 = 1,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
-) -> (result: Sweep, ok: bool) #no_bounds_check {
+) -> (result: Sweep, ok: bool) #optional_ok #no_bounds_check {
     result = make_sweep(pos, move, rad = rad, range = range)
 
     step := &_state.step_data[_state.step_read]
@@ -655,8 +657,8 @@ eval_sweep :: proc(sweep: ^Sweep) {
     step := get_step_state()
     shape := &step.shape_data[sweep.shape]
 
-    sweep.hit = sweep.pos + sweep.move * sweep.t
-    sweep.normal = get_shape_gradient(shape^, sweep.pos, sweep.hit, sweep.prim)
+    sweep.end = sweep.pos + sweep.move * sweep.t
+    sweep.normal = get_shape_gradient(shape^, sweep.pos, sweep.end, sweep.prim)
 }
 
 

@@ -108,7 +108,7 @@ _init :: proc() {
         }
     }
 
-    state.arena = rv.create_arena()
+    state.arena = rv.create_arena(.Static)
 
     state.terrain_mesh = rv.create_mesh_from_data("terrain", state.arena, verts, inds)
 }

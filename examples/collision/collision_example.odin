@@ -115,23 +115,23 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     state.radius = rv.nsin(rv.get_time() * 0.25)
 
-    coll.mesh_shape(state.mesh, 5, rad = 0.5)
-    coll.mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
-    coll.mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
-    coll.sphere_shape({0, 2, 5}, 2)
-    coll.sphere_shape({0, 1, 8}, 1)
-    coll.sphere_shape({0, 1, 9}, 1)
-    coll.sphere_shape({0, 1, 10}, 1)
-    coll.sphere_shape({0, 1, 11}, 1)
-    coll.capsule_shape({0, 1, -5}, 0, 0.5)
-    coll.box_shape({-5, 2, -4}, {2, 1, 2})
-    coll.box_shape({-5, 0, -8}, {2, 1, 2}, 1)
-    coll.oriented_box_shape({5, 2, -8}, {2, 1, 2}, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}), rad = 1)
+    // coll.mesh_shape(state.mesh, 5, rad = 0.5)
+    // coll.mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
+    // coll.mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
+    // coll.sphere_shape({0, 2, 5}, 2)
+    // coll.sphere_shape({0, 1, 8}, 1)
+    // coll.sphere_shape({0, 1, 9}, 1)
+    // coll.sphere_shape({0, 1, 10}, 1)
+    // coll.sphere_shape({0, 1, 11}, 1)
+    // coll.capsule_shape({0, 1, -5}, 0, 0.5)
+    // coll.box_shape({-5, 2, -4}, {2, 1, 2})
+    // coll.box_shape({-5, 0, -8}, {2, 1, 2}, 1)
+    // coll.oriented_box_shape({5, 2, -8}, {2, 1, 2}, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}), rad = 1)
 
-    for i in 0..<100 {
-        coll.sphere_shape(f32(i) * 3, 2)
-        coll.mesh_shape(state.mesh, f32(-i) * 2, rad = 0.5)
-    }
+    // for i in 0..<100 {
+    //     coll.sphere_shape(f32(i) * 3, 2)
+    //     coll.mesh_shape(state.mesh, f32(-i) * 2, rad = 0.5)
+    // }
 
     {
         rv.perf_scope("Point Sweeps")
@@ -174,7 +174,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             // if rv._is_nan_or_inf_vec3(ps.hit) {
             //     rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_0), hit0, scale = 0.005 * SCALE, col = rv.RED)
             // } else {
-                rv.draw_line(ps.hit, ps.hit + ps.normal * 0.5, col = col)
+                rv.draw_line(ps.end, ps.end + ps.normal * 0.5, col = col)
             // }
         }
     }
@@ -249,7 +249,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         }
     }
 
-    draw_bvh_node(&coll_step.tlas, 0, 0)
+    // draw_bvh_node(&coll_step.tlas, 0, 0)
     // rv.draw_line_aabb(
     //     coll_step.tlas.nodes[0].min,
     //     coll_step.tlas.nodes[0].max,
@@ -274,6 +274,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 import "../../bvh"
 
 draw_bvh_node :: proc(tree: ^bvh.BVH, offs: [3]f32, index: int) {
+    if index >= int(tree.nodes_used) {
+        return
+    }
     node := tree.nodes[index]
 
     if node.len == 0 {
