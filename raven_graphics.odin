@@ -259,19 +259,25 @@ create_mesh_from_data :: proc(
     arena_handle:       Arena_Handle,
     verts:              []Vertex,
     indices:            []Vertex_Index,
-    // Internal use
-    update_gpu_buffers  := true,
 ) -> (result: Mesh_Handle, ok: bool) #optional_ok {
-    base.log_debug("Creating Mesh '%s' with %i verts and %i tris", name, len(verts), len(indices) / 3)
+    base.log_debug("Creating mesh '%s' with %i verts and %i tris", name, len(verts), len(indices) / 3)
 
     arena := get_internal_arena(arena_handle) or_return
+    
+    if
+        len(verts) > len(arena.vert_upload_buf) - int(arena.vert_upload_offs) ||
+        len(indices) > len(arena.index_upload_buf) - int(arena.index_upload_offs)
+    {
+        base.log_err("Failed to create mesh '%s': doesn't fit in the arena", name)
+        return {}, false
+    }
 
     mesh := Mesh{
         arena = arena_handle,
         vert_num = i32(len(verts)),
         index_num = i32(len(indices)),
-        vert_offs = arena.mesh_vert_num,
-        index_offs = arena.mesh_index_num,
+        vert_offs = arena.vert_upload_offs,
+        index_offs = arena.index_upload_offs,
         bounds_min = max(f32),
         bounds_max = min(f32),
         bounds_rad = 0.001,
@@ -290,14 +296,12 @@ create_mesh_from_data :: proc(
         base.log_err("Failed to create mesh '%s', table is full", name)
         return {}, false
     }
-
-    if update_gpu_buffers {
-        gpu.update_buffer(arena.vbuf, int(mesh.vert_offs) * size_of(Vertex), gpu.slice_bytes(verts))
-        gpu.update_buffer(arena.ibuf, int(mesh.index_offs) * size_of(Vertex_Index), gpu.slice_bytes(indices))
-    }
-
-    arena.mesh_vert_num += i32(len(verts))
-    arena.mesh_index_num += i32(len(indices))
+    
+    copy(arena.vert_upload_buf[arena.vert_upload_offs:], verts)
+    copy(arena.index_upload_buf[arena.index_upload_offs:], indices)
+    arena.vert_upload_offs += i32(len(verts))
+    arena.index_upload_offs += i32(len(indices))
+    arena.dirty = true
 
     return handle, true
 }

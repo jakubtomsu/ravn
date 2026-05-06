@@ -141,6 +141,7 @@ State :: struct #align(64) {
     screen_size:                [2]i32,
     screen_dirty:               bool,
     ended_frame:                bool,
+    init_allocator:             runtime.Allocator,
     allocator:                  runtime.Allocator,
     window:                     platform.Window,
     dpi_scale:                  f32,
@@ -231,6 +232,7 @@ State :: struct #align(64) {
     gpu_state:                  gpu.State,
     audio_state:                audio.State,
     shader_compiler_state:      shader_compiler.State,
+    collision_state:            collision.State,
 }
 
 Context_State :: struct {
@@ -261,10 +263,10 @@ Vertex_Shader :: distinct gpu.Shader_Handle
 
 // Data Scope
 // Collection of data with one lifetime.
-Arena :: struct {
+Arena :: struct #all_or_none {
+    usage:              Arena_Usage,
+
     spline_vert_num:    i32,
-    mesh_vert_num:      i32,
-    mesh_index_num:     i32,
     object_child_num:   i32,
 
     object_buf:         []Object,
@@ -273,8 +275,23 @@ Arena :: struct {
 
     collision_arena:    collision.Arena_Handle,
 
+    // Static mode
+    vert_upload_buf:    []Vertex,
+    index_upload_buf:   []Vertex_Index,
+    vert_upload_offs:   i32,
+    index_upload_offs:  i32,
+    dirty:              bool,
+
     vbuf:               gpu.Resource_Handle,
     ibuf:               gpu.Resource_Handle,
+}
+
+Arena_Usage :: enum u8 {
+    // For dynamic (per-frame) geometry.
+    Dynamic,
+    // For scenes and long lived data.
+    // All GPU buffers will be re-created on data flush.
+    Static,
 }
 
 Object_Kind :: rscn.Object_Kind
@@ -348,6 +365,7 @@ set_state_ptr :: proc "contextless" (state: ^State) {
     gpu._state = &_state.gpu_state
     audio._state = &_state.audio_state
     shader_compiler._state = &_state.shader_compiler_state
+    collision._state = &_state.collision_state
 }
 
 get_state_ptr :: proc "contextless" () -> (state: ^State) {
@@ -535,11 +553,12 @@ init_state :: proc(allocator: runtime.Allocator) {
         panic("Failed to allocate Raven State")
     }
 
-    _state.allocator = allocator
+    _state.init_allocator = allocator
 
     init_context_state(&_state.context_state, allocator)
-
     context = get_context()
+
+    _state.allocator = context.allocator
 
     base.log_info("Raven context initialized")
 
@@ -575,6 +594,8 @@ init_state :: proc(allocator: runtime.Allocator) {
     when !RELEASE {
         shader_compiler.init(&_state.shader_compiler_state)
     }
+
+    collision.init(&_state.collision_state, _state.allocator)
 
     if ODIN_OS != .JS {
         assert(gpu.is_init_done())
@@ -679,7 +700,7 @@ shutdown_state :: proc() {
     gpu.shutdown()
     platform.shutdown()
 
-    free(_state, _state.allocator)
+    free(_state, _state.init_allocator)
     _state = nil
 }
 
@@ -783,7 +804,7 @@ begin_frame :: proc() -> (keep_running: bool) {
     assert(_state.draw_states_len == 0, "Looks like you forgot pop_binds() somewhere")
 
     if _state.frame_index == 0 {
-        base.log_info("Time to first frame: %f ms", f32((platform.get_time_ns() - _state.start_time) / 1e3) * 1e-3)
+        base.log_info("Init time: %f ms", f32((platform.get_time_ns() - _state.start_time) / 1e3) * 1e-3)
     }
 
     free_all(context.temp_allocator)
@@ -985,6 +1006,17 @@ begin_frame :: proc() -> (keep_running: bool) {
         load_asset(change, {})
     }
 
+    for i in 0..<MAX_ARENAS {
+        if i not_in _state.arenas_used {
+            continue
+        }
+        arena := &_state.arenas[i]
+        flush_arena_gpu_buffers({
+            index = Handle_Index(i),
+            gen = _state.arenas_gen[i],
+        })
+    }
+
     _state.draw_states_len = 0
     _state.draw_state = {
         ps = int_cast(u8, _state.builtin_pixel_shader[.Default].index),
@@ -1133,7 +1165,7 @@ _load_builtin_assets :: proc() {
     _state.builtin_arena = load_scene_from_data(
         #load("data/default.rscn", string),
         #load("data/default.rscn.bin"),
-        dst_arena = {},
+        arena_handle = {},
     ) or_else panic("Failed to load default scene")
 
     for &handle, id in _state.builtin_mesh {
@@ -1250,12 +1282,12 @@ get_internal_arena :: proc(handle: Arena_Handle) -> (result: ^Arena, ok: bool) {
 
 @(require_results)
 create_arena :: proc(
-    max_mesh_verts:     i32 = 1024 * 16,
-    max_mesh_indices:   i32 = 1024 * 32,
-    max_spline_verts:   i32 = 1024,
-    max_total_children: i32 = 1024,
-    vertex_data:        []Vertex = {},
-    index_data:         []Vertex_Index = {},
+    usage:                          Arena_Usage,
+    #any_int max_mesh_verts:         i32 = 1024 * 1024,
+    #any_int max_mesh_indices:       i32 = 1024 * 1024,
+    #any_int max_spline_verts:       i32 = 1024 * 8,
+    #any_int max_total_children:     i32 = 1024 * 8,
+    #any_int collision_arena_size:   u64 = 1024 * 1024,
 ) -> (result: Arena_Handle, ok: bool) #optional_ok {
     used_set := (transmute(u64)_state.arenas_used) | 1
     index := intrinsics.count_trailing_zeros(~used_set)
@@ -1269,42 +1301,45 @@ create_arena :: proc(
     _state.arenas_used += {int(index)}
 
     arena^ = Arena{
-        object_child_buf    = make([]Object_Handle, max_total_children, _state.allocator),
-        spline_vert_buf     = make([]Spline_Vertex, max_spline_verts, _state.allocator),
+        usage = usage,
+        object_child_buf    = runtime.make_aligned([]Object_Handle, max_total_children, 4096, _state.allocator),
+        spline_vert_buf     = runtime.make_aligned([]Spline_Vertex, max_spline_verts, 4096, _state.allocator),
+        vert_upload_buf     = runtime.make_aligned([]Vertex, max_mesh_verts, 4096, _state.allocator),
+        index_upload_buf    = runtime.make_aligned([]Vertex_Index, max_mesh_indices, 4096, _state.allocator),
+        collision_arena     = collision.create_arena(collision_arena_size, _state.allocator),
+        spline_vert_num     = 0,
+        object_child_num    = 0,
+        ibuf                = {},
+        vbuf                = {},
+        object_buf          = {},
+        vert_upload_offs    = 0,
+        index_upload_offs   = 0,
+        dirty               = false,
     }
 
-    // TODO: allow creating mutable arenas with default data..?
-    if vertex_data != nil {
-        arena.vbuf, ok = gpu.create_buffer("rv-arena-vert-buf",
-            stride  = size_of(Vertex),
-            // size    = size_of(Vertex) * len(vertex_data),
-            usage   = .Immutable,
-            data    = gpu.slice_bytes(vertex_data),
-        )
-    } else {
+    switch usage {
+    case .Dynamic:
         arena.vbuf, ok = gpu.create_buffer("rv-arena-vert-buf",
             stride  = size_of(Vertex),
             size    = size_of(Vertex) * max_mesh_verts,
             usage   = .Default,
         )
-    }
 
-    assert(ok)
+        assert(ok)
+        assert(arena.vbuf != {})
 
-    if index_data != nil {
-        arena.ibuf, ok = gpu.create_index_buffer("rv-arena-index-buf",
-            // size = size_of(Vertex_Index) * len(index_data),
-            data = gpu.slice_bytes(index_data),
-            usage = .Immutable,
-        )
-    } else {
         arena.ibuf, ok = gpu.create_index_buffer("rv-arena-index-buf",
             size = size_of(Vertex_Index) * max_mesh_indices,
             usage = .Default,
         )
+
+        assert(ok)
+        assert(arena.ibuf != {})
+
+    case .Static:
+        // GPU buffers will be created later
     }
 
-    assert(ok)
 
     handle := Arena_Handle{
         index = Handle_Index(index),
@@ -1320,10 +1355,66 @@ clear_arena :: proc(handle: Arena_Handle) {
         return
     }
 
+    assert(arena.usage == .Dynamic)
+    if arena.usage != .Dynamic {
+        return
+    }
+
     arena.spline_vert_num = 0
-    arena.mesh_vert_num = 0
-    arena.mesh_index_num = 0
     arena.object_child_num = 0
+    arena.vert_upload_offs = 0
+    arena.index_upload_offs = 0
+}
+
+// NOTE: doesn't clear!
+flush_arena_gpu_buffers :: proc(handle: Arena_Handle) {
+    arena, arena_ok := get_internal_arena(handle)
+    if !arena_ok || !arena.dirty {
+        return
+    }
+
+    arena.dirty = false
+
+    base.log_info("Flushing arena GPU buffers")
+
+    switch arena.usage {
+    case .Dynamic:
+        gpu.update_buffer(arena.vbuf, offset = 0, buffers = {
+            gpu.slice_bytes(arena.vert_upload_buf),
+        })
+
+        gpu.update_buffer(arena.ibuf, offset = 0, buffers = {
+            gpu.slice_bytes(arena.index_upload_buf),
+        })
+
+    case .Static:
+        gpu.destroy_resource(arena.vbuf)
+        gpu.destroy_resource(arena.ibuf)
+
+        ok: bool
+
+        assert(arena.vert_upload_offs > 0)
+        assert(arena.index_upload_offs > 0)
+
+        arena.vbuf, ok = gpu.create_buffer("rv-arena-vert-buf",
+            stride  = size_of(Vertex),
+            usage   = .Immutable,
+            data = gpu.slice_bytes(arena.vert_upload_buf[:arena.vert_upload_offs]),
+        )
+        assert(ok)
+
+        arena.ibuf, ok = gpu.create_index_buffer("rv-arena-index-buf",
+            usage = .Immutable,
+            data = gpu.slice_bytes(arena.index_upload_buf[:arena.index_upload_offs]),
+        )
+        assert(ok)
+
+    case:
+        assert(false)
+    }
+
+    assert(arena.vbuf != {})
+    assert(arena.ibuf != {})
 }
 
 destroy_arena :: proc(handle: Arena_Handle) {
@@ -1345,7 +1436,6 @@ destroy_arena :: proc(handle: Arena_Handle) {
         _state.meshes_hash[i] = 0
         _state.meshes_gen[i] += 1
     }
-
 
     for i in 0..<MAX_OBJECTS {
         object := &_state.objects[i]
@@ -1371,6 +1461,8 @@ destroy_arena :: proc(handle: Arena_Handle) {
 
     delete(arena.spline_vert_buf, _state.allocator)
     delete(arena.object_child_buf, _state.allocator)
+    delete(arena.vert_upload_buf, _state.allocator)
+    delete(arena.index_upload_buf, _state.allocator)
 
     _state.arenas[handle.index] = {}
     _state.arenas_gen[handle.index] += 1
@@ -1382,15 +1474,16 @@ destroy_arena :: proc(handle: Arena_Handle) {
 // MARK: Scene
 //
 
-load_scene :: proc(name: string, dst_arena: Arena_Handle = {}) -> (result_arena: Arena_Handle, ok: bool) {
+load_scene :: proc(name: string, arena_handle: Arena_Handle = {}) -> (result_arena: Arena_Handle, ok: bool) {
     bin_name := strings_join(name, ".bin", allocator = context.temp_allocator)
     txt_data := get_file_data(name) or_return
     bin_data := get_file_data(bin_name) or_return
 
-    return load_scene_from_data(string(txt_data), bin_data, dst_arena)
+    return load_scene_from_data(string(txt_data), bin_data, arena_handle = arena_handle)
 }
 
-load_scene_from_data :: proc(txt: string, bin: []byte, dst_arena: Arena_Handle) -> (Arena_Handle, bool) {
+load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handle) -> (result_arena: Arena_Handle, ok: bool) {
+    arena_handle := arena_handle
     assert(len(txt) >= 5)
     assert(len(bin) >= 5)
 
@@ -1408,9 +1501,6 @@ load_scene_from_data :: proc(txt: string, bin: []byte, dst_arena: Arena_Handle) 
     index_buf := slice.reinterpret([]u16, bin[header.mesh_index_offs:])[:header.mesh_index_num]
     spline_vert_buf := slice.reinterpret([]rscn.Spline_Vertex, bin[header.spline_vert_offs:])[:header.spline_vert_num]
 
-    arena: ^Arena
-    arena_handle: Arena_Handle
-
     vertices := make([]Vertex, len(vert_buf), context.temp_allocator)
     for i in 0..<len(vertices) {
         v := vert_buf[i]
@@ -1422,36 +1512,22 @@ load_scene_from_data :: proc(txt: string, bin: []byte, dst_arena: Arena_Handle) 
         }
     }
 
-    if dst_arena != {} {
-        ok: bool
-        arena, ok = get_internal_arena(dst_arena)
-        arena_handle = dst_arena
-
-        if !ok {
-            base.log_err("Failed to load scene: Invalid target arena handle")
-            return {}, false
-        }
-
-        // APPEND TO GPU
-        unimplemented()
-
-    } else {
-        ok: bool
-        arena_handle, ok = create_arena(
-            max_total_children  = i32(header.object_num),
-            max_spline_verts    = i32(header.spline_vert_num),
-            vertex_data         = vertices,
-            index_data          = index_buf,
+    if arena_handle == {} {
+        arena_handle = create_arena(
+            usage = .Static,
+            max_mesh_verts = len(vert_buf),
+            max_mesh_indices = len(index_buf),
+            max_spline_verts = len(spline_vert_buf),
+            max_total_children = header.object_num,
         )
+    }
 
-        if !ok {
-            base.log_err("Failed to load scene: Couldn't create arena")
-            return {}, false
-        }
+    arena: ^Arena
+    arena, ok = get_internal_arena(arena_handle)
 
-        arena, _ = get_internal_arena(arena_handle)
-
-        assert(arena != nil)
+    if !ok {
+        base.log_err("Failed to load scene: Invalid target arena handle")
+        return {}, false
     }
 
     object_list := make([]Object_Handle, header.object_num, context.temp_allocator)
@@ -1479,10 +1555,8 @@ load_scene_from_data :: proc(txt: string, bin: []byte, dst_arena: Arena_Handle) 
         case rscn.Comment:
 
         case rscn.Image:
-            _, ok := get_texture_by_name(v.path)
+            _, ok = get_texture_by_name(v.path)
             if ok {
-                // Ignore existing textures.
-                // Watcher should handle the data updates.
                 continue
             }
 
@@ -1503,7 +1577,6 @@ load_scene_from_data :: proc(txt: string, bin: []byte, dst_arena: Arena_Handle) 
                 arena_handle = arena_handle,
                 verts = verts,
                 indices = indices,
-                update_gpu_buffers = false,
             )
 
         case rscn.Spline:
@@ -2225,7 +2298,7 @@ get_file_data_by_hash :: proc(hash: Hash, flush := false) -> (data: []byte, ok: 
     return file.data, true
 }
 
-load_asset :: proc(name: string, dst_arena: Arena_Handle) -> bool {
+load_asset :: proc(name: string, arena_handle: Arena_Handle) -> bool {
     if string_has_suffix(name, ".png") {
         data, data_ok := get_file_data(name)
         if !data_ok {
@@ -2235,7 +2308,7 @@ load_asset :: proc(name: string, dst_arena: Arena_Handle) -> bool {
         _, ok := create_texture_from_encoded_data(name[:len(name) - 4], data)
         return ok
     } else if string_has_suffix(name, ".rscn") {
-        _, ok := load_scene(name, dst_arena = dst_arena)
+        _, ok := load_scene(name, arena_handle = arena_handle)
         return ok
     }
     // TODO
@@ -2358,13 +2431,18 @@ get_internal_file_by_hash :: proc(hash: Hash) -> (file: ^File, ok: bool) {
 create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Mesh_Handle, ok: bool) #optional_ok {
     #assert(size_of(Vertex_Index) == size_of(u16))
 
-    mesh := get_internal_mesh(mesh) or_return
+    mesh, mesh_ok := get_internal_mesh(mesh)
+    if !mesh_ok {
+        base.log_err("Failed to create collision mesh, invalid mesh handle")
+        return {}, false
+    }
 
     if mesh.collision_mesh != {} {
         return mesh.collision_mesh, true
     }
 
-    arena := get_internal_arena(mesh.arena) or_return
+    arena, arena_ok := get_internal_arena(mesh.arena)
+    assert(arena_ok)
     allocator := collision.arena_allocator(arena.collision_arena)
 
     verts := make([][3]f32, len(mesh.verts), allocator)
@@ -2380,7 +2458,7 @@ create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Mesh_Hand
 
     mesh.collision_mesh = result
 
-    return result, ok
+    return result, true
 }
 
 

@@ -1140,6 +1140,7 @@ update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte) {
     }
 
     res, res_ok := get_internal_resource(handle)
+    validate(res_ok)
     if !res_ok {
         return
     }
