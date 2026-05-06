@@ -66,11 +66,18 @@ init_prims :: proc(bvh: ^BVH, prims: [][2][3]f32) {
         bvh.indices[i] = u16(i)
     }
 
-    // 1 for the root, another unused one to fill the first cache line
-    bvh.nodes_used = 2
-    bvh.nodes[0] = {
-        first = 0,
-        len = i32(len(prims))
+    if len(prims) > 0 {
+        // 1 for the root, another unused one to fill the first cache line
+        bvh.nodes_used = 2
+        bvh.nodes[0] = {
+            first = 0,
+            len = i32(len(prims))
+        }
+    } else {
+        bvh.nodes[0] = {
+            first = -1,
+            len = -1,
+        }
     }
 }
 
