@@ -536,6 +536,50 @@ _push_shape :: proc(shape: Shape) {
 // MARK: Sweep query
 //
 
+move_and_slide :: proc(
+    pos:            [3]f32,
+    vel:            [3]f32,
+    delta:          f32,
+    rad:            f32,
+    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    max_iters       := 8,
+    bounce:         f32 = 0.05,
+    damp:           f32 = 0.01,
+    sweep_buf:      []Sweep = nil,
+) -> (new_pos: [3]f32, new_vel: [3]f32, num_hits: int) {
+    pos := pos
+    move := vel * delta
+    t: f32 = 0
+
+    for i in 0..<max_iters {
+        sweep, sweep_hit := sweep_sphere(pos, move, rad = rad, ignore_layers = ignore_layers)
+
+        pos += sweep.move * clamp(sweep.t - 0.001, 0.0, 1.0)
+        t += sweep.t
+
+        if sweep_hit {
+            solid_move := move - sweep.normal * linalg.dot(move, sweep.normal)
+            bounce_move := linalg.reflect(move, sweep.normal)
+            move =
+                solid_move * (1.0 - bounce) +
+                bounce_move * bounce
+            move *= 1.0 - damp
+            move += sweep.normal * 1e-5
+
+            if num_hits < len(sweep_buf) {
+                sweep_buf[num_hits] = sweep
+                num_hits += 1
+            }
+        }
+
+        if t >= 1.0 {
+            break
+        }
+    }
+
+    return pos, delta <= 1e-9 ? 0 : move / delta, num_hits
+}
+
 @(require_results)
 make_sweep :: proc(pos: [3]f32, move: [3]f32, rad: f32 = 0, range: f32 = 1) -> Sweep {
     return {
@@ -627,6 +671,7 @@ sweep_sphere :: proc(
                 }
 
                 result.t, result.prim = sweep_sphere_vs_shape(pos, move, rad, shape, result.t) or_continue
+                assert(base.is_finite_f32(result.t))
                 result.shape = i32(index)
                 ok = true
             }
@@ -659,6 +704,7 @@ eval_sweep :: proc(sweep: ^Sweep) {
 
     sweep.end = sweep.pos + sweep.move * sweep.t
     sweep.normal = get_shape_gradient(shape^, sweep.pos, sweep.end, sweep.prim)
+    assert(base.is_finite_vec(sweep.normal))
 }
 
 
