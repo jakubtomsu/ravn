@@ -693,12 +693,29 @@ shutdown_state :: proc() {
     }
 
     delete(_state.dynamic_vert_upload_buf, _state.allocator)
+    for &arena, i in _state.arenas {
+        if i not_in _state.arenas_used {
+            continue
+        }
+        _delete_arena_buffers(&arena)
+    }
 
-    _print_stats_report()
+    for file, i in _state.files {
+        if _state.files_hash[i] == 0 {
+            continue
+        }
+        
+        if .Dynamically_Allocated in file.flags {
+            delete(file.data, _state.allocator)
+        }
+    }
 
+    collision.shutdown()
     audio.shutdown()
     gpu.shutdown()
     platform.shutdown()
+
+    _print_stats_report()
 
     free(_state, _state.init_allocator)
     _state = nil
@@ -854,6 +871,7 @@ begin_frame :: proc() -> (keep_running: bool) {
     assert(gpu_can_begin_frame) // HACK
 
     audio.update()
+    collision.begin_step()
 
     _perf_counter_add(.Frame_Time, _state.frame_dur_ns)
 
@@ -1044,6 +1062,8 @@ end_frame :: proc(vsync := true) {
     curr_time := platform.get_time_ns()
 
     _perf_counter_add(.Frame_Work_Time, curr_time - _state.last_time)
+
+    collision.end_step()
 
     gpu.end_frame(sync = vsync)
 }
@@ -1459,14 +1479,18 @@ destroy_arena :: proc(handle: Arena_Handle) {
         _state.splines_gen[i] += 1
     }
 
-    delete(arena.spline_vert_buf, _state.allocator)
-    delete(arena.object_child_buf, _state.allocator)
-    delete(arena.vert_upload_buf, _state.allocator)
-    delete(arena.index_upload_buf, _state.allocator)
+    _delete_arena_buffers(arena)
 
     _state.arenas[handle.index] = {}
     _state.arenas_gen[handle.index] += 1
     _state.arenas_used -= {int(handle.index)}
+}
+
+_delete_arena_buffers :: proc(arena: ^Arena) {
+    delete(arena.spline_vert_buf, _state.allocator)
+    delete(arena.object_child_buf, _state.allocator)
+    delete(arena.vert_upload_buf, _state.allocator)
+    delete(arena.index_upload_buf, _state.allocator)
 }
 
 

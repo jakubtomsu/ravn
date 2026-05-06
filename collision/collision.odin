@@ -38,6 +38,8 @@ Layer_Mask :: [4]u64
 ID :: u64
 
 State :: struct {
+    init_allocator:     runtime.Allocator,
+
     arena_data:         [MAX_ARENAS]Arena,
     arena_gen:          [MAX_ARENAS]Handle_Gen,
     arena_used:         base.Bit_Pool(MAX_ARENAS),
@@ -147,6 +149,7 @@ Overlap :: struct {
 
 init :: proc(state: ^State, allocator := context.allocator) {
     _state = state
+    _state.init_allocator = allocator
     base.bit_pool_set_1(&_state.arena_used, 0)
     base.bit_pool_set_1(&_state.mesh_used, 0)
 
@@ -161,6 +164,11 @@ init :: proc(state: ^State, allocator := context.allocator) {
 }
 
 shutdown :: proc() {
+    for step in _state.step_data {
+        delete(step.tlas.nodes, _state.init_allocator)
+        delete(step.tlas.indices, _state.init_allocator)
+    }
+
     for arena in _state.arena_data {
         if arena.data != nil {
             delete(arena.data, arena.backing)
@@ -564,7 +572,6 @@ move_and_slide :: proc(
                 solid_move * (1.0 - bounce) +
                 bounce_move * bounce
             move *= 1.0 - damp
-            move += sweep.normal * 1e-5
 
             if num_hits < len(sweep_buf) {
                 sweep_buf[num_hits] = sweep
