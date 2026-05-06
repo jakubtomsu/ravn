@@ -87,8 +87,6 @@ find_last_slash :: proc(str: string) -> int {
 }
 
 remove_all :: proc(pattern: string) {
-    base.log_info("Removing all '%s'", pattern)
-
     iter: platform.Directory_Iter
     for path in platform.iter_directory(&iter, pattern, context.temp_allocator) {
         base.log_info("removing '%s'", path)

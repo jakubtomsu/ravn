@@ -14,12 +14,14 @@ Command :: enum {
     Run_Hot,
     Build_Hot,
     Builtin_Shaders,
+    Clean,
 }
 
 _command_name := [Command]string {
     .Export_Web = "export-web",
     .Run_Hot = "run-hot",
     .Build_Hot = "build-hot",
+    .Clean = "clean",
     .Builtin_Shaders = "builtin-shaders",
 }
 
@@ -27,6 +29,7 @@ _command_info := [Command]string {
     .Export_Web = "Compile the packge to WASM and package a web build",
     .Run_Hot = "Run the package in hot reload mode",
     .Build_Hot = "Only compile the hot reload DLL",
+    .Clean = "Remove common temporary files",
     .Builtin_Shaders = "Precompile builtin shaders",
 }
 
@@ -73,7 +76,7 @@ parse_flags :: proc(params: []string) -> (flags: Flags, ok: bool) {
     }
 
     #partial switch flags.cmd {
-    case .Builtin_Shaders:
+    case .Builtin_Shaders, .Clean:
 
     case:
         if len(params) < 2 {
@@ -114,6 +117,11 @@ main :: proc() {
         compile_hot(fl.pkg, pkg_name = pkg_name, index = 0)
         hotreload_run(pkg_name, fl.pkg)
         clean_hot(pkg_name)
+
+    case .Clean:
+        remove_all("*.exe")
+        remove_all("*.pdb")
+        remove_all("*.rdi")
 
     case .Builtin_Shaders:
         if !compile_builtin_shaders() {
