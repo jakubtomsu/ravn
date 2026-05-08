@@ -1822,7 +1822,7 @@ when BACKEND == BACKEND_WINDOWS {
 
                 _state.physical_cores[_state.physical_core_num] = {
                     id = info.CpuSet.Id,
-                    efficiency_class = u8(info.CpuSet.EfficiencyClass),
+                    efficiency = u8(info.CpuSet.EfficiencyClass),
                 }
                 _state.physical_core_num += 1
             }

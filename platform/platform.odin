@@ -136,9 +136,9 @@ Memory_Protection :: enum u8 {
 }
 
 Physical_Core_Info :: struct {
-    id:                 u32,
-    efficiency_class:   u8,
-    kind:               Physical_Core_Kind,
+    id:         u32,
+    efficiency: u8,
+    kind:       Physical_Core_Kind,
 }
 
 Physical_Core_Kind :: enum {
@@ -408,7 +408,17 @@ get_current_thread_id :: proc() -> u64 {
 refresh_physical_core_info :: proc() {
     _state.physical_core_num = 0
     _state.physical_cores = {}
+
     _refresh_physical_core_info()
+
+    max_efficiency: u8 = 0
+    for info in _state.physical_cores[:_state.physical_core_num] {
+        max_efficiency = max(max_efficiency, info.efficiency)
+    }
+
+    for &info in _state.physical_cores[:_state.physical_core_num] {
+        info.kind = info.efficiency == max_efficiency ? .Performance : .Efficiency
+    }
 }
 
 get_physical_core_num :: proc() -> int {
