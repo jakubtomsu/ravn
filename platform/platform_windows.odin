@@ -1788,6 +1788,58 @@ when BACKEND == BACKEND_WINDOWS {
     ) -> windows.BOOL ---
     }
 
+    // Scans system and returns the list of physical cores
+    _refresh_physical_core_info :: proc() {
+        needed: windows.ULONG
+        GetSystemCpuSetInformation(nil, 0, &needed, windows.INVALID_HANDLE_VALUE, 0)
+
+        buffer := make([]byte, needed, context.temp_allocator)
+
+        returned: windows.ULONG
+        GetSystemCpuSetInformation(
+            Information = (^_win32_SYSTEM_CPU_SET_INFORMATION)(&buffer[0]),
+            BufferLength = windows.ULONG(len(buffer)),
+            ReturnedLength = &returned,
+            Process = windows.INVALID_HANDLE_VALUE,
+            Flags = 0,
+        )
+
+        ptr := uintptr(&buffer[0])
+        end := ptr + uintptr(returned)
+
+        seen_cores: [256]bool
+
+        for ptr < end {
+            info := (^ _win32_SYSTEM_CPU_SET_INFORMATION)(ptr)
+            if info.Type == .CpuSetInformation {
+                core_index := info.CpuSet.CoreIndex
+                // Only take the first logical thread per physical core
+                if seen_cores[core_index] {
+                    continue
+                }
+
+                seen_cores[core_index] = true
+
+                _state.physical_cores[_state.physical_core_num] = {
+                    id = info.CpuSet.Id,
+                    efficiency_class = u8(info.CpuSet.EfficiencyClass),
+                }
+                _state.physical_core_num += 1
+            }
+
+            ptr += uintptr(info.Size)
+        }
+    }
+
+    _pin_thread_to_physical_core :: proc(thread: Thread, core_index: int) -> bool {
+        id := _state.physical_cores[core_index].id
+        handle := thread.handle
+        if thread == {} {
+            handle = windows.GetCurrentThread()
+        }
+
+        return bool(SetThreadSelectedCpuSets(handle, &id, 1))
+    }
 
 
     /*

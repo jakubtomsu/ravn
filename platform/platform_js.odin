@@ -212,6 +212,13 @@ _get_current_thread_id :: proc() -> u64 {
     return 0
 }
 
+_refresh_physical_core_info :: proc() {
+}
+
+_pin_thread_to_physical_core :: proc(thread: Thread, core_index: int) -> bool {
+    return false
+}
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

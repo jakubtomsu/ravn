@@ -26,18 +26,24 @@ when ODIN_OS == .Windows {
 SEPARATOR :: "\\" when ODIN_OS == .Windows else "/"
 
 EVENT_QUEUE_SIZE :: 256
-
+MAX_PHYSICAL_CORES :: 256
 MAX_GAMEPADS :: 4
 
 _state: ^State
 
 State :: struct {
     using native:       _State,
+
     mouse_pos:          [2]i32,
     mouse_relative:     bool,
     mouse_visible:      bool,
+
     event_queue:        _Event_Queue,
     event_counter:      i32,
+
+    physical_cores:     [MAX_PHYSICAL_CORES]Physical_Core_Info,
+    physical_core_num:  i32,
+
 }
 
 File_Handle :: struct {
@@ -127,6 +133,17 @@ Memory_Protection :: enum u8 {
     Execute,
     Execute_Read,
     Execute_Read_Write,
+}
+
+Physical_Core_Info :: struct {
+    id:                 u32,
+    efficiency_class:   u8,
+    kind:               Physical_Core_Kind,
+}
+
+Physical_Core_Kind :: enum {
+    Efficiency,
+    Performance,
 }
 
 Gamepad_State :: struct {
@@ -240,7 +257,7 @@ Key :: enum u8 {
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Common
+// MARK: General
 //
 
 set_state_ptr :: proc(state: ^State) {
@@ -386,6 +403,41 @@ join_thread :: proc(thread: Thread) {
 
 get_current_thread_id :: proc() -> u64 {
     return _get_current_thread_id()
+}
+
+refresh_physical_core_info :: proc() {
+    _state.physical_core_num = 0
+    _state.physical_cores = {}
+    _refresh_physical_core_info()
+}
+
+get_physical_core_num :: proc() -> int {
+    return int(_state.physical_core_num)
+}
+
+get_physical_core_info :: proc(core_index: int) -> Physical_Core_Info {
+    if _state.physical_core_num == 0 {
+        refresh_physical_core_info()
+    }
+
+    if core_index >= 0 && core_index < int(_state.physical_core_num) {
+        return _state.physical_cores[core_index]
+    }
+
+    return {}
+}
+
+// thread == {} means current thread
+pin_thread_to_physical_core :: proc(thread: Thread, core_index: int) -> bool {
+    if _state.physical_core_num == 0 {
+        refresh_physical_core_info()
+    }
+
+    if core_index < 0 || core_index >= int(_state.physical_core_num) {
+        return false
+    }
+
+    return pin_thread_to_physical_core(thread, core_index)
 }
 
 

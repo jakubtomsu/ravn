@@ -18,6 +18,7 @@ when BACKEND == BACKEND_DUMMY {
         panic_contextless("Error: trying to call platform procedures with the dummy backend")
     }
 
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MARK: Common
     //
@@ -48,6 +49,7 @@ when BACKEND == BACKEND_DUMMY {
     _sleep_ms :: proc(#any_int ms: int) { dummy() }
     @(require_results) _get_time_ns :: proc() -> u64 { dummy() }
 
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MARK: Thread
     //
@@ -56,6 +58,8 @@ when BACKEND == BACKEND_DUMMY {
     _join_thread :: proc(thread: Thread) { dummy() }
     _set_thread_name :: proc(thread: Thread, name: string) { dummy() }
     @(require_results) _get_current_thread_id :: proc() -> u64 { dummy() }
+    _refresh_physical_core_info :: proc() {}
+    _pin_thread_to_physical_core :: proc(thread: Thread, core_index: int) -> bool { return false }
 
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
