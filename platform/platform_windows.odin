@@ -19,6 +19,7 @@ _ :: windows
 when BACKEND == BACKEND_WINDOWS {
 
     foreign import kernel32 "system:Kernel32.lib"
+    foreign import user32 "system:User32.lib"
 
     _State :: struct {
         last_mouse_wparam:      windows.WPARAM,
@@ -877,7 +878,8 @@ when BACKEND == BACKEND_WINDOWS {
         instance := windows.GetModuleHandleW(nil)
 
         if high_dpi {
-            windows.SetProcessDpiAwareness(.PROCESS_PER_MONITOR_DPI_AWARE)
+            windows.SetProcessDpiAwarenessContext(windows.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+            // scaling := f32(GetDpiForSystem()) / 96
         }
 
         wndclass := windows.WNDCLASSW{
@@ -1723,6 +1725,12 @@ when BACKEND == BACKEND_WINDOWS {
                 AllocationTag:        windows.DWORD64,
             },
         },
+    }
+
+
+    @(default_calling_convention = "system")
+    foreign user32 {
+        GetDpiForSystem :: proc() -> windows.UINT ---
     }
 
     @(default_calling_convention = "system")
