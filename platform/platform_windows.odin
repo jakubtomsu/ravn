@@ -1727,71 +1727,75 @@ when BACKEND == BACKEND_WINDOWS {
 
     @(default_calling_convention = "system")
     foreign kernel32 {
-    GetSystemCpuSetInformation :: proc(
-        Information: ^_win32_SYSTEM_CPU_SET_INFORMATION,
-        BufferLength: windows.ULONG,
-        ReturnedLength: ^windows.ULONG,
-        Process: windows.HANDLE,
-        Flags: windows.ULONG,
-    ) -> windows.BOOL ---
+        GetSystemCpuSetInformation :: proc(
+            Information: ^_win32_SYSTEM_CPU_SET_INFORMATION,
+            BufferLength: windows.ULONG,
+            ReturnedLength: ^windows.ULONG,
+            Process: windows.HANDLE,
+            Flags: windows.ULONG,
+        ) -> windows.BOOL ---
 
-    GetProcessDefaultCpuSets :: proc(
-        Process: windows.HANDLE,
-        CpuSetIds: ^windows.ULONG,
-        CpuSetIdCount: windows.ULONG,
-        RequiredIdCount: ^windows.ULONG,
-    ) -> windows.BOOL ---
+        GetProcessDefaultCpuSets :: proc(
+            Process: windows.HANDLE,
+            CpuSetIds: ^windows.ULONG,
+            CpuSetIdCount: windows.ULONG,
+            RequiredIdCount: ^windows.ULONG,
+        ) -> windows.BOOL ---
 
-    SetProcessDefaultCpuSets :: proc(
-        Process: windows.HANDLE,
-        CpuSetIds: ^windows.ULONG,
-        CpuSetIdCount: windows.ULONG,
-    ) -> windows.BOOL ---
+        SetProcessDefaultCpuSets :: proc(
+            Process: windows.HANDLE,
+            CpuSetIds: ^windows.ULONG,
+            CpuSetIdCount: windows.ULONG,
+        ) -> windows.BOOL ---
 
-    GetThreadSelectedCpuSets :: proc(
-        Thread: windows.HANDLE,
-        CpuSetIds: ^windows.ULONG,
-        CpuSetIdCount: windows.ULONG,
-        RequiredIdCount: ^windows.ULONG,
-    ) -> windows.BOOL ---
+        GetThreadSelectedCpuSets :: proc(
+            Thread: windows.HANDLE,
+            CpuSetIds: ^windows.ULONG,
+            CpuSetIdCount: windows.ULONG,
+            RequiredIdCount: ^windows.ULONG,
+        ) -> windows.BOOL ---
 
-    SetThreadSelectedCpuSets :: proc(
-        Thread: windows.HANDLE,
-        CpuSetIds: ^windows.ULONG,
-        CpuSetIdCount: windows.ULONG,
-    ) -> windows.BOOL ---
+        SetThreadSelectedCpuSets :: proc(
+            Thread: windows.HANDLE,
+            CpuSetIds: ^windows.ULONG,
+            CpuSetIdCount: windows.ULONG,
+        ) -> windows.BOOL ---
 
-    GetProcessDefaultCpuSetMasks :: proc(
-        Process: windows.HANDLE,
-        CpuSetMasks: ^_win32_GROUP_AFFINITY,
-        CpuSetMaskCount: windows.USHORT,
-        RequiredMaskCount: ^windows.USHORT,
-    ) -> windows.BOOL ---
+        GetProcessDefaultCpuSetMasks :: proc(
+            Process: windows.HANDLE,
+            CpuSetMasks: ^_win32_GROUP_AFFINITY,
+            CpuSetMaskCount: windows.USHORT,
+            RequiredMaskCount: ^windows.USHORT,
+        ) -> windows.BOOL ---
 
-    SetProcessDefaultCpuSetMasks :: proc(
-        Process: windows.HANDLE,
-        CpuSetMasks: ^_win32_GROUP_AFFINITY,
-        CpuSetMaskCount: windows.USHORT,
-    ) -> windows.BOOL ---
+        SetProcessDefaultCpuSetMasks :: proc(
+            Process: windows.HANDLE,
+            CpuSetMasks: ^_win32_GROUP_AFFINITY,
+            CpuSetMaskCount: windows.USHORT,
+        ) -> windows.BOOL ---
 
-    GetThreadSelectedCpuSetMasks :: proc(
-        Thread: windows.HANDLE,
-        CpuSetMasks: ^_win32_GROUP_AFFINITY,
-        CpuSetMaskCount: windows.USHORT,
-        RequiredMaskCount: ^windows.USHORT,
-    ) -> windows.BOOL ---
+        GetThreadSelectedCpuSetMasks :: proc(
+            Thread: windows.HANDLE,
+            CpuSetMasks: ^_win32_GROUP_AFFINITY,
+            CpuSetMaskCount: windows.USHORT,
+            RequiredMaskCount: ^windows.USHORT,
+        ) -> windows.BOOL ---
 
-    SetThreadSelectedCpuSetMasks :: proc(
-        Thread: windows.HANDLE,
-        CpuSetMasks: ^_win32_GROUP_AFFINITY,
-        CpuSetMaskCount: windows.USHORT,
-    ) -> windows.BOOL ---
+        SetThreadSelectedCpuSetMasks :: proc(
+            Thread: windows.HANDLE,
+            CpuSetMasks: ^_win32_GROUP_AFFINITY,
+            CpuSetMaskCount: windows.USHORT,
+        ) -> windows.BOOL ---
     }
 
+
     // Scans system and returns the list of physical cores
-    _refresh_physical_core_info :: proc() {
+    _refresh_cpu_core_info :: proc() {
+        base.log_info("refreshing cores")
         needed: windows.ULONG
         GetSystemCpuSetInformation(nil, 0, &needed, windows.INVALID_HANDLE_VALUE, 0)
+
+        base.log_dump(needed)
 
         buffer := make([]byte, needed, context.temp_allocator)
 
@@ -1807,32 +1811,29 @@ when BACKEND == BACKEND_WINDOWS {
         ptr := uintptr(&buffer[0])
         end := ptr + uintptr(returned)
 
-        seen_cores: [256]bool
+        id_counters: [256]u8
 
         for ptr < end {
             info := (^ _win32_SYSTEM_CPU_SET_INFORMATION)(ptr)
+            defer ptr += uintptr(info.Size)
+
             if info.Type == .CpuSetInformation {
                 core_index := info.CpuSet.CoreIndex
-                // Only take the first logical thread per physical core
-                if seen_cores[core_index] {
-                    continue
-                }
 
-                seen_cores[core_index] = true
-
-                _state.physical_cores[_state.physical_core_num] = {
+                _state.core_info[_state.core_info_num] = {
                     id = info.CpuSet.Id,
                     efficiency = u8(info.CpuSet.EfficiencyClass),
+                    logical_index = id_counters[core_index],
                 }
-                _state.physical_core_num += 1
-            }
+                _state.core_info_num += 1
 
-            ptr += uintptr(info.Size)
+                id_counters[core_index] += 1
+            }
         }
     }
 
-    _pin_thread_to_physical_core :: proc(thread: Thread, core_index: int) -> bool {
-        id := _state.physical_cores[core_index].id
+    _pin_thread_to_cpu_core :: proc(thread: Thread, core_index: int) -> bool {
+        id := _state.core_info[core_index].id
         handle := thread.handle
         if thread == {} {
             handle = windows.GetCurrentThread()
@@ -1840,7 +1841,6 @@ when BACKEND == BACKEND_WINDOWS {
 
         return bool(SetThreadSelectedCpuSets(handle, &id, 1))
     }
-
 
     /*
     _win32_message_name :: proc "contextless" (msg: windows.UINT) -> string {

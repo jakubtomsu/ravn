@@ -223,10 +223,10 @@ when BACKEND == BACKEND_SDL3 {
         return u64(sdl3.GetCurrentThreadID())
     }
 
-    _refresh_physical_core_info :: proc() {
+    _refresh_cpu_core_info :: proc() {
     }
 
-    _pin_thread_to_physical_core :: proc(thread: Thread, core_index: int) -> bool {
+    _pin_thread_to_cpu_core :: proc(thread: Thread, core_index: int) -> bool {
         return false
     }
 

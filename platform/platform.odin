@@ -26,7 +26,7 @@ when ODIN_OS == .Windows {
 SEPARATOR :: "\\" when ODIN_OS == .Windows else "/"
 
 EVENT_QUEUE_SIZE :: 256
-MAX_PHYSICAL_CORES :: 256
+MAX_CORE_INFO :: 256
 MAX_GAMEPADS :: 4
 
 _state: ^State
@@ -41,8 +41,8 @@ State :: struct {
     event_queue:        _Event_Queue,
     event_counter:      i32,
 
-    physical_cores:     [MAX_PHYSICAL_CORES]Physical_Core_Info,
-    physical_core_num:  i32,
+    core_info:          [MAX_CORE_INFO]CPU_Core_Info,
+    core_info_num:      i32,
 
 }
 
@@ -135,13 +135,16 @@ Memory_Protection :: enum u8 {
     Execute_Read_Write,
 }
 
-Physical_Core_Info :: struct {
-    id:         u32,
-    efficiency: u8,
-    kind:       Physical_Core_Kind,
+CPU_Core_Info :: struct {
+    id:             u32,
+    efficiency:     u8,
+    // Logical index within a physical core, in case there are multiple entries with the same
+    // core ID each will have a different logical_index. You can filter physical cores only by checking logical_index == 0.
+    logical_index:  u8,
+    kind:           CPU_Core_Kind,
 }
 
-Physical_Core_Kind :: enum {
+CPU_Core_Kind :: enum {
     Efficiency,
     Performance,
 }
@@ -405,49 +408,53 @@ get_current_thread_id :: proc() -> u64 {
     return _get_current_thread_id()
 }
 
-refresh_physical_core_info :: proc() {
-    _state.physical_core_num = 0
-    _state.physical_cores = {}
+refresh_cpu_core_info :: proc() {
+    _state.core_info_num = 0
+    _state.core_info = {}
 
-    _refresh_physical_core_info()
+    _refresh_cpu_core_info()
 
     max_efficiency: u8 = 0
-    for info in _state.physical_cores[:_state.physical_core_num] {
+    for info in _state.core_info[:_state.core_info_num] {
         max_efficiency = max(max_efficiency, info.efficiency)
     }
 
-    for &info in _state.physical_cores[:_state.physical_core_num] {
+    for &info in _state.core_info[:_state.core_info_num] {
         info.kind = info.efficiency == max_efficiency ? .Performance : .Efficiency
     }
 }
 
-get_physical_core_num :: proc() -> int {
-    return int(_state.physical_core_num)
-}
-
-get_physical_core_info :: proc(core_index: int) -> Physical_Core_Info {
-    if _state.physical_core_num == 0 {
-        refresh_physical_core_info()
+get_cpu_core_num :: proc() -> int {
+    if _state.core_info_num == 0 {
+        refresh_cpu_core_info()
     }
 
-    if core_index >= 0 && core_index < int(_state.physical_core_num) {
-        return _state.physical_cores[core_index]
+    return int(_state.core_info_num)
+}
+
+get_cpu_core_info :: proc(#any_int core_index: int) -> CPU_Core_Info {
+    if _state.core_info_num == 0 {
+        refresh_cpu_core_info()
+    }
+
+    if core_index >= 0 && core_index < int(_state.core_info_num) {
+        return _state.core_info[core_index]
     }
 
     return {}
 }
 
 // thread == {} means current thread
-pin_thread_to_physical_core :: proc(thread: Thread, core_index: int) -> bool {
-    if _state.physical_core_num == 0 {
-        refresh_physical_core_info()
+pin_thread_to_cpu_core :: proc(thread: Thread, #any_int core_index: int) -> bool {
+    if _state.core_info_num == 0 {
+        refresh_cpu_core_info()
     }
 
-    if core_index < 0 || core_index >= int(_state.physical_core_num) {
+    if core_index < 0 || core_index >= int(_state.core_info_num) {
         return false
     }
 
-    return pin_thread_to_physical_core(thread, core_index)
+    return _pin_thread_to_cpu_core(thread, core_index)
 }
 
 
