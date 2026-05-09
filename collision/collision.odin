@@ -562,8 +562,12 @@ move_and_slide :: proc(
     for i in 0..<max_iters {
         sweep, sweep_hit := sweep_sphere(pos, move, rad = rad, ignore_layers = ignore_layers)
 
-        pos += sweep.move * clamp(sweep.t - 0.001, 0.0, 1.0)
-        t += sweep.t
+        if sweep.t < 0.001 {
+            move += sweep.normal * 0.001
+        } else {
+            pos += sweep.move * clamp(sweep.t - 0.001, 0.0, 1.0)
+            t += sweep.t
+        }
 
         if sweep_hit {
             solid_move := move - sweep.normal * linalg.dot(move, sweep.normal)
@@ -853,6 +857,7 @@ overlap_sphere_buf :: proc(
 //
 
 
+@(require_results)
 sweep_point_vs_shape :: proc(
     pos:    [3]f32,
     move:   [3]f32,
@@ -917,6 +922,7 @@ sweep_point_vs_shape :: proc(
     return 0, 0, false
 }
 
+@(require_results)
 sweep_sphere_vs_shape :: proc(
     pos:    [3]f32,
     move:   [3]f32,
@@ -1013,6 +1019,55 @@ sweep_point_vs_mesh_local :: proc(
     }
 
     return t, prim, ok
+}
+
+@(require_results)
+collide_sphere_vs_shape :: proc(
+    pos:            [3]f32,
+    rad:            f32,
+    shape:          Shape,
+    out_contacts:   [][4]f32,
+) -> (num_contacts: i32) {
+    assert(len(out_contacts) > 0)
+
+    r := shape.rad + rad
+
+    dist: f32
+    grad: [3]f32
+    switch shape.kind {
+    case .Sphere:
+        dist, grad = geometry.get_sphere_dist_grad(pos, shape.pos, r)
+
+    case .Capsule:
+        dist, grad = geometry.get_line_dist_grad(pos, {shape.pos, shape.ext})
+        dist -= r
+
+    case .Aligned_Box:
+        dist, grad = geometry.get_box_dist_grad(pos, shape.pos, r)
+
+    case .Oriented_Box:
+        inv := conj(shape.rot)
+        local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
+        dist, grad = geometry.get_box_dist_grad(local_pos, 0, r)
+
+    case .Mesh:
+        inv := conj(shape.rot)
+        local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
+        return collide_sphere_vs_mesh_local(local_pos, r, shape.handle, scale = shape.ext, out_contacts = out_contacts)
+    }
+
+    if dist > 0 {
+        return 0
+    }
+
+    out_contacts[0] = {
+        grad.x,
+        grad.y,
+        grad.z,
+        dist,
+    }
+
+    return 1
 }
 
 
@@ -1114,6 +1169,72 @@ test_sphere_vs_mesh_local :: proc(
     }
 
     return -1, false
+}
+
+@(require_results)
+collide_sphere_vs_mesh_local :: proc(
+    pos:            [3]f32,
+    rad:            f32,
+    handle:         Mesh_Handle,
+    scale:          [3]f32 = 1,
+    out_contacts:   [][4]f32,
+) -> (num_contacts: i32) #no_bounds_check {
+    assert(len(out_contacts) > 0)
+
+    mesh, mesh_ok := get_mesh(handle)
+    if !mesh_ok {
+        return 0
+    }
+
+    pos_simd := transmute(#simd[4]f32)pos.xyzz
+
+    for iter := bvh.iter(&mesh.blas); iter.node != nil; {
+        if iter.len != 0 {
+            for offs in 0..<int(iter.len) {
+                index := mesh.blas.indices[int(iter.first) + offs]
+                tri := mesh.triangles[index]
+                verts := [3][3]f32{
+                    scale * mesh.verts[tri[0]],
+                    scale * mesh.verts[tri[1]],
+                    scale * mesh.verts[tri[2]],
+                }
+
+                dist, grad := geometry.get_triangle_dist_grad(pos, verts)
+
+                if dist > rad {
+                    continue
+                }
+
+                dist -= rad
+
+                out_contacts[num_contacts] = {
+                    grad.x,
+                    grad.y,
+                    grad.z,
+                    dist,
+                }
+
+                num_contacts += 1
+
+                if int(num_contacts) >= len(out_contacts) {
+                    break
+                }
+            }
+
+            bvh.iter_pop(&iter) or_break
+
+        } else {
+
+            child0 := transmute(bvh.Node_SIMD4)mesh.blas.nodes[iter.first + 0]
+            child1 := transmute(bvh.Node_SIMD4)mesh.blas.nodes[iter.first + 1]
+            hit0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
+            hit1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+
+            bvh.iter_unordered_next(&iter, hit0, hit1) or_break
+        }
+    }
+
+    return num_contacts
 }
 
 @(require_results)
