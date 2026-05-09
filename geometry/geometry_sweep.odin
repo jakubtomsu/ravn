@@ -419,6 +419,7 @@ sweep_point_vs_cylinder :: proc "contextless" (
     }
 
     t *= range
+    t = ok ? t : range
 
     return t, ok
 }
@@ -438,12 +439,6 @@ sweep_point_vs_capsule :: proc "contextless" (
     md := linalg.vector_dot(m, d)
     nd := linalg.vector_dot(n, d)
     dd := linalg.vector_length2(d)
-
-
-    // Test if segment fully outside either endcap of cylinder
-    if (md + rad < 0 && md + nd + rad < 0) || (md - rad > dd && md + nd - rad > dd) {
-        return range, false
-    }
 
     nn := linalg.vector_length2(n)
     mn := linalg.vector_dot(m, n)
