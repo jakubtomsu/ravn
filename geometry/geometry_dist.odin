@@ -9,6 +9,24 @@ import "../base"
 // https://iquilezles.org/articles/triangledistance/
 
 @(require_results)
+get_sphere_dist_sq :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: f32) -> f32 {
+    return linalg.length2(pos - center) - rad * rad
+}
+
+@(require_results)
+get_sphere_dist :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: f32) -> f32 {
+    return linalg.length(pos - center) - rad
+}
+
+@(require_results)
+get_sphere_dist_grad :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: f32) -> (dist: f32, grad: [3]f32) {
+    rel := pos - center
+    dist = linalg.length(rel)
+    grad = dist < 1e-6 ? {0, 1, 0} : rel / dist
+    return dist - rad, grad
+}
+
+@(require_results)
 get_box_dist :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: [3]f32) -> f32 {
   q := linalg.abs(pos - center) - rad
   m := max(q.x, q.y, q.z)
