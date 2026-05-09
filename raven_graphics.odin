@@ -263,7 +263,7 @@ create_mesh_from_data :: proc(
     base.log_debug("Creating mesh '%s' with %i verts and %i tris", name, len(verts), len(indices) / 3)
 
     arena := get_internal_arena(arena_handle) or_return
-    
+
     if
         len(verts) > len(arena.vert_upload_buf) - int(arena.vert_upload_offs) ||
         len(indices) > len(arena.index_upload_buf) - int(arena.index_upload_offs)
@@ -296,7 +296,7 @@ create_mesh_from_data :: proc(
         base.log_err("Failed to create mesh '%s', table is full", name)
         return {}, false
     }
-    
+
     copy(arena.vert_upload_buf[arena.vert_upload_offs:], verts)
     copy(arena.index_upload_buf[arena.index_upload_offs:], indices)
     arena.vert_upload_offs += i32(len(verts))
@@ -1036,8 +1036,8 @@ draw_rect_2d :: proc(
 draw_mesh :: proc(
     handle:     Mesh_Handle,
     pos:        Vec3,
-    rot:        Quat = 1,
     scale:      Vec3 = 1,
+    rot:        Quat = 1,
     col:        Vec4 = 1,
     add_col:    Vec4 = 0,
     param:      u32 = 0,
@@ -1079,11 +1079,75 @@ draw_mesh :: proc(
     _draw_batch_table_push(&draw_layer.meshes, key, inst)
 }
 
+draw_sphere :: proc(
+    pos:        Vec3,
+    scale:      Vec3 = 1,
+    rot:        Quat = 1,
+    col:        Vec4 = 1,
+    add_col:    Vec4 = 0,
+    param:      u32 = 0,
+) {
+    draw_mesh(
+        get_builtin_mesh(.UV_Sphere_1),
+        pos = pos,
+        scale = scale,
+        rot = rot,
+        col = col,
+        add_col = add_col,
+        param = param,
+    )
+}
+
+draw_box :: proc(
+    pos:        Vec3,
+    scale:      Vec3 = 1,
+    rot:        Quat = 1,
+    col:        Vec4 = 1,
+    add_col:    Vec4 = 0,
+    param:      u32 = 0,
+) {
+    draw_mesh(
+        get_builtin_mesh(.Cube),
+        pos = pos,
+        scale = scale,
+        rot = rot,
+        col = col,
+        add_col = add_col,
+        param = param,
+    )
+}
+
+draw_capsule :: proc(
+    pos0:       Vec3,
+    pos1:       Vec3,
+    rad:        f32 = 1,
+    col:        Vec4 = 1,
+    add_col:    Vec4 = 0,
+    param:      u32 = 0,
+) {
+    axis := pos1 - pos0
+    tangent: [3]f32 = {0, 1, 0}
+    if abs(axis.y) > abs(axis.x) + abs(axis.z) {
+        tangent = {1, 0, 0}
+    }
+    rot := linalg.quaternion_angle_axis_f32(math.PI * 0.5, {1, 0, 0}) *
+        linalg.quaternion_normalize(linalg.quaternion_from_forward_and_up_f32(axis, tangent))
+    draw_mesh(get_builtin_mesh(.UV_Sphere_1), pos0, scale = rad, rot = rot, col = col, add_col = add_col, param = param)
+    draw_mesh(get_builtin_mesh(.UV_Sphere_1), pos1, scale = rad, rot = rot, col = col, add_col = add_col, param = param)
+    draw_mesh(get_builtin_mesh(.Cylinder_1), (pos0 + pos1) * 0.5,
+        scale = {rad, linalg.length(axis) * 0.5, rad},
+        rot = rot,
+        col = col,
+        add_col = add_col,
+        param = param,
+    )
+}
+
 draw_triangles :: proc(
     verts:      ..Vertex,
     pos:        Vec3 = 0,
-    rot:        Quat = 1,
     scale:      Vec3 = 1,
+    rot:        Quat = 1,
     col:        Vec4 = WHITE,
     add_col:    Vec4 = 0,
     param:      u32 = 0,
@@ -1122,8 +1186,8 @@ draw_triangles :: proc(
 draw_lines :: proc(
     verts:      ..Vertex,
     pos:        Vec3 = 0,
-    rot:        Quat = 1,
     scale:      Vec3 = 1,
+    rot:        Quat = 1,
     col:        Vec4 = WHITE,
     add_col:    Vec4 = 0,
     param:      u32 = 0,
