@@ -1,5 +1,5 @@
 #+vet explicit-allocators shadowing unused
-package raven_platform
+package ravn_platform
 
 import "base:runtime"
 

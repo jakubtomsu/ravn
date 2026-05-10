@@ -2,7 +2,7 @@
 // This package implements multiple builders for AABB hierarchy acceleration structures.
 // Based on:
 // - https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/
-package raven_bvh
+package ravn_bvh
 
 MAX_BINS :: 32
 

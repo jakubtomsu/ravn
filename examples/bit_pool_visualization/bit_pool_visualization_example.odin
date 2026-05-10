@@ -1,4 +1,4 @@
-package raven_example_hello
+package ravn_example_hello
 
 import rv "../.."
 import "../../base"

@@ -1,4 +1,4 @@
-package raven_simple_3d_example
+package ravn_simple_3d_example
 
 import "core:math/rand"
 import "core:fmt"

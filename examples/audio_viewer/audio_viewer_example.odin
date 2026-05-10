@@ -1,4 +1,4 @@
-package raven_audio_viewer_example
+package ravn_audio_viewer_example
 
 import "core:math/rand"
 import "core:math"

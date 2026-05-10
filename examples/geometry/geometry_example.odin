@@ -1,4 +1,4 @@
-package raven_geometry_example
+package ravn_geometry_example
 
 import "core:fmt"
 import "core:math/rand"

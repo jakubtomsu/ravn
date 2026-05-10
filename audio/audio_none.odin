@@ -1,5 +1,5 @@
 // Dummy backend which doesn't produce any audio output.
-package raven_audio
+package ravn_audio
 
 when BACKEND == BACKEND_NONE {
     _State :: struct {

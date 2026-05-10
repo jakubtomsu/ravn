@@ -1,6 +1,6 @@
 #+vet explicit-allocators shadowing style
 #+build windows
-package raven_shader_compiler
+package ravn_shader_compiler
 
 import "../base"
 

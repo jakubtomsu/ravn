@@ -1,6 +1,6 @@
 // Gameplay utilities.
 // WARNING: all of this will likely be moved to a separate utils package.
-package raven
+package ravn
 
 import "core:math"
 import "core:math/linalg"

@@ -1,4 +1,4 @@
-package raven_fps_example
+package ravn_fps_example
 
 import "core:math"
 import "core:math/linalg"
@@ -40,7 +40,7 @@ _init :: proc() {
     state = new(State)
 
     // TODO: this is a bit hacky
-    platform.set_window_title(rv.get_window(), "Raven FPS")
+    platform.set_window_title(rv.get_window(), "Ravn FPS")
     platform.set_window_style(rv.get_window(), .Borderless)
     platform.set_window_pos(rv.get_window(), 0)
     platform.set_window_size(rv.get_window(), platform.get_main_monitor_rect().size)

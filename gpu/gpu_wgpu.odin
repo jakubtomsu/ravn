@@ -1,4 +1,4 @@
-package raven_gpu
+package ravn_gpu
 
 import "../base"
 import "vendor:wgpu"

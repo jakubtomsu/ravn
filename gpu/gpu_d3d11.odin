@@ -1,6 +1,6 @@
 #+vet explicit-allocators shadowing
 #+build !js
-package raven_gpu
+package ravn_gpu
 
 import "../base"
 

@@ -1,4 +1,4 @@
-package raven_draw_3d_example
+package ravn_draw_3d_example
 
 import rv "../.."
 import "../../platform"

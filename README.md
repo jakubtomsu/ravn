@@ -1,6 +1,6 @@
 <div align="center">
 
-# RAVEN
+# RAVN
 (working title)
 
 A toolkit for making 2D and 3D games in Odin.
@@ -33,7 +33,7 @@ Something *simple* you can prototype in, but also *stable* enough to make polish
 - Hotreloading by default
     - code, textures, models, even custom files
 - Modular architecture
-    - the `platform`, `gpu` and `audio` packages can be used independently from the Raven engine
+    - the `platform`, `gpu` and `audio` packages can be used independently from the Ravn engine
 - Minimal dependencies
     - the core of the engine is implemented fully from scratch, see `platform` and `gpu`
 - Zero hidden internal state
@@ -43,7 +43,7 @@ Something *simple* you can prototype in, but also *stable* enough to make polish
 ## Simple Example
 
 ```odin
-import rv "raven"
+import rv "ravn"
 
 @export _module_desc := rv.Module_Desc{update = _update}
 
@@ -78,8 +78,8 @@ The recommended approach is using [git subtrees](https://github.com/git/git/blob
 
 Here are the commands to clone the library into your project, and to pull the latest upstream changes. It will appear just as a regular directory.
 ```
-git subtree add --prefix=raven https://github.com/jakubtomsu/raven main --squash
-git subtree pull --prefix=raven https://github.com/jakubtomsu/raven main --squash
+git subtree add --prefix=ravn https://github.com/jakubtomsu/ravn main --squash
+git subtree pull --prefix=ravn https://github.com/jakubtomsu/ravn main --squash
 ```
 > In case you want to delete the entire subtree, just remove the folder. There shouldn't be any hidden metadata.
 

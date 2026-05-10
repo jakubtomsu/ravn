@@ -1,4 +1,4 @@
-package raven_gpu_compute_example
+package ravn_gpu_compute_example
 
 import "core:math"
 import "core:math/rand"

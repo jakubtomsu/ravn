@@ -1,5 +1,5 @@
 #+build js
-package raven_audio
+package ravn_audio
 
 import "../base"
 
@@ -58,10 +58,10 @@ _render :: proc() {
 }
 
 @(export)
-foreign import raven_audio "raven_audio"
+foreign import ravn_audio "ravn_audio"
 
 @(default_calling_convention="c")
-foreign raven_audio {
+foreign ravn_audio {
     @(link_name = "init")
     _init_js :: proc "contextless" () ---
 

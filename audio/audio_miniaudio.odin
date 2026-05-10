@@ -1,6 +1,6 @@
 #+vet explicit-allocators shadowing unused
 #+build !js
-package raven_audio
+package ravn_audio
 
 import "base:runtime"
 import "base:intrinsics"

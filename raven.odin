@@ -1,5 +1,5 @@
 #+vet explicit-allocators shadowing style
-package raven
+package ravn
 
 import "base"
 import "base/ufmt"
@@ -37,12 +37,12 @@ import debug_trace "core:debug/trace"
 // TODO: fix scene mesh normals
 // TODO: draw_2D variants
 
-RELEASE :: #config(RAVEN_RELEASE, base.RELEASE)
-VALIDATION :: #config(RAVEN_VALIDATION, !RELEASE)
+RELEASE :: #config(RAVN_RELEASE, base.RELEASE)
+VALIDATION :: #config(RAVN_VALIDATION, !RELEASE)
 
 // Enable internal logs. Mostly useful for debugging internals.
 // TODO: tracing
-LOG_INTERNAL :: #config(RAVEN_LOG_INTERNAL, false)
+LOG_INTERNAL :: #config(RAVN_LOG_INTERNAL, false)
 
 MAX_ARENAS :: 64
 MAX_TEXTURES :: 256 // Use texture pools if you hit this limit.
@@ -72,8 +72,8 @@ MAX_TOTAL_DRAW_BATCHES :: 4096
 // This is the actual swapchain used for rendering directly to screen.
 DEFAULT_RENDER_TEXTURE :: Render_Texture_Handle{MAX_RENDER_TEXTURES - 1, 0}
 
-HASH_SEED :: #config(RAVEN_HASH_SEED, 0xcbf29ce484222325)
-MAX_PROBE_DIST :: #config(RAVEN_MAX_TABLE_PROBE_DIST, 16)
+HASH_SEED :: #config(RAVN_HASH_SEED, 0xcbf29ce484222325)
+MAX_PROBE_DIST :: #config(RAVN_MAX_TABLE_PROBE_DIST, 16)
 
 HASH_ALG :: "fnv64a"
 
@@ -385,7 +385,7 @@ when ODIN_OS == .JS {
 }
 
 
-// Default runner for a raven app.
+// Default runner for a ravn app.
 //
 // Calling this does nothing when compiling as a DLL, it's the responsibility
 // of whoever loaded the DLL (e.g. hotreload runner) to call the app.
@@ -550,7 +550,7 @@ init_state :: proc(allocator: runtime.Allocator) {
     _state, state_err = new(State, allocator = allocator)
 
     if state_err != nil {
-        panic("Failed to allocate Raven State")
+        panic("Failed to allocate Ravn State")
     }
 
     _state.init_allocator = allocator
@@ -560,7 +560,7 @@ init_state :: proc(allocator: runtime.Allocator) {
 
     _state.allocator = context.allocator
 
-    base.log_info("Raven context initialized")
+    base.log_info("Ravn context initialized")
 
     base.log_info("Initializing platform...")
 
@@ -583,7 +583,7 @@ init_state :: proc(allocator: runtime.Allocator) {
 
     base.log_info("Creating Window...")
 
-    _state.window = platform.create_window("Raven App", style = .Regular, high_dpi = true)
+    _state.window = platform.create_window("Ravn App", style = .Regular, high_dpi = true)
 
     base.log_info("Initializing GPU...")
 
@@ -666,7 +666,7 @@ _post_gpu_init :: proc() {
 
     _load_builtin_assets()
 
-    base.log_info("Raven initialized successfully")
+    base.log_info("Ravn initialized successfully")
 
     _state.initialized = true
 }
@@ -679,7 +679,7 @@ request_shutdown :: proc() {
 
 // Called automatically at the right time when you call rv.request_shutdown()!
 shutdown_state :: proc() {
-    base.log_info("Shutting down Raven...")
+    base.log_info("Shutting down Ravn...")
     if _state == nil {
         return
     }
@@ -704,7 +704,7 @@ shutdown_state :: proc() {
         if _state.files_hash[i] == 0 {
             continue
         }
-        
+
         if .Dynamically_Allocated in file.flags {
             delete(file.data, _state.allocator)
         }

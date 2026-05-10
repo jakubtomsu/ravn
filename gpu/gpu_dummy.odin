@@ -1,7 +1,7 @@
 // Dummy backend for testing.
 // Everything *must compile* on all targets, but won't run (by design)
 // This can be a starting point when writing a new backend from scratch.
-package raven_gpu
+package ravn_gpu
 
 when BACKEND == BACKEND_DUMMY {
 

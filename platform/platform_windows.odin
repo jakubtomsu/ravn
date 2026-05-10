@@ -1,6 +1,6 @@
 #+build windows
 #+vet explicit-allocators shadowing unused
-package raven_platform
+package ravn_platform
 
 // TODO: FIXME: on very low FPS input messages seem to get dropped
 
@@ -892,7 +892,7 @@ when BACKEND == BACKEND_WINDOWS {
             hCursor = nil,
             hbrBackground = nil,
             lpszMenuName = nil,
-            lpszClassName = "raven",
+            lpszClassName = "ravn",
         }
 
         if windows.RegisterClassW(&wndclass) == 0 {
@@ -904,7 +904,7 @@ when BACKEND == BACKEND_WINDOWS {
 
         hwnd := windows.CreateWindowExW(
             dwExStyle = 0,
-            lpClassName = "raven",
+            lpClassName = "ravn",
             lpWindowName = wname,
             dwStyle = _win32_window_style(style) | windows.WS_VISIBLE,
             X = rect.min.x,

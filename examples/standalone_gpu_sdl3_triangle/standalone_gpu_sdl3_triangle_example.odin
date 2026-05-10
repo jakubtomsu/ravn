@@ -13,7 +13,7 @@ main :: proc() {
     base.log_debug("Init")
 
     sdl.SetHintWithPriority(sdl.HINT_RENDER_DRIVER, "direct3d11", .OVERRIDE)
-    window := sdl.CreateWindow("Raven GPU SDL3 Triangle", 854, 480, {.HIGH_PIXEL_DENSITY, .HIDDEN, .RESIZABLE})
+    window := sdl.CreateWindow("Ravn GPU SDL3 Triangle", 854, 480, {.HIGH_PIXEL_DENSITY, .HIDDEN, .RESIZABLE})
     defer sdl.DestroyWindow(window)
 
     native_window := sdl.GetPointerProperty(sdl.GetWindowProperties(window), sdl.PROP_WINDOW_WIN32_HWND_POINTER, nil)

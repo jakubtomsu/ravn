@@ -1,6 +1,6 @@
-# Raven GPU
+# Ravn GPU
 
-This is a GPU abstraction layer which can be used independently from all the other Raven packages.
+This is a GPU abstraction layer which can be used independently from all the other Ravn packages.
 
 The goal is to expose an API on a level to D3D11, but with support for multiple platforms.
 

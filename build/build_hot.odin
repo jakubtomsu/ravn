@@ -1,5 +1,5 @@
 #+private=file
-package raven_build
+package ravn_build
 
 import "../platform"
 import "../base"

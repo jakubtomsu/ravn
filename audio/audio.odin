@@ -1,5 +1,5 @@
 #+vet explicit-allocators shadowing
-package raven_audio
+package ravn_audio
 
 // TODO: this package could be completely self contained, no base dependency.
 

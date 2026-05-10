@@ -1,4 +1,4 @@
-package raven_snake_planet_example
+package ravn_snake_planet_example
 
 import "core:math/rand"
 import "core:math/linalg"
