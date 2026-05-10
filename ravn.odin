@@ -871,7 +871,7 @@ begin_frame :: proc() -> (keep_running: bool) {
     assert(gpu_can_begin_frame) // HACK
 
     audio.update()
-    collision.begin_step()
+    collision.begin_step(get_delta_time())
 
     _perf_counter_add(.Frame_Time, _state.frame_dur_ns)
 

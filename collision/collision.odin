@@ -20,6 +20,7 @@ BVH_EPS :: 1e-6
 BVH_STACK :: 32
 
 NO_RAD_EPS :: 0.001
+PENETRATION_SOLVER_CORRECTION_FACTOR :: 0.1
 
 Handle_Index :: u16
 Handle_Gen :: u8
@@ -54,9 +55,11 @@ State :: struct {
 }
 
 Step_State :: struct {
-    shape_data:     [MAX_SHAPES]Shape,
+    delta:          f32,
+    beta:           f32,
     shape_used:     i32,
     tlas:           bvh.BVH,
+    shape_data:     [MAX_SHAPES]Shape,
 }
 
 // Defines a single scope/lifetime for persistent collider data (meshes)
@@ -98,6 +101,7 @@ Shape :: struct #all_or_none #align(64) {
     },
     rot:            quaternion128,
 
+    // mass_inv:       f32,
     // id:             u64,
     // ignored_layers: bit_set[0..<NUM_LAYERS],
     layer:          u8,
@@ -110,6 +114,10 @@ Shape_Kind :: enum u8 {
     Oriented_Box,
     Capsule,
     Mesh,
+}
+
+Shape_Flag :: enum u8 {
+    Static, // For level geometry
 }
 
 // Sweep query result
@@ -144,6 +152,12 @@ Overlap :: struct {
     rad:    f32,
 
     shapes: []i32,
+}
+
+Contact :: struct {
+    normal:     [3]f32,
+    separation: f32, // distance
+    shape:      i32,
 }
 
 
@@ -190,7 +204,7 @@ get_step_state :: proc() -> ^Step_State {
     return &_state.step_data[_state.step_read]
 }
 
-begin_step :: proc() {
+begin_step :: proc(delta: f32) {
     if is_step_in_progress() {
         assert(false)
         return
@@ -199,9 +213,13 @@ begin_step :: proc() {
     _state.step_write = 1 - _state.step_write
     step := &_state.step_data[_state.step_write]
 
+    step.delta = clamp(delta, 0.008, 0.06)
+    step.beta = PENETRATION_SOLVER_CORRECTION_FACTOR / step.delta
+
     step.shape_used = 0
     step.tlas.nodes_used = 0
     step.tlas.prims = nil
+
 }
 
 end_step :: proc() {
@@ -454,7 +472,7 @@ destroy_mesh :: proc(handle: Mesh_Handle) -> bool {
 
 
 sphere_shape :: proc(pos: [3]f32, rad: f32, #any_int layer: u8 = 0) {
-    _push_shape({
+    _add_shape({
         kind = .Sphere,
         pos = pos,
         rad = rad,
@@ -466,7 +484,7 @@ sphere_shape :: proc(pos: [3]f32, rad: f32, #any_int layer: u8 = 0) {
 }
 
 capsule_shape :: proc(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0) {
-    _push_shape({
+    _add_shape({
         kind = .Capsule,
         pos = p0,
         ext = p1,
@@ -478,7 +496,7 @@ capsule_shape :: proc(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0) {
 }
 
 box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer: u8 = 0) {
-    _push_shape({
+    _add_shape({
         kind = .Aligned_Box,
         pos = pos,
         rad = rad,
@@ -490,7 +508,7 @@ box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer: u8
 }
 
 oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: f32 = 0.0, #any_int layer: u8 = 0) {
-    _push_shape({
+    _add_shape({
         kind = .Oriented_Box,
         pos = pos,
         ext = scale,
@@ -514,7 +532,7 @@ mesh_shape :: proc(
         base.log_warn("Pushing invalid mesh: %v", handle)
         return
     }
-    _push_shape({
+    _add_shape({
         kind = .Mesh,
         pos = pos,
         ext = scale,
@@ -525,7 +543,7 @@ mesh_shape :: proc(
     })
 }
 
-_push_shape :: proc(shape: Shape) {
+_add_shape :: proc(shape: Shape) {
     assert(is_step_in_progress())
     step := &_state.step_data[_state.step_write]
 
@@ -540,17 +558,63 @@ _push_shape :: proc(shape: Shape) {
 
 
 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Sweep query
+// MARK: Queries
 //
 
-move_and_slide :: proc(
+// Immediate-mode discrete collision.
+collide_sphere :: proc(
+    pos:            [3]f32,
+    vel:            [3]f32,
+    rad:            f32,
+    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    max_contacts    := 8,
+) -> (new_pos: [3]f32, new_vel: [3]f32, contacts: []Contact) {
+    new_vel = vel
+
+    contacts = find_contacts_sphere(
+        pos,
+        rad,
+        max_contacts = max_contacts,
+        ignore_layers = ignore_layers,
+        allocator = context.temp_allocator,
+    )
+
+    step := get_step_state()
+
+    ITERS :: 2
+    for _ in 0..<ITERS {
+        for contact in contacts {
+            shape := &step.shape_data[contact.shape]
+
+            normal_mass: f32 = 1.0 // / (1.0 / mass + 1.0 / shape.mass)
+            // normal_vel := dot(vel - shape.vel, contact.normal)
+
+            bias := step.beta * min(0.0, contact.separation)
+            normal_vel := -linalg.dot(new_vel, contact.normal)
+
+            impulse := max(0, normal_vel - bias) * normal_mass
+
+            new_vel += contact.normal * impulse
+        }
+    }
+
+    new_pos = pos + new_vel * step.delta
+
+    return new_pos, new_vel, contacts
+}
+
+
+
+// Immediate-mode continous shape-swept collision
+collide_sphere_swept :: proc(
     pos:            [3]f32,
     vel:            [3]f32,
     delta:          f32,
     rad:            f32,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
-    max_iters       := 8,
+    max_sweeps      := 4,
     bounce:         f32 = 0.05,
     damp:           f32 = 0.01,
     sweep_buf:      []Sweep = nil,
@@ -559,7 +623,7 @@ move_and_slide :: proc(
     move := vel * delta
     t: f32 = 0
 
-    for i in 0..<max_iters {
+    for i in 0..<max_sweeps {
         sweep, sweep_hit := sweep_sphere(pos, move, rad = rad, ignore_layers = ignore_layers)
 
         if sweep.t < 0.001 {
@@ -720,12 +784,7 @@ eval_sweep :: proc(sweep: ^Sweep) {
 
 
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Test Query
-//
 // Checks for *any* collider overlap.
-//
-
 @(require_results)
 test_sphere :: proc(
     pos:            [3]f32,
@@ -777,13 +836,7 @@ test_sphere :: proc(
 }
 
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Overlap Query
-//
 // Returns all overlapping colliders
-//
-
-
 @(require_results)
 overlap_sphere :: proc(
     pos:            [3]f32,
@@ -849,13 +902,85 @@ overlap_sphere_buf :: proc(
     return result, used_shapes > 0
 }
 
+@(require_results)
+find_contacts_sphere :: proc(
+    pos:            [3]f32,
+    rad:            f32,
+    max_contacts    := 8,
+    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    allocator       := context.temp_allocator,
+) -> (result_contacts: []Contact) #no_bounds_check {
+    contacts := make([]Contact, max_contacts, allocator)
+    num_contacts := find_contacts_sphere_buf(
+        pos = pos,
+        rad = rad,
+        out_contacts = contacts,
+        ignore_layers = ignore_layers,
+    )
+    return contacts[:num_contacts]
+}
+
+@(require_results)
+find_contacts_sphere_buf :: proc(
+    pos:            [3]f32,
+    rad:            f32,
+    out_contacts:   []Contact,
+    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+) -> (num_contacts: i32) #no_bounds_check {
+    assert(len(out_contacts) > 0)
+
+    step := &_state.step_data[_state.step_read]
+    pos_simd := transmute(#simd[4]f32)pos.xyzz
+
+    node_loop: for iter := bvh.iter(&step.tlas); iter.node != nil; {
+        if iter.len != 0 {
+            for offs in 0..<int(iter.len) {
+                index := step.tlas.indices[int(iter.first) + offs]
+                shape := step.shape_data[index]
+                if int(shape.layer) in ignore_layers {
+                    continue
+                }
+
+                num_new_contacts := find_contacts_sphere_vs_shape(
+                    pos = pos,
+                    rad = rad,
+                    shape = shape,
+                    out_contacts = out_contacts[num_contacts:],
+                )
+
+                contacts := out_contacts[num_contacts:][:num_new_contacts]
+                for &c in contacts {
+                    c.shape = i32(index)
+                }
+
+                num_contacts += num_new_contacts
+
+                if int(num_contacts) >= len(out_contacts) {
+                    break
+                }
+            }
+
+            bvh.iter_pop(&iter) or_break
+
+        } else {
+
+            child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
+            child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
+            t0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
+            t1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+
+            bvh.iter_unordered_next(&iter, t0, t1) or_break
+        }
+    }
+
+    return num_contacts
+}
 
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Shape
 //
-
 
 @(require_results)
 sweep_point_vs_shape :: proc(
@@ -1022,11 +1147,11 @@ sweep_point_vs_mesh_local :: proc(
 }
 
 @(require_results)
-collide_sphere_vs_shape :: proc(
+find_contacts_sphere_vs_shape :: proc(
     pos:            [3]f32,
     rad:            f32,
     shape:          Shape,
-    out_contacts:   [][4]f32,
+    out_contacts:   []Contact,
 ) -> (num_contacts: i32) {
     assert(len(out_contacts) > 0)
 
@@ -1043,17 +1168,32 @@ collide_sphere_vs_shape :: proc(
         dist -= r
 
     case .Aligned_Box:
-        dist, grad = geometry.get_box_dist_grad(pos, shape.pos, r)
+        dist, grad = geometry.get_box_dist_grad(pos, shape.pos, shape.ext)
+        dist -= r
 
     case .Oriented_Box:
         inv := conj(shape.rot)
         local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
-        dist, grad = geometry.get_box_dist_grad(local_pos, 0, r)
+        dist, grad = geometry.get_box_dist_grad(local_pos, 0, shape.ext)
+        dist -= r
+        grad = linalg.quaternion128_mul_vector3(shape.rot, grad)
 
     case .Mesh:
         inv := conj(shape.rot)
         local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
-        return collide_sphere_vs_mesh_local(local_pos, r, shape.handle, scale = shape.ext, out_contacts = out_contacts)
+        num_contacts = find_contacts_sphere_vs_mesh_local(
+            pos = local_pos,
+            rad = r,
+            handle = shape.handle,
+            scale = shape.ext,
+            out_contacts = out_contacts,
+        )
+
+        for &c in out_contacts[:num_contacts] {
+            c.normal = linalg.quaternion128_mul_vector3(shape.rot, c.normal)
+        }
+
+        return num_contacts
     }
 
     if dist > 0 {
@@ -1061,10 +1201,9 @@ collide_sphere_vs_shape :: proc(
     }
 
     out_contacts[0] = {
-        grad.x,
-        grad.y,
-        grad.z,
-        dist,
+        normal = grad,
+        separation = dist,
+        shape = -1,
     }
 
     return 1
@@ -1172,12 +1311,12 @@ test_sphere_vs_mesh_local :: proc(
 }
 
 @(require_results)
-collide_sphere_vs_mesh_local :: proc(
+find_contacts_sphere_vs_mesh_local :: proc(
     pos:            [3]f32,
     rad:            f32,
     handle:         Mesh_Handle,
     scale:          [3]f32 = 1,
-    out_contacts:   [][4]f32,
+    out_contacts:   []Contact,
 ) -> (num_contacts: i32) #no_bounds_check {
     assert(len(out_contacts) > 0)
 
@@ -1185,6 +1324,9 @@ collide_sphere_vs_mesh_local :: proc(
     if !mesh_ok {
         return 0
     }
+
+    // TODO
+    // https://www.codercorner.com/MeshContacts.pdf
 
     pos_simd := transmute(#simd[4]f32)pos.xyzz
 
@@ -1208,10 +1350,9 @@ collide_sphere_vs_mesh_local :: proc(
                 dist -= rad
 
                 out_contacts[num_contacts] = {
-                    grad.x,
-                    grad.y,
-                    grad.z,
-                    dist,
+                    normal = grad,
+                    separation = dist,
+                    shape = -1,
                 }
 
                 num_contacts += 1
@@ -1289,7 +1430,10 @@ get_shape_aabb :: proc(shape: Shape) -> (bb_min, bb_max: [3]f32) {
 
     case .Oriented_Box:
         mat := linalg.matrix3_from_quaternion_f32(shape.rot)
-        return geometry.get_oriented_box_bounds(shape.pos, shape.ext, mat)
+        bb_min, bb_max = geometry.get_oriented_box_bounds(shape.pos, shape.ext, mat)
+        bb_min -= shape.rad
+        bb_max += shape.rad
+        return bb_min, bb_max
 
     case .Capsule:
         return bvh.vec_min(shape.pos, shape.ext) - shape.rad,
@@ -1304,11 +1448,15 @@ get_shape_aabb :: proc(shape: Shape) -> (bb_min, bb_max: [3]f32) {
         mid := (mesh.bounds_min + mesh.bounds_max) * 0.5
         ext := (mesh.bounds_max - mesh.bounds_min) * 0.5
 
-        return geometry.get_oriented_box_bounds(
+        bb_min, bb_max =  geometry.get_oriented_box_bounds(
             pos = shape.pos + mat * mid,
-            rad = ext * shape.ext + shape.rad,
+            rad = ext * shape.ext,
             rot = mat,
         )
+
+        bb_min -= shape.rad
+        bb_max += shape.rad
+        return bb_min, bb_max
     }
 
     assert(false)
