@@ -48,7 +48,9 @@ test_sphere_vs_sphere :: proc "contextless" (pos_a: [3]f32, rad_a: f32, pos_b: [
 
 @(require_results)
 test_sphere_vs_box :: proc "contextless" (pos: [3]f32, rad: f32, center, extent: [3]f32) -> bool {
-    dist_sq := linalg.length2(linalg.abs(pos - center) - extent)
+    q := linalg.abs(pos - center) - extent
+    m := max(q.x, q.y, q.z)
+    dist_sq := linalg.vector_length2(linalg.max(q, 0.0))
     return dist_sq <= rad * rad
 }
 

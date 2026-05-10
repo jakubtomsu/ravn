@@ -28,9 +28,9 @@ get_sphere_dist_grad :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: f3
 
 @(require_results)
 get_box_dist :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: [3]f32) -> f32 {
-  q := linalg.abs(pos - center) - rad
-  m := max(q.x, q.y, q.z)
-  return m > 0 ? linalg.vector_length(q) : m
+    q := linalg.abs(pos - center) - rad
+    m := max(q.x, q.y, q.z)
+    return linalg.vector_length(linalg.max(q, 0.0)) + min(m, 0.0)
 }
 
 @(require_results)
