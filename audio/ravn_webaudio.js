@@ -7,7 +7,7 @@
     const BUFFER_SAMPLES = 480;
     const FRAME_RATE = 48000;
 
-    class RavenAudioInterface {
+    class RavnAudioInterface {
         constructor(mem) {
             this.mem = mem;
             this.audio_context = null;
@@ -22,12 +22,12 @@
             console.log("Webaudio initializing...")
 
             try {
-                await this.audio_context.audioWorklet.addModule("raven_webaudio_processor.js");
+                await this.audio_context.audioWorklet.addModule("ravn_webaudio_processor.js");
             } catch (e) {
                 console.log("Failed to load audio worklet processor")
             }
 
-            this.audio_node = new AudioWorkletNode(this.audio_context, "raven-audio-processor", {
+            this.audio_node = new AudioWorkletNode(this.audio_context, "ravn-audio-processor", {
                 outputChannelCount: [2],
             });
 
@@ -110,5 +110,5 @@
     }
 
     window.odin = window.odin || {};
-    window.odin.RavenAudioInterface = RavenAudioInterface;
+    window.odin.RavnAudioInterface = RavnAudioInterface;
 })();

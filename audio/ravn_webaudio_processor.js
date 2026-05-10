@@ -1,4 +1,4 @@
-class RavenAudioWorkletProcessor extends AudioWorkletProcessor {
+class RavnAudioWorkletProcessor extends AudioWorkletProcessor {
     constructor(params) {
         super();
         this.buffers = []; // Transferrables
@@ -65,4 +65,4 @@ class RavenAudioWorkletProcessor extends AudioWorkletProcessor {
     }
 }
 
-registerProcessor("raven-audio-processor", RavenAudioWorkletProcessor);
+registerProcessor("ravn-audio-processor", RavnAudioWorkletProcessor);
