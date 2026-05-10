@@ -1,7 +1,6 @@
 <div align="center">
 
 # RAVN
-(working title)
 
 A toolkit for making 2D and 3D games in Odin.
 
@@ -30,14 +29,11 @@ Something *simple* you can prototype in, but also *stable* enough to make polish
 
 ## Features
 - First-class 3D support
-- Hotreloading by default
-    - code, textures, models, even custom files
-- Modular architecture
-    - the `platform`, `gpu` and `audio` packages can be used independently from the Ravn engine
 - Minimal dependencies
-    - the core of the engine is implemented fully from scratch, see `platform` and `gpu`
+- Code and Asset hotreloading by default
 - Zero hidden internal state
-    - Especially manipulating it is discouraged, but for practical reasons `@private` is strictly unused.
+- Modular architecture
+    - the `platform`, `gpu`, `audio` and other packages can be used independently from the engine core
 
 
 ## Simple Example
