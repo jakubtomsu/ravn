@@ -14,7 +14,7 @@ VERSION_MAJOR = 0
 VERSION_MINOR = 1
 
 bl_info = {
-    "name": "Raven Scene Exporter",
+    "name": "RAVN Scene Exporter",
     "blender": (5, 0, 0),
     "category": "Import-Export",
     "version": (VERSION_MAJOR, VERSION_MINOR, 0),

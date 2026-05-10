@@ -1,5 +1,5 @@
 #+build !js
-package raven_platform
+package ravn_platform
 
 import "base:runtime"
 import "vendor:sdl3"

@@ -1,6 +1,6 @@
 #+vet explicit-allocators shadowing unused
 #+build !js
-package raven_audio
+package ravn_audio
 
 // https://github.com/libsdl-org/SDL/blob/main/examples/audio/02-simple-playback-callback/simple-playback-callback.c
 

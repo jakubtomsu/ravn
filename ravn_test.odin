@@ -1,6 +1,6 @@
 #+test
 #+vet shadowing unused
-package raven
+package ravn
 
 import "core:math/linalg"
 import "core:log"

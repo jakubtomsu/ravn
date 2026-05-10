@@ -10,14 +10,14 @@ NOTE: frame loop is done by the odin.js repeatedly calling `step`:
 */
 #+build js
 #+vet explicit-allocators shadowing unused
-package raven_platform
+package ravn_platform
 
 import "../base"
 import "core:sys/wasm/js"
 
 #assert(BACKEND == BACKEND_JS)
 
-_CANVAS_ID :: "#raven-canvas"
+_CANVAS_ID :: "#ravn-canvas"
 
 _State :: struct {
     _: u8,
@@ -649,10 +649,10 @@ foreign odin_env {
 
 
 @(export)
-foreign import raven_platform "raven_platform"
+foreign import ravn_platform "ravn_platform"
 
 @(default_calling_convention="c")
-foreign raven_platform {
+foreign ravn_platform {
     @(link_name="init")
     _init_js :: proc "contextless" (canvas: string) ---
 

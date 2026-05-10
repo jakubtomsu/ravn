@@ -1,4 +1,4 @@
-package raven_gpu
+package ravn_gpu
 
 import "vendor:wgpu"
 
@@ -8,7 +8,7 @@ _wgpu_create_native_surface :: proc(instance: wgpu.Instance, window: rawptr, ptr
         &wgpu.SurfaceDescriptor{
             nextInChain = &wgpu.SurfaceSourceCanvasHTMLSelector{
                 sType = .SurfaceSourceCanvasHTMLSelector,
-                selector = "#raven-canvas",
+                selector = "#ravn-canvas",
             },
         },
     )

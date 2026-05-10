@@ -3,7 +3,7 @@
 //
 // The move+range instead of traditional ray dir allows the procs to work both as ray and line intersection.
 #+vet shadowing
-package raven_geometry
+package ravn_geometry
 
 import "core:math/linalg"
 import "base:intrinsics"

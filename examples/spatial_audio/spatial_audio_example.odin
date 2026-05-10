@@ -1,4 +1,4 @@
-package raven_spatial_audio_example
+package ravn_spatial_audio_example
 
 // TODO: Add the music back in once the audio engine supports QOA
 

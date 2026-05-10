@@ -1,4 +1,4 @@
-package raven_collision_example
+package ravn_collision_example
 
 import "core:fmt"
 import rv "../.."

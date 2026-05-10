@@ -1,5 +1,5 @@
 #+vet shadowing explicit-allocators
-package raven_collision
+package ravn_collision
 
 import "core:math/linalg"
 import "base:runtime"

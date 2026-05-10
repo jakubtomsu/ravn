@@ -1,4 +1,4 @@
-package raven_build
+package ravn_build
 
 import "../platform"
 import "../base"
@@ -56,18 +56,18 @@ export_web :: proc(dst_dir: string, pkg_name: string, pkg_path: string) -> bool 
     )
 
     platform.write_file_by_path(
-        ufmt.tprintf("%s/raven_platform.js", dst_dir),
-        #load("../platform/raven_platform.js"),
+        ufmt.tprintf("%s/ravn_platform.js", dst_dir),
+        #load("../platform/ravn_platform.js"),
     )
 
     platform.write_file_by_path(
-        ufmt.tprintf("%s/raven_webaudio.js", dst_dir),
-        #load("../audio/raven_webaudio.js"),
+        ufmt.tprintf("%s/ravn_webaudio.js", dst_dir),
+        #load("../audio/ravn_webaudio.js"),
     )
 
     platform.write_file_by_path(
-        ufmt.tprintf("%s/raven_webaudio_processor.js", dst_dir),
-        #load("../audio/raven_webaudio_processor.js"),
+        ufmt.tprintf("%s/ravn_webaudio_processor.js", dst_dir),
+        #load("../audio/ravn_webaudio_processor.js"),
     )
 
     return true
@@ -118,12 +118,12 @@ HTML_TEMPLATE :: `
 		<title>@title</title>
 	</head>
 	<body id="body" style="height: 100%; padding: 0; margin: 0; overflow: hidden;">
-		<canvas id="raven-canvas" style="height: 100%; width: 100%;"></canvas>
+		<canvas id="ravn-canvas" style="height: 100%; width: 100%;"></canvas>
 
 		<script type="text/javascript" src="odin.js"></script>
 		<script type="text/javascript" src="wgpu.js"></script>
-		<script type="text/javascript" src="raven_platform.js"></script>
-		<script type="text/javascript" src="raven_webaudio.js"></script>
+		<script type="text/javascript" src="ravn_platform.js"></script>
+		<script type="text/javascript" src="ravn_webaudio.js"></script>
 
 		<script type="text/javascript">
 			const mem = new WebAssembly.Memory({
@@ -135,13 +135,13 @@ HTML_TEMPLATE :: `
 			memInterface.setMemory(mem);
 
 			const wgpuInterface = new odin.WebGPUInterface(memInterface);
-			const ravenPlatformInterface = new odin.RavenPlatformInterface(memInterface);
-            const ravenAudioInterface = new odin.RavenAudioInterface(memInterface);
+			const ravnPlatformInterface = new odin.RavnPlatformInterface(memInterface);
+            const ravnAudioInterface = new odin.RavnAudioInterface(memInterface);
 
             const foreignImports = {
                 wgpu: wgpuInterface.getInterface(),
-                raven_platform: ravenPlatformInterface.getInterface(),
-                raven_audio: ravenAudioInterface.getInterface(),
+                ravn_platform: ravnPlatformInterface.getInterface(),
+                ravn_audio: ravnAudioInterface.getInterface(),
             }
 
 			odin.runWasm("@pkg.wasm", null, foreignImports, memInterface, /*intSize=8*/);

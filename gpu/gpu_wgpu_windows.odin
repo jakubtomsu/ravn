@@ -1,4 +1,4 @@
-package raven_gpu
+package ravn_gpu
 
 import "core:sys/windows"
 import "vendor:wgpu"

@@ -1,4 +1,4 @@
-package raven_geometry
+package ravn_geometry
 
 import "base:intrinsics"
 import "core:math/linalg"

@@ -1,9 +1,9 @@
 /*
-    Raven Bouncing Ball Example
+    Ravn Bouncing Ball Example
     Credit: Example originally created by Ramon Santamaria (@raysan5) for Raylib
 */
 
-package raven_bouncing_ball_example
+package ravn_bouncing_ball_example
 
 import rv "../.."
 

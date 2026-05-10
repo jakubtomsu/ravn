@@ -2,7 +2,7 @@
 
 (function() {
     // TODO: get the canvas in the constructor instead of hardcoding it in the platform code?
-    class RavenPlatformInterface {
+    class RavnPlatformInterface {
         constructor(mem) {
             this.mem = mem;
         }
@@ -24,7 +24,7 @@
                     const canvas = document.querySelector(name);
 
                     if (!canvas) {
-                        console.error(`Raven set_pointer_lock: Canvas "${name}" not found.`);
+                        console.error(`Ravn set_pointer_lock: Canvas "${name}" not found.`);
                         return;
                     }
 
@@ -49,5 +49,5 @@
     }
 
     window.odin = window.odin || {};
-    window.odin.RavenPlatformInterface = RavenPlatformInterface;
+    window.odin.RavnPlatformInterface = RavnPlatformInterface;
 })();

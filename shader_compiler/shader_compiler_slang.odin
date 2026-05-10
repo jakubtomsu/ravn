@@ -1,6 +1,6 @@
 #+vet explicit-allocators shadowing style
 #+build !js
-package raven_shader_compiler
+package ravn_shader_compiler
 
 import "../base"
 import "../platform"
@@ -18,14 +18,14 @@ _slang_init :: proc() -> bool {
     if _state.slang.initialized {
         return true
     }
-    
+
     module_ok: bool
     _state.module, module_ok = platform.load_module("slang.dll")
     if !module_ok {
         base.log_err("Failed to load slang.dll. Ensure it's in your working directory to compile shaders.")
         return false
     }
-    
+
     _state.slang.vtable = {
         createBlob                           = auto_cast _load_sym("slang_createBlob") or_return,
         loadModuleFromSource                 = auto_cast _load_sym("slang_loadModuleFromSource") or_return,
@@ -36,15 +36,15 @@ _slang_init :: proc() -> bool {
         createGlobalSessionWithoutCoreModule = auto_cast _load_sym("slang_createGlobalSessionWithoutCoreModule") or_return,
         shutdown                             = auto_cast _load_sym("slang_shutdown") or_return,
     }
-    
+
     if !_slang_check(_state.slang.createGlobalSession(slang.API_VERSION, &_state.slang.global_session)) {
         return false
     }
-    
+
     _state.slang.initialized = true
-    
+
     return true
-    
+
     _load_sym :: proc(name: cstring) -> (rawptr, bool) {
         result := platform.get_module_symbol_address(_state.module, name)
         if result == nil {
@@ -60,11 +60,11 @@ _compile_slang_wgsl :: proc(
     source:         string,
     opts:           Options,
 ) -> (result: []byte, ok: bool) {
-    
+
     if !_slang_init() {
         return {}, false
     }
-    
+
     // Implements something like the following slangc command:
     // slangc.exe name.hlsl -target wgsl -entry vs_main -stage vertex -o shader.wgsl -fvk-b-shift 0 0 -fvk-t-shift 8 0 -fvk-s-shift 16 0
 

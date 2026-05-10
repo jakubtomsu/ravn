@@ -1,4 +1,4 @@
-package raven_example_hello_minimal
+package ravn_example_hello_minimal
 
 import "core:math"
 import rv "../.."

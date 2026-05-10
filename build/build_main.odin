@@ -1,5 +1,5 @@
 #+vet unused style shadowing
-package raven_build
+package ravn_build
 
 import "../platform"
 import "../base"
@@ -42,7 +42,7 @@ parse_flags :: proc(params: []string) -> (flags: Flags, ok: bool) {
     show_help := false
 
     defer if show_help {
-        ufmt.eprintfln("Raven build tool")
+        ufmt.eprintfln("Ravn build tool")
         ufmt.eprintfln("Usage:")
         ufmt.eprintfln("\tbuild command [arguments]")
         ufmt.eprintfln("Commands:")

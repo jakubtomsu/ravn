@@ -1,7 +1,7 @@
 // Rendering Hardware Interface.
 // The goal is to expose a stable API roughly. The target is something like a simplified D3D11 API.
 #+vet explicit-allocators shadowing unused
-package raven_gpu
+package ravn_gpu
 
 import "../base"
 import "core:hash/xxhash"

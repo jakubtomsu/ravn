@@ -1,5 +1,5 @@
 #+vet explicit-allocators shadowing style
-package raven_shader_compiler
+package ravn_shader_compiler
 
 import "../base"
 

@@ -1,9 +1,9 @@
-package raven_example_hello
+package ravn_example_hello
 
-// This would look like 'import rv "raven"' in your own projects.
+// This would look like 'import rv "ravn"' in your own projects.
 import rv "../.."
 
-// Module_Desc structure let's Raven know which procedures to call to init, update frame etc.
+// Module_Desc structure let's Ravn know which procedures to call to init, update frame etc.
 // The '@export' qualifier makes sure it's visible when running in hot-reload mode.
 // The state_size is optional for error checking during hotreload.
 @export _module_desc := rv.Module_Desc{
@@ -11,7 +11,7 @@ import rv "../.."
 }
 
 // The main procedure is your app's entry point.
-// But to support multiple platforms, Raven handles the frame update loop, only calling your module.
+// But to support multiple platforms, Ravn handles the frame update loop, only calling your module.
 main :: proc() {
     // If you really want you can write your own main loop directly,
     // but you have to handle the platform differences manually.
@@ -19,7 +19,7 @@ main :: proc() {
 }
 
 // The update procedure executes every frame.
-// Raven has a internal frame loop, which looks like this:
+// Ravn has a internal frame loop, which looks like this:
 //
 // while not app_requested_shutdown:
 //      1. read input and prepare frame
@@ -32,7 +32,7 @@ _update :: proc(_: rawptr) -> rawptr {
         rv.request_shutdown()
     }
 
-    // Raven renders into "draw layers".
+    // Ravn renders into "draw layers".
     // Layer 0 is the default one, so let's set up a regular screenspace view for it.
     rv.set_layer_params(0, rv.make_screen_camera())
 

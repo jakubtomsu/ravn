@@ -1,4 +1,4 @@
-package raven_example_gpu_and_sdl3
+package ravn_example_gpu_and_sdl3
 
 // THIS EXAMPLE IS VERY OLD AND NEEDS UPDATING.
 

@@ -1,5 +1,5 @@
 #+build windows
-package raven_audio
+package ravn_audio
 
 import "../base"
 import "wasapi"

@@ -1,4 +1,4 @@
-package raven
+package ravn
 
 import "core:slice"
 import "gpu"
@@ -2271,7 +2271,7 @@ render_layer :: proc(
     clear_color:            Maybe(Vec3) = nil,
     clear_depth:            bool = true,
     // User configurable GPU parameters.
-    // Only first few slots are consumed by built-in raven resources,
+    // Only first few slots are consumed by built-in ravn resources,
     // so the rest is free to use.
     //
     // See GPU_*_SLOTS for the offsets.
@@ -2314,7 +2314,7 @@ render_layer :: proc(
         },
     }
 
-    gpu.scope_pass("raven-layer", pass_desc)
+    gpu.scope_pass("ravn-layer", pass_desc)
 
     // BIG WARNING:
     // On certain GPU backends, the pipeline state has to be baked and a new pipeline has to be created,

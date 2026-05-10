@@ -1,4 +1,4 @@
-package raven_build
+package ravn_build
 
 import "../shader_compiler"
 import "../platform"
@@ -73,8 +73,8 @@ _compile_builtin_shader :: proc(
 _shader_include_bultin :: proc (path: string, user: rawptr) -> (string, bool) {
     base.log_info("Including '%s'", path)
     // HACK
-    if path == "raven.hlsli" || path == "data/raven.hlsli" {
-        return #load("../data/raven.hlsli"), true
+    if path == "ravn.hlsli" || path == "data/ravn.hlsli" {
+        return #load("../data/ravn.hlsli"), true
     }
     return "", false
 }

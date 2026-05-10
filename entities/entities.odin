@@ -6,7 +6,7 @@ manages a separate free-list-based pool for each entity variant.
 Entities can be iterated by types or by subtypes ("components").
 */
 #+vet shadowing explicit-allocators unused style semicolon cast
-package raven_entities
+package ravn_entities
 
 import "base:intrinsics"
 import "base:runtime"

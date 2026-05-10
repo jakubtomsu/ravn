@@ -1,4 +1,4 @@
-#include "raven.hlsli"
+#include "ravn.hlsli"
 
 RV_RESOURCE_SLOT(2, Texture2DArray tex);
 RV_SAMPLER_SLOT(0, SamplerState smp);
@@ -11,6 +11,6 @@ float4 ps_main(RV_Varyings vars, uint frontface : SV_IsFrontFace) : SV_Target {
     if (col.a < 0.001) {
         discard;
     }
-    
+
     return col;
 }
