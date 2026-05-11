@@ -78,9 +78,9 @@ get_line_dist_grad :: proc "contextless" (pos: [3]f32,  points: [2][3]f32) -> (d
     ba := points[1] - points[0]
     h := clamp(linalg.vector_dot(pa, ba) / linalg.vector_length2(ba), 0.0, 1.0)
     q := pa - h * ba
-    d := linalg.vector_length(q)
-    grad = d > 0 ? q / d : 0
-    return d, grad
+    dist = linalg.vector_length(q)
+    grad = dist > 0 ? q / dist : 0
+    return dist, grad
 }
 
 @(require_results)
@@ -169,4 +169,3 @@ get_triangle_dist_grad :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (d
 
     return dist, grad
 }
-
