@@ -1,6 +1,7 @@
 #+vet shadowing explicit-allocators
 package ravn_collision
 
+import "base:intrinsics"
 import "core:math/linalg"
 import "base:runtime"
 import "../base"
@@ -570,18 +571,24 @@ collide_sphere :: proc(
     rad:            f32,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
     max_contacts    := 8,
+    max_triangles   := 32,
+    allocator       := context.temp_allocator,
 ) -> (new_pos: [3]f32, new_vel: [3]f32, contacts: []Contact) {
     new_vel = vel
 
+    step := get_step_state()
+
     contacts = find_contacts_sphere(
-        pos,
-        rad,
+        pos = pos,
+        rad = rad,
         max_contacts = max_contacts,
-        ignore_layers = ignore_layers,
-        allocator = context.temp_allocator,
+        max_triangles = max_triangles,
+        allocator = allocator,
     )
 
-    step := get_step_state()
+    if len(contacts) == 0 {
+        return pos + vel * step.delta, vel, nil
+    }
 
     ITERS :: 2
     for _ in 0..<ITERS {
@@ -591,7 +598,7 @@ collide_sphere :: proc(
             normal_mass: f32 = 1.0 // / (1.0 / mass + 1.0 / shape.mass)
             // normal_vel := dot(vel - shape.vel, contact.normal)
 
-            bias := step.beta * min(0.0, contact.separation)
+            bias := step.beta * min(0.0, contact.separation * 0.5)
             normal_vel := -linalg.dot(new_vel, contact.normal)
 
             impulse := max(0, normal_vel - bias) * normal_mass
@@ -902,21 +909,40 @@ overlap_sphere_buf :: proc(
     return result, used_shapes > 0
 }
 
+Triangle_Contact :: struct {
+    verts:  [3][3]f32,
+    shape:  i32,
+}
+
 @(require_results)
 find_contacts_sphere :: proc(
     pos:            [3]f32,
     rad:            f32,
     max_contacts    := 8,
+    max_triangles   := 32,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
     allocator       := context.temp_allocator,
 ) -> (result_contacts: []Contact) #no_bounds_check {
     contacts := make([]Contact, max_contacts, allocator)
-    num_contacts := find_contacts_sphere_buf(
+    triangles := make([]Triangle_Contact, max_triangles, allocator)
+
+    num_contacts, num_triangles := find_contacts_sphere_buf(
         pos = pos,
         rad = rad,
         out_contacts = contacts,
+        out_triangles = triangles,
         ignore_layers = ignore_layers,
     )
+
+    num_tri_contacts := generate_filtered_sphere_vs_triangle_contacts(
+        pos = pos,
+        rad = rad,
+        out_contacts = contacts[num_contacts:],
+        triangles = triangles[:num_triangles],
+    )
+
+    num_contacts += num_tri_contacts
+
     return contacts[:num_contacts]
 }
 
@@ -925,8 +951,9 @@ find_contacts_sphere_buf :: proc(
     pos:            [3]f32,
     rad:            f32,
     out_contacts:   []Contact,
+    out_triangles:  []Triangle_Contact,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
-) -> (num_contacts: i32) #no_bounds_check {
+) -> (num_contacts: i32, num_triangles: i32) #no_bounds_check {
     assert(len(out_contacts) > 0)
 
     step := &_state.step_data[_state.step_read]
@@ -941,22 +968,33 @@ find_contacts_sphere_buf :: proc(
                     continue
                 }
 
-                num_new_contacts := find_contacts_sphere_vs_shape(
+                num_new_contacts, num_new_triangles := find_contacts_sphere_vs_shape(
                     pos = pos,
                     rad = rad,
                     shape = shape,
                     out_contacts = out_contacts[num_contacts:],
+                    out_triangles = out_triangles[num_triangles:],
                 )
 
                 contacts := out_contacts[num_contacts:][:num_new_contacts]
+                tris := out_triangles[:num_triangles][:num_new_triangles]
+
                 for &c in contacts {
                     c.shape = i32(index)
                 }
 
-                num_contacts += num_new_contacts
+                for &t in tris {
+                    t.shape = i32(index)
+                }
 
-                if int(num_contacts) >= len(out_contacts) {
-                    break
+                num_contacts += num_new_contacts
+                num_triangles += num_new_triangles
+
+                if
+                    int(num_contacts) >= len(out_contacts) &&
+                    int(num_triangles) >= len(out_triangles)
+                {
+                    break node_loop
                 }
             }
 
@@ -973,9 +1011,131 @@ find_contacts_sphere_buf :: proc(
         }
     }
 
+    return num_contacts, num_triangles
+}
+
+// https://www.codercorner.com/MeshContacts.pdf
+@(require_results)
+generate_filtered_sphere_vs_triangle_contacts :: proc(
+    pos:            [3]f32,
+    rad:            f32,
+    out_contacts:   []Contact,
+    triangles:      []Triangle_Contact,
+) -> (num_contacts: i32) {
+    assert(rad > 1e-6)
+
+    Feature :: struct {
+        rel:        [3]f32,
+        kind:       geometry.Voronoi_Feature_Kind,
+        index:      u8,
+    }
+
+    Sort_Info :: struct {
+        index:      i32,
+        dist_sq:    f32,
+    }
+
+    sort_info := make([]Sort_Info, len(triangles), context.temp_allocator)
+    features := make([]Feature, len(triangles), context.temp_allocator)
+
+    num_tris := 0
+    rad_sq := rad * rad
+
+    for tri, i in triangles {
+        closest, feature_kind, feature_index := geometry.get_triangle_closest_point(pos, tri.verts)
+        rel := pos - closest
+        dist_sq := linalg.length2(rel)
+
+        if dist_sq > rad_sq {
+            continue
+        }
+
+        // Backface culling
+        // if feature_kind == .Face && linalg.dot(linalg.cross(tri[1] - tri[0], tri[2] - tri[0]), rel) < 0 {
+        //     continue
+        // }
+
+        features[i] = {
+            index = u8(feature_index),
+            kind = feature_kind,
+            rel = rel,
+        }
+
+        sort_info[num_tris] = {
+            index = i32(i),
+            dist_sq = max(1e-6, dist_sq),
+        }
+        num_tris += 1
+    }
+
+    #assert(size_of(Sort_Info) == size_of(u64))
+    _insertion_sort(transmute([]u64)(sort_info[:num_tris]))
+
+    void_set: [128][3]f32
+    void_len: i32
+
+    inv_rad := 1.0 / rad
+    void_loop: for sort in sort_info[:num_tris] {
+        feature := features[sort.index]
+        tri := triangles[sort.index]
+
+        switch feature.kind {
+        case .Face:
+            // never voided
+
+        case .Edge:
+            vert0 := tri.verts[feature.index == 2 ? 1 : 0]
+            vert1 := tri.verts[feature.index == 0 ? 1 : 2]
+            for v in void_set[:void_len] {
+                if vert0 == v || vert1 == v {
+                    continue void_loop
+                }
+            }
+
+        case .Vertex:
+            vert := tri.verts[feature.index]
+            for v in void_set[:void_len] {
+                if vert == v {
+                    continue void_loop
+                }
+            }
+        }
+
+
+        dist := intrinsics.sqrt(sort.dist_sq)
+        out_contacts[num_contacts] = Contact{
+            normal = feature.rel / dist,
+            separation = dist - rad,
+            shape = tri.shape,
+        }
+
+        num_contacts += 1
+
+        vert_loop: for vert in tri.verts {
+            for v in void_set[:void_len] {
+                if vert == v {
+                    continue vert_loop
+                }
+            }
+            void_set[void_len] = vert
+            void_len += 1
+        }
+    }
+
     return num_contacts
 }
 
+_insertion_sort :: proc "contextless" (data: $T/[]$E) #no_bounds_check {
+    // Insert right-to-left into the already sorted part of the array
+    for i in 1..<len(data) {
+        val := data[i]
+        j := i
+        for ; j > 0 && data[j - 1] > val; j -= 1 {
+            data[j] = data[j - 1]
+        }
+        data[j] = val
+    }
+}
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1152,10 +1312,13 @@ find_contacts_sphere_vs_shape :: proc(
     rad:            f32,
     shape:          Shape,
     out_contacts:   []Contact,
-) -> (num_contacts: i32) {
+    out_triangles:  []Triangle_Contact, // potential mesh contacts.
+) -> (num_contacts: i32, num_triangles: i32) {
     assert(len(out_contacts) > 0)
 
     r := shape.rad + rad
+
+    assert(r > 0.0001)
 
     dist: f32
     grad: [3]f32
@@ -1181,23 +1344,32 @@ find_contacts_sphere_vs_shape :: proc(
     case .Mesh:
         inv := conj(shape.rot)
         local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
-        num_contacts = find_contacts_sphere_vs_mesh_local(
+        num_new_triangles := find_potential_contact_triangles_sphere_vs_mesh_local(
             pos = local_pos,
             rad = r,
             handle = shape.handle,
             scale = shape.ext,
-            out_contacts = out_contacts,
+            out_triangles = out_triangles[num_triangles:],
         )
 
-        for &c in out_contacts[:num_contacts] {
-            c.normal = linalg.quaternion128_mul_vector3(shape.rot, c.normal)
+        offset := shape.pos
+        mat := linalg.matrix3_from_quaternion_f32(shape.rot) *
+            linalg.matrix3_scale_f32(shape.ext)
+
+        tris := out_triangles[num_triangles:][:num_new_triangles]
+        for &tri in tris {
+            for &v in tri.verts {
+                v = offset + mat * v
+            }
         }
 
-        return num_contacts
+        num_triangles += num_new_triangles
+
+        return 0, num_triangles
     }
 
     if dist > 0 {
-        return 0
+        return 0, 0
     }
 
     out_contacts[0] = {
@@ -1206,7 +1378,7 @@ find_contacts_sphere_vs_shape :: proc(
         shape = -1,
     }
 
-    return 1
+    return 1, 0
 }
 
 
@@ -1311,22 +1483,19 @@ test_sphere_vs_mesh_local :: proc(
 }
 
 @(require_results)
-find_contacts_sphere_vs_mesh_local :: proc(
+find_potential_contact_triangles_sphere_vs_mesh_local :: proc(
     pos:            [3]f32,
     rad:            f32,
     handle:         Mesh_Handle,
     scale:          [3]f32 = 1,
-    out_contacts:   []Contact,
-) -> (num_contacts: i32) #no_bounds_check {
-    assert(len(out_contacts) > 0)
+    out_triangles:  []Triangle_Contact,
+) -> (num_triangles: i32) #no_bounds_check {
+    assert(len(out_triangles) > 0)
 
     mesh, mesh_ok := get_mesh(handle)
     if !mesh_ok {
         return 0
     }
-
-    // TODO
-    // https://www.codercorner.com/MeshContacts.pdf
 
     pos_simd := transmute(#simd[4]f32)pos.xyzz
 
@@ -1336,29 +1505,16 @@ find_contacts_sphere_vs_mesh_local :: proc(
                 index := mesh.blas.indices[int(iter.first) + offs]
                 tri := mesh.triangles[index]
                 verts := [3][3]f32{
-                    scale * mesh.verts[tri[0]],
-                    scale * mesh.verts[tri[1]],
-                    scale * mesh.verts[tri[2]],
+                    mesh.verts[tri[0]],
+                    mesh.verts[tri[1]],
+                    mesh.verts[tri[2]],
                 }
 
-                dist, grad := geometry.get_triangle_dist_grad(pos, verts)
+                out_triangles[num_triangles].verts = verts
+                num_triangles += 1
 
-                if dist > rad {
-                    continue
-                }
-
-                dist -= rad
-
-                out_contacts[num_contacts] = {
-                    normal = grad,
-                    separation = dist,
-                    shape = -1,
-                }
-
-                num_contacts += 1
-
-                if int(num_contacts) >= len(out_contacts) {
-                    break
+                if int(num_triangles) >= len(out_triangles) {
+                    return num_triangles
                 }
             }
 
@@ -1375,7 +1531,7 @@ find_contacts_sphere_vs_mesh_local :: proc(
         }
     }
 
-    return num_contacts
+    return num_triangles
 }
 
 @(require_results)
