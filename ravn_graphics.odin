@@ -1125,17 +1125,23 @@ draw_capsule :: proc(
     add_col:    Vec4 = 0,
     param:      u32 = 0,
 ) {
-    axis := pos1 - pos0
+    axis := linalg.normalize(pos1 - pos0)
     tangent: [3]f32 = {0, 1, 0}
-    if abs(axis.y) > abs(axis.x) + abs(axis.z) {
+    if abs(axis.y) > 0.9 {
         tangent = {1, 0, 0}
     }
-    rot := linalg.quaternion_angle_axis_f32(math.PI * 0.5, {1, 0, 0}) *
-        linalg.quaternion_normalize(linalg.quaternion_from_forward_and_up_f32(axis, tangent))
+
+    mat: matrix[3, 3]f32
+    mat[1] = axis
+    mat[0] = linalg.normalize(linalg.cross(axis, tangent))
+    mat[2] = linalg.normalize(linalg.cross(mat[0], axis))
+
+    rot := linalg.quaternion_from_matrix3_f32(mat)
+
     draw_mesh(get_builtin_mesh(.UV_Sphere_1), pos0, scale = rad, rot = rot, col = col, add_col = add_col, param = param)
     draw_mesh(get_builtin_mesh(.UV_Sphere_1), pos1, scale = rad, rot = rot, col = col, add_col = add_col, param = param)
     draw_mesh(get_builtin_mesh(.Cylinder_1), (pos0 + pos1) * 0.5,
-        scale = {rad, linalg.length(axis) * 0.5, rad},
+        scale = {rad, linalg.length(pos1 - pos0) * 0.5, rad},
         rot = rot,
         col = col,
         add_col = add_col,
