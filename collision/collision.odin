@@ -618,48 +618,46 @@ collide_sphere :: proc(
 collide_sphere_swept :: proc(
     pos:            [3]f32,
     vel:            [3]f32,
-    delta:          f32,
     rad:            f32,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
     max_sweeps      := 4,
-    bounce:         f32 = 0.05,
-    damp:           f32 = 0.01,
-    sweep_buf:      []Sweep = nil,
-) -> (new_pos: [3]f32, new_vel: [3]f32, num_hits: int) {
+) -> (new_pos: [3]f32, new_vel: [3]f32) {
     pos := pos
-    move := vel * delta
-    t: f32 = 0
+    vel := vel
+
+    step := get_step_state()
+    range := linalg.length(vel * step.delta)
 
     for i in 0..<max_sweeps {
-        sweep, sweep_hit := sweep_sphere(pos, move, rad = rad, ignore_layers = ignore_layers)
+        pos, vel, _ = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
 
-        if sweep.t < 0.001 {
-            move += sweep.normal * 0.001
-        } else {
-            pos += sweep.move * clamp(sweep.t - 0.001, 0.0, 1.0)
-            t += sweep.t
+        dir := linalg.normalize0(vel)
+
+        if dir == 0 || range < rad {
+            pos += dir * range
+            return pos, vel
         }
 
-        if sweep_hit {
-            solid_move := move - sweep.normal * linalg.dot(move, sweep.normal)
-            bounce_move := linalg.reflect(move, sweep.normal)
-            move =
-                solid_move * (1.0 - bounce) +
-                bounce_move * bounce
-            move *= 1.0 - damp
+        sweep, sweep_hit := sweep_sphere(pos, move = dir, rad = rad, range = range, ignore_layers = ignore_layers)
 
-            if num_hits < len(sweep_buf) {
-                sweep_buf[num_hits] = sweep
-                num_hits += 1
-            }
+        if !sweep_hit {
+            pos += dir * range
+            return pos, vel
         }
 
-        if t >= 1.0 {
+        pos += dir * max(sweep.t - 0.001, 0.0)
+        range -= sweep.t
+
+        vel -= sweep.normal * linalg.dot(vel, sweep.normal)
+
+        if range <= 0.001 {
             break
         }
     }
 
-    return pos, delta <= 1e-9 ? 0 : move / delta, num_hits
+    pos, vel, _ = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
+
+    return pos, vel
 }
 
 @(require_results)
