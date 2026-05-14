@@ -1806,7 +1806,7 @@ _draw_batch_table_copy_batches :: proc(
             len = batch.len,
             cap = batch.cap,
             inst_data = _clone(batch.inst_data, batch.len),
-            cull_data = _clone(batch.cull_data, ceil_div(batch.len, LANES)),
+            cull_data = nil,
         }
 
         intrinsics.mem_copy_non_overlapping(
@@ -1888,19 +1888,48 @@ _draw_batch_push :: proc(batch: ^Draw_Batch($Inst), inst: Inst) #no_bounds_check
     if batch.len >= batch.cap {
         batch.cap = max(256 + batch.last_len, batch.cap * 2)
         new_inst := make([^]Inst, batch.cap, context.temp_allocator)
-        new_cull := make([^]Draw_Cull_Group, ceil_div(batch.cap, LANES), context.temp_allocator)
 
         if batch.len > 0 {
             intrinsics.mem_copy_non_overlapping(rawptr(new_inst), batch.inst_data, size_of(Inst) * batch.len)
-            intrinsics.mem_copy_non_overlapping(rawptr(new_cull), batch.cull_data, ceil_div(size_of(Draw_Cull_Group) * batch.len, LANES))
         }
 
         batch.inst_data = new_inst
-        batch.cull_data = new_cull
     }
 
     batch.inst_data[batch.len] = inst
     batch.len += 1
+}
+
+_prepare_mesh_draw_batch_cull :: proc(batch: ^Draw_Batch(Mesh_Inst), key: Draw_Batch_Key) #no_bounds_check {
+    batch_num := (int(batch.len) + LANES) / LANES
+    batch.cull_data = make([^]Draw_Cull_Group, batch_num, context.temp_allocator)
+
+    mesh := &_state.meshes[key.asset_index]
+
+    for i in 0..<batch_num {
+        group: Draw_Cull_Group
+
+        for j in 0..<LANES {
+            index := i * LANES + j
+            if index >= int(batch.len) {
+                break
+            }
+
+            inst := batch.inst_data[index]
+            rad := intrinsics.sqrt(max(
+                linalg.length2(inst.mat_x),
+                linalg.length2(inst.mat_y),
+                linalg.length2(inst.mat_z),
+            )) * mesh.bounds_rad
+
+            group.pos_scalar[0][j] = inst.pos.x
+            group.pos_scalar[1][j] = inst.pos.y
+            group.pos_scalar[2][j] = inst.pos.z
+            group.rad_scalar[j] = rad
+        }
+
+        batch.cull_data[i] = group
+    }
 }
 
 _cull_draw_batch :: proc(
@@ -1953,6 +1982,8 @@ _cull_draw_batch :: proc(
             }
         }
     }
+
+    base.log_info("%v/%v", culled_len, batch.len)
 
     // Re-map the data to a new final buffer just for rendering.
     // From this point it cannot be pushed to!
@@ -2055,16 +2086,20 @@ submit_layers :: proc() {
                 }
             }
 
-            // TEMP
-            // for &batch in layer.meshes.batches[:layer.meshes.len] {
-            //     _cull_draw_batch(
-            //         batch = &batch,
-            //         frustum = fru,
-            //         fru_pos = fru_pos,
-            //         fru_rad = fru_rad,
-            //         fru_planes = fru_planes,
-            //     )
-            // }
+            for &batch, i in layer.meshes.batches[:layer.meshes.len] {
+                _prepare_mesh_draw_batch_cull(
+                    batch = &batch,
+                    key = layer.meshes.keys[i],
+                )
+
+                _cull_draw_batch(
+                    batch = &batch,
+                    frustum = fru,
+                    fru_pos = fru_pos,
+                    fru_rad = fru_rad,
+                    fru_planes = fru_planes,
+                )
+            }
 
             // for &batch in layer.sprites.batches[:layer.sprites.len] {
             //     _cull_draw_batch(
