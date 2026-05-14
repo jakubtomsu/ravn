@@ -15,6 +15,7 @@ state: ^State
 State :: struct {
     cam_pos:    rv.Vec3,
     cam_ang:    rv.Vec3,
+    cam_vel:    rv.Vec3,
     arena:      coll.Arena_Handle,
     mesh:       coll.Mesh_Handle,
     radius:     f32,
@@ -94,17 +95,23 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             speed *= 0.1
         }
 
-        state.cam_pos += mat[0] * move.x * delta * speed
-        state.cam_pos += mat[2] * move.z * delta * speed
-        state.cam_pos.y += move.y * delta * speed
+        force: [3]f32
+        force += mat[0] * move.x * speed
+        force += mat[2] * move.z * speed
+        force.y += move.y * speed
+
+        state.cam_vel = rv.lexp(state.cam_vel, 0, delta * 5)
+        state.cam_vel += force * delta * 10
+
+        contacts: []coll.Contact
+        state.cam_pos, state.cam_vel = coll.collide_sphere_swept(state.cam_pos, state.cam_vel, 0.2)
+        // state.cam_pos += state.cam_vel * delta
 
         rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
         rv.set_layer_params(1, rv.make_screen_camera())
     }
 
     rv.set_draw_depth(.Depth)
-
-    coll.begin_step()
 
     N :: 64
     SCALE :: 8
@@ -115,18 +122,20 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     state.radius = rv.nsin(rv.get_time() * 0.25)
 
-    // coll.mesh_shape(state.mesh, 5, rad = 0.5)
-    // coll.mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
-    // coll.mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
-    // coll.sphere_shape({0, 2, 5}, 2)
-    // coll.sphere_shape({0, 1, 8}, 1)
-    // coll.sphere_shape({0, 1, 9}, 1)
-    // coll.sphere_shape({0, 1, 10}, 1)
-    // coll.sphere_shape({0, 1, 11}, 1)
-    // coll.capsule_shape({0, 1, -5}, 0, 0.5)
-    // coll.box_shape({-5, 2, -4}, {2, 1, 2})
-    // coll.box_shape({-5, 0, -8}, {2, 1, 2}, 1)
-    // coll.oriented_box_shape({5, 2, -8}, {2, 1, 2}, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}), rad = 1)
+    coll.mesh_shape(state.mesh, 5)
+    coll.mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
+    coll.mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
+    coll.sphere_shape({0, 2, 5}, 2)
+    coll.sphere_shape({0, 1, 8}, 1)
+    coll.sphere_shape({0, 1, 9}, 1)
+    coll.sphere_shape({0, 1, 10}, 1)
+    coll.sphere_shape({0, 1, 11}, 1)
+    coll.capsule_shape({0, 1, -5}, 0, 0.5)
+    coll.box_shape({-5, 2, -4}, {2, 1, 2})
+    coll.box_shape({-5, 4 + rv.nsin(rv.get_time()) * 2, -4}, {2, 1, 2})
+    coll.box_shape({-5, 0, -8}, {2, 1, 2}, rad = 1)
+    coll.oriented_box_shape({5, 2, -8}, {1, 0.5, 4}, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}), rad = 0)
+    coll.box_shape({5, -1, -8}, {2, 1, 2})
 
     // for i in 0..<100 {
     //     coll.sphere_shape(f32(i) * 3, 2)
@@ -182,20 +191,88 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     sweep, sweep_ok := coll.sweep_point(state.cam_pos, mat[2], range = 100)
     hit := state.cam_pos + mat[2] * sweep.t
 
-    {
-        p := [3]f32{
-            math.cos_f32(rv.get_time()) * 5,
-            2,
-            math.sin_f32(rv.get_time()) * 5,
-        }
+    rv.draw_capsule(1, 2, 0.5, rv.RED)
 
-        test, ok := coll.test_sphere(p, 1)
+    // {
+
+    //     tri := [3][3]f32{
+    //         {0, 0, 0},
+    //         {0, 1, 0},
+    //         {1, 0, 1},
+    //     }
+
+    //     rv.draw_triangle(tri, rv.ORANGE)
+
+    //     closest, feature_kind, feature := geom.get_triangle_closest_point(state.cam_pos, tri)
+
+    //     fmt.println(feature_kind, feature)
+
+    //     rv.draw_sphere(closest, 0.15, col = rv.RED)
+
+    //     switch feature_kind {
+    //     case .Face:
+
+    //     case .Edge:
+    //         a := tri[feature == 2 ? 1 : 0]
+    //         b := tri[feature == 0 ? 1 : 2]
+    //         rv.draw_capsule(a, b, 0.1, col = rv.YELLOW)
+
+    //     case .Vertex:
+    //         rv.draw_sphere(tri[feature], 0.2, col = rv.YELLOW)
+    //     }
+
+
+    // }
+
+    {
+        // p := [3]f32{
+        //     math.cos_f32(rv.get_time()) * 5,
+        //     2,
+        //     math.sin_f32(rv.get_time()) * 5,
+        // }
+
+        p := state.cam_pos + mat[2] * 0.5
+
+        // tri := [3][3]f32{
+        //     {0, 0, 0},
+        //     {0, 1, 0},
+        //     {1, 0, 1},
+        // }
+
+        // sd, grad := geom.get_triangle_dist_grad(p, tri)
+        // rv.draw_mesh(
+        //     rv.get_builtin_mesh(.UV_Sphere_1),
+        //     p,
+        //     scale = sd,
+        //     col = sd > 0 ? rv.GREEN : rv.RED,
+        // )
+        // rv.draw_mesh(
+        //     rv.get_builtin_mesh(.UV_Sphere_1),
+        //     p + grad * 0.25,
+        //     scale = 0.1,
+        //     col =  grad.xyzz * 0.5 + 0.5,
+        // )
+        // rv.draw_triangle(tri)
+
+        test, ok := coll.test_sphere(p, 0.5)
+        contacts := coll.find_contacts_sphere(p, 0.05, max_contacts = 64)
+        fmt.println(len(contacts), contacts)
+
+        for c in contacts {
+            rv.draw_line(p, p + c.normal)
+            rv.draw_mesh(
+                rv.get_builtin_mesh(.UV_Sphere_1),
+                p + c.normal * (0.05 - c.separation),
+                scale = 0.01,
+                col = rv.YELLOW,
+            )
+        }
 
         rv.draw_mesh(
             rv.get_builtin_mesh(.UV_Sphere_1),
             p,
-            scale = 0.5,
-            col = ok ? rv.GREEN : rv.RED,
+            scale = 0.05,
+            col = len(contacts) > 0 ? rv.GREEN : rv.RED,
         )
     }
 
@@ -225,27 +302,38 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         // )
     }
 
-    coll.end_step()
-
     coll_step := coll.get_step_state()
     for shape in coll_step.shape_data[:coll_step.shape_used] {
         switch shape.kind {
         case .Sphere:
-            rv.draw_line_sphere(shape.pos, shape.rad, rv.LIGHT_GREEN)
+            rv.draw_sphere(shape.pos, shape.rad, col = rv.LIGHT_GREEN)
 
         case .Capsule:
-            rv.draw_line_cylinder({shape.pos, shape.ext}, shape.rad, rv.LIGHT_GREEN)
+            rv.draw_capsule(shape.pos, shape.ext, shape.rad, rv.LIGHT_GREEN)
 
         case .Aligned_Box:
-            rv.draw_line_aabb(shape.pos - shape.ext, shape.pos + shape.ext, rv.LIGHT_GREEN)
+            rv.draw_box(shape.pos, shape.ext, col = rv.LIGHT_GREEN)
 
         case .Oriented_Box:
-            mat := linalg.matrix3_from_quaternion_f32(shape.rot)
-            rv.draw_line_box(shape.pos, mat * linalg.matrix3_scale(shape.ext), rv.LIGHT_GREEN)
+            rv.draw_box(shape.pos, shape.ext, shape.rot, col = rv.LIGHT_GREEN)
 
         case .Mesh:
             mesh := coll.get_mesh(shape.handle) or_continue
-            rv.draw_line_aabb(shape.pos + mesh.bounds_min, shape.pos + mesh.bounds_max, rv.LIGHT_GREEN)
+            mat := linalg.matrix3_from_quaternion_f32(shape.rot) * linalg.matrix3_scale_f32(shape.ext)
+
+            for tri in mesh.triangles {
+                verts := [3][3]f32{
+                    mesh.verts[tri[0]],
+                    mesh.verts[tri[1]],
+                    mesh.verts[tri[2]],
+                }
+
+                for &v in verts {
+                    v = mat * v + shape.pos
+                }
+
+                rv.draw_triangle(verts, col = rv.LIGHT_GREEN)
+            }
         }
     }
 

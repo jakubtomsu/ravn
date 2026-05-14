@@ -2449,11 +2449,17 @@ _render_layer_meshes :: proc(layer_index: i32, pip_desc: gpu.Pipeline_Desc) {
         1 = {},
     }
 
-    _perf_counter_add(.Num_Draw_Calls, layer.meshes.len)
 
     for batch_index in 0..<layer.meshes.len {
-        key := layer.meshes.keys[batch_index]
         batch := layer.meshes.batches[batch_index]
+
+        if batch.len == 0 {
+            continue
+        }
+
+        key := layer.meshes.keys[batch_index]
+
+        _perf_counter_add(.Num_Draw_Calls, 1)
         _gpu_pipeline_desc_apply_draw_key(&pip_desc, key)
 
         pip_desc.index.resource = _state.arenas[key.arena].ibuf

@@ -74,6 +74,15 @@ nlexp :: proc "contextless" (a, b: $T, rate: f32) -> T {
 }
 
 @(require_results)
+move_towards :: proc "contextless" (x, target: $T, rate: f32) -> T {
+    if abs(x - target) < rate {
+        return target
+    } else {
+        return x + rate * (x < target ? 1 : -1)
+    }
+}
+
+@(require_results)
 fade :: #force_inline proc "contextless" (alpha: f32) -> Vec4 {
     return {1, 1, 1, alpha}
 }

@@ -120,7 +120,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         rv.draw_line_grid(col = rv.WHITE * 0.7)
 
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), sound_pos, scale = 0.5, col = rv.ORANGE)
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_1), sound_pos, scale = 0.5, col = rv.ORANGE)
         rv.draw_line_sphere(sound_pos, ATTENUATION_RANGE[0], rv.ORANGE * rv.fade(0.5))
         rv.draw_line_sphere(sound_pos, ATTENUATION_RANGE[1], rv.ORANGE * rv.fade(0.5))
 

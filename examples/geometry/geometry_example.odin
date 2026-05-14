@@ -189,7 +189,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
                 if ok {
                     rv.draw_line(hit, hit + nor * 0.25, rv.YELLOW)
-                    rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), hit, scale = 0.05, col = rv.GREEN)
+                    rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_1), hit, scale = 0.05, col = rv.GREEN)
                 }
             }
 
@@ -212,7 +212,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
                     t, hit, nor, ok := sweep_point_vs_shape(start, move, shape, center)
 
-                    rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), hit, scale = 0.05, col = ok ? rv.GREEN : rv.RED)
+                    rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_1), hit, scale = 0.05, col = ok ? rv.GREEN : rv.RED)
                 }
             }
 
@@ -220,8 +220,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             center.x += 10
         }
 
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit, scale = 0.075, col = rv.YELLOW)
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), cam_sweep.hit + cam_sweep.nor * 0.1, scale = 0.05, col = rv.ORANGE)
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_1), cam_sweep.hit, scale = 0.075, col = rv.YELLOW)
+        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_1), cam_sweep.hit + cam_sweep.nor * 0.1, scale = 0.05, col = rv.ORANGE)
     }
 
     rv.set_draw_layer(1)
@@ -245,21 +245,19 @@ draw_shape :: proc(shape: Shape_Kind, center: rv.Vec3) {
 
     switch shape {
     case .Box:
-        rv.draw_mesh(rv.get_builtin_mesh(.Cube), center, col = rv.GRAY)
+        rv.draw_box(center, col = rv.GRAY)
 
     case .Sphere:
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center, col = rv.GRAY)
+        rv.draw_sphere(center, col = rv.GRAY)
 
     case .Plane:
-        rv.draw_mesh(rv.get_builtin_mesh(.Disk), center, col = rv.GRAY)
+        rv.draw_mesh(rv.get_builtin_mesh(.Disk_1), center, col = rv.GRAY)
 
     case .Cylinder, .Uncapped_Cylinder:
-        rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), center, col = rv.GRAY)
+        rv.draw_mesh(rv.get_builtin_mesh(.Cylinder_1), center, col = rv.GRAY)
 
     case .Capsule:
-        // rv.draw_mesh(rv.get_builtin_mesh(.Cylinder), center, col = rv.GRAY)
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, 0, 1}, col = rv.GRAY)
-        rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), center + {0, 0, -1,}, col = rv.GRAY)
+        rv.draw_capsule(center + {0, 0, 1}, center + {0, 0, -1}, col = rv.GRAY)
 
     case .Triangle:
         rv.draw_triangle(tri, col = rv.GRAY)
@@ -277,7 +275,7 @@ draw_shape :: proc(shape: Shape_Kind, center: rv.Vec3) {
             )
         }
         for v in tri {
-            rv.draw_mesh(rv.get_builtin_mesh(.Icosphere), v, scale = 0.5, col = rv.GRAY)
+            rv.draw_mesh(rv.get_builtin_mesh(.Icosphere_1), v, scale = 0.5, col = rv.GRAY)
         }
 
     case .Rounded_Box:
