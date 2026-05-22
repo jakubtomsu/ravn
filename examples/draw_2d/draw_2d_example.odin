@@ -1,7 +1,6 @@
 package draw_2d_example
 
 import rv "../.."
-import "../../platform"
 
 state: ^State
 

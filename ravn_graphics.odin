@@ -975,7 +975,7 @@ draw_sprite_2d :: proc(
     rect:       Rect = {0, 1},
     scale:      Vec2 = 1,
     col:        Vec4 = 1,
-    rot:        f32 = 1,
+    rot:        f32 = 0,
     anchor:     Vec2 = 0,
     add_col:    Vec4 = 0,
     scaling:    Sprite_Scaling = .Pixel,
