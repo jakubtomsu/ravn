@@ -67,7 +67,7 @@ Vertex :: struct #align(16) {
 
 Texture_Pool :: struct {
     slices_used:    bit_set[0..<MAX_TEXTURE_POOL_SLICES],
-    size:           IVec2,
+    size:           [2]i32,
     slices:         i32,
     resource:       gpu.Resource_Handle,
 }
@@ -175,7 +175,7 @@ Draw_Texture_Kind :: enum u8 {
 }
 
 Render_Texture :: struct #all_or_none {
-    size:   IVec2,
+    size:   [2]i32,
     color:  gpu.Resource_Handle,
     depth:  gpu.Resource_Handle,
 }
@@ -195,8 +195,8 @@ Draw_Global_Constants :: struct #all_or_none #align(16) {
 }
 
 Draw_Layer_Constants :: struct #all_or_none #align(16) {
-    view_proj:      Mat4,
-    cam_pos:        Vec3,
+    view_proj:      matrix[4, 4]f32,
+    cam_pos:        [3]f32,
     layer_index:    i32,
 }
 
@@ -318,7 +318,7 @@ create_mesh_from_data :: proc(
 // NOTE: Strongly prefer square and power-of-two sizes for texture pools.
 // NOTE: A texture pool may not be destroyed.
 // NOTE: Beware of the memory consumed by high-res texture pools!
-create_texture_pool :: proc(size: IVec2, slices: i32) -> (ok: bool) {
+create_texture_pool :: proc(size: [2]i32, slices: i32) -> (ok: bool) {
     if _state.texture_pools_len >= len(_state.texture_pools) {
         base.log_err("Failed to create texture pool, too many texture pools")
         return false
@@ -918,13 +918,13 @@ set_layer_params :: proc(
 //
 
 draw_sprite :: proc(
-    pos:        Vec3,
+    pos:        [3]f32,
     rect:       Rect = {0, 1},
-    scale:      Vec2 = 1,
-    col:        Vec4 = 1,
-    rot:        Mat3 = 1,
-    anchor:     Vec2 = 0,
-    add_col:    Vec4 = 0,
+    scale:      [2]f32 = 1,
+    col:        [4]f32 = 1,
+    rot:        matrix[3, 3]f32 = 1,
+    anchor:     [2]f32 = 0,
+    add_col:    [4]f32 = 0,
     scaling:    Sprite_Scaling = .Pixel,
     param:      u32 = 0,
 ) {
@@ -971,13 +971,13 @@ draw_sprite :: proc(
 }
 
 draw_sprite_2d :: proc(
-    pos:        Vec2,
+    pos:        [2]f32,
     rect:       Rect = {0, 1},
-    scale:      Vec2 = 1,
-    col:        Vec4 = 1,
+    scale:      [2]f32 = 1,
+    col:        [4]f32 = 1,
     rot:        f32 = 0,
-    anchor:     Vec2 = 0,
-    add_col:    Vec4 = 0,
+    anchor:     [2]f32 = 0,
+    add_col:    [4]f32 = 0,
     scaling:    Sprite_Scaling = .Pixel,
     z:          f32 = 0,
     param:      u32 = 0,
@@ -990,7 +990,7 @@ draw_sprite_2d :: proc(
         pos = {pos.x, pos.y, z},
         rect = rect,
         col = col,
-        rot = Mat3{
+        rot = matrix[3, 3]f32{
             right.x, right.y, 0,
             right.y, -right.x, 0,
             0, 0, 1,
@@ -1006,8 +1006,8 @@ draw_rect_2d :: proc(
     rect:       Rect,
     tex_rect:   Rect = {0, 1},
     z:          f32 = 0,
-    col:        Vec4 = 1,
-    add_col:    Vec4 = 0,
+    col:        [4]f32 = 1,
+    add_col:    [4]f32 = 0,
     param:      u32 = 0,
 ) {
     center := rect_center(rect)
@@ -1035,11 +1035,11 @@ draw_rect_2d :: proc(
 
 draw_mesh :: proc(
     handle:     Mesh_Handle,
-    pos:        Vec3,
-    scale:      Vec3 = 1,
-    rot:        Quat = 1,
-    col:        Vec4 = 1,
-    add_col:    Vec4 = 0,
+    pos:        [3]f32,
+    scale:      [3]f32 = 1,
+    rot:        quaternion128 = 1,
+    col:        [4]f32 = 1,
+    add_col:    [4]f32 = 0,
     param:      u32 = 0,
 ) {
     perf_scope()
@@ -1080,11 +1080,11 @@ draw_mesh :: proc(
 }
 
 draw_sphere :: proc(
-    pos:        Vec3,
-    scale:      Vec3 = 1,
-    rot:        Quat = 1,
-    col:        Vec4 = 1,
-    add_col:    Vec4 = 0,
+    pos:        [3]f32,
+    scale:      [3]f32 = 1,
+    rot:        quaternion128 = 1,
+    col:        [4]f32 = 1,
+    add_col:    [4]f32 = 0,
     param:      u32 = 0,
 ) {
     draw_mesh(
@@ -1099,11 +1099,11 @@ draw_sphere :: proc(
 }
 
 draw_box :: proc(
-    pos:        Vec3,
-    scale:      Vec3 = 1,
-    rot:        Quat = 1,
-    col:        Vec4 = 1,
-    add_col:    Vec4 = 0,
+    pos:        [3]f32,
+    scale:      [3]f32 = 1,
+    rot:        quaternion128 = 1,
+    col:        [4]f32 = 1,
+    add_col:    [4]f32 = 0,
     param:      u32 = 0,
 ) {
     draw_mesh(
@@ -1118,11 +1118,11 @@ draw_box :: proc(
 }
 
 draw_capsule :: proc(
-    pos0:       Vec3,
-    pos1:       Vec3,
+    pos0:       [3]f32,
+    pos1:       [3]f32,
     rad:        f32 = 1,
-    col:        Vec4 = 1,
-    add_col:    Vec4 = 0,
+    col:        [4]f32 = 1,
+    add_col:    [4]f32 = 0,
     param:      u32 = 0,
 ) {
     axis := linalg.normalize(pos1 - pos0)
@@ -1151,11 +1151,11 @@ draw_capsule :: proc(
 
 draw_triangles :: proc(
     verts:      ..Vertex,
-    pos:        Vec3 = 0,
-    scale:      Vec3 = 1,
-    rot:        Quat = 1,
-    col:        Vec4 = WHITE,
-    add_col:    Vec4 = 0,
+    pos:        [3]f32 = 0,
+    scale:      [3]f32 = 1,
+    rot:        quaternion128 = 1,
+    col:        [4]f32 = WHITE,
+    add_col:    [4]f32 = 0,
     param:      u32 = 0,
 ) {
     perf_scope()
@@ -1191,11 +1191,11 @@ draw_triangles :: proc(
 
 draw_lines :: proc(
     verts:      ..Vertex,
-    pos:        Vec3 = 0,
-    scale:      Vec3 = 1,
-    rot:        Quat = 1,
-    col:        Vec4 = WHITE,
-    add_col:    Vec4 = 0,
+    pos:        [3]f32 = 0,
+    scale:      [3]f32 = 1,
+    rot:        quaternion128 = 1,
+    col:        [4]f32 = WHITE,
+    add_col:    [4]f32 = 0,
     param:      u32 = 0,
 ) {
     perf_scope()
@@ -1231,11 +1231,11 @@ draw_lines :: proc(
 
 // Prefer draw_triangles if you need to efficiently draw many triangles.
 draw_triangle :: proc(
-    pos:        [3]Vec3,
-    col:        [3]Vec4 = WHITE,
-    uvs:        [3]Vec2 = {{0, 0}, {1, 0}, {0, 1}},
-    add_col:    Vec4 = BLACK,
-    normals:    Maybe([3]Vec3) = nil,
+    pos:        [3][3]f32,
+    col:        [3][4]f32 = WHITE,
+    uvs:        [3][2]f32 = {{0, 0}, {1, 0}, {0, 1}},
+    add_col:    [4]f32 = BLACK,
+    normals:    Maybe([3][3]f32) = nil,
 ) {
     assert(base.is_finite_vec(pos[0]) && base.is_finite_vec(pos[1]) && base.is_finite_vec(pos[2]))
 
@@ -1258,10 +1258,10 @@ draw_triangle :: proc(
 }
 
 draw_triangle_2d :: proc(
-    pos:        [3]Vec2,
-    col:        [3]Vec4 = WHITE,
-    uvs:        [3]Vec2 = {{0, 0}, {1, 0}, {0, 1}},
-    add_col:    Vec4 = BLACK,
+    pos:        [3][2]f32,
+    col:        [3][4]f32 = WHITE,
+    uvs:        [3][2]f32 = {{0, 0}, {1, 0}, {0, 1}},
+    add_col:    [4]f32 = BLACK,
     z:          f32 = 0,
 ) {
     verts: [3]Vertex
@@ -1278,19 +1278,19 @@ draw_triangle_2d :: proc(
 
 // Prefer draw_lines if you need to efficiently draw many lines.
 draw_line :: proc(
-    pos0:       Vec3,
-    pos1:       Vec3,
-    col:        [2]Vec4 = WHITE,
-    uvs:        [2]Vec2 = {{0, 0.5}, {1, 0.5}},
-    add_col:    Vec4 = BLACK,
-    normals:    Maybe([2]Vec3) = nil,
+    pos0:       [3]f32,
+    pos1:       [3]f32,
+    col:        [2][4]f32 = WHITE,
+    uvs:        [2][2]f32 = {{0, 0.5}, {1, 0.5}},
+    add_col:    [4]f32 = BLACK,
+    normals:    Maybe([2][3]f32) = nil,
 ) {
     assert(base.is_finite_vec(pos0))
     assert(base.is_finite_vec(pos1))
 
     norm, norm_ok := normals.?
     if !norm_ok {
-        norm = Vec3{0, 1, 0}
+        norm = [3]f32{0, 1, 0}
     }
 
     verts: [2]Vertex
@@ -1307,11 +1307,11 @@ draw_line :: proc(
 }
 
 draw_line_2d :: proc(
-    pos0:       Vec2,
-    pos1:       Vec2,
-    col:        [2]Vec4 = WHITE,
-    uvs:        [2]Vec2 = {{0, 0.5}, {1, 0.5}},
-    add_col:    Vec4 = BLACK,
+    pos0:       [2]f32,
+    pos1:       [2]f32,
+    col:        [2][4]f32 = WHITE,
+    uvs:        [2][2]f32 = {{0, 0.5}, {1, 0.5}},
+    add_col:    [4]f32 = BLACK,
     z:          f32 = 0,
 ) {
     verts: [2]Vertex
@@ -1360,16 +1360,16 @@ _push_draw_dynamic_verts :: proc(verts: []Vertex) -> (offset: int, length: int) 
 draw_text :: proc(
     text:       string, // UTF-8
     pos:        [3]f32,
-    scale:      Vec2 = 1,
-    anchor:     Vec2 = -1, // Anchor point in local space. -1 = left aligned, 0 = centered, 1.0 = right aligned
-    spacing:    Vec2 = {0, 8}, // x = character spacing, y = line spacing
-    col:        Vec4 = 1,
-    add_col:    Vec4 = 0,
-    rot:        Mat3 = 1,
+    scale:      [2]f32 = 1,
+    anchor:     [2]f32 = -1, // Anchor point in local space. -1 = left aligned, 0 = centered, 1.0 = right aligned
+    spacing:    [2]f32 = {0, 8}, // x = character spacing, y = line spacing
+    col:        [4]f32 = 1,
+    add_col:    [4]f32 = 0,
+    rot:        matrix[3, 3]f32 = 1,
 ) -> []Sprite_Inst {
     perf_scope()
 
-    char_size := IVec2{
+    char_size := [2]i32{
         i32(_state.draw_state.texture_size.x) / 16,
         i32(_state.draw_state.texture_size.y) / 16,
     }
@@ -1387,7 +1387,7 @@ draw_text :: proc(
         rot[0] * full_size.x * -(anchor.x * 0.5 + 0.5) +
         rot[1] * full_size.y * -(anchor.y * 0.5 + 0.5)
 
-    offs: Vec2
+    offs: [2]f32
 
     key := _state.draw_state.key
     key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
@@ -1457,12 +1457,12 @@ draw_text :: proc(
 
 draw_text_2d :: proc(
     text:       string, // UTF-8
-    pos:        Vec2,
-    scale:      Vec2 = 1,
-    anchor:     Vec2 = -1,
-    spacing:    Vec2 = {0, 8},
-    col:        Vec4 = 1,
-    add_col:    Vec4 = 0,
+    pos:        [2]f32,
+    scale:      [2]f32 = 1,
+    anchor:     [2]f32 = -1,
+    spacing:    [2]f32 = {0, 8},
+    col:        [4]f32 = 1,
+    add_col:    [4]f32 = 0,
     z:          f32 = 0,
 ) -> []Sprite_Inst {
     return draw_text(
@@ -1485,10 +1485,10 @@ rune_is_drawable :: proc(r: rune) -> bool {
     return true
 }
 
-calc_text_size :: proc(text: string, scale: Vec2, char_size: IVec2 = 8, spacing: Vec2 = 0) -> Vec2 {
-    offs: Vec2
+calc_text_size :: proc(text: string, scale: [2]f32, char_size: [2]i32 = 8, spacing: [2]f32 = 0) -> [2]f32 {
+    offs: [2]f32
 
-    size: Vec2
+    size: [2]f32
 
     for r in text {
         offs = text_glyph_apply(offs, r, scale = scale, char_size = char_size, spacing = spacing)
@@ -1501,7 +1501,7 @@ calc_text_size :: proc(text: string, scale: Vec2, char_size: IVec2 = 8, spacing:
     return size + {0, (f32(char_size.y) + spacing.y) * scale.y}
 }
 
-text_glyph_apply :: proc(offs: Vec2, r: rune, scale: Vec2, char_size: IVec2 = 8, spacing: Vec2 = 0) -> Vec2 {
+text_glyph_apply :: proc(offs: [2]f32, r: rune, scale: [2]f32, char_size: [2]i32 = 8, spacing: [2]f32 = 0) -> [2]f32 {
     offs := offs
 
     switch r {
@@ -1529,18 +1529,18 @@ text_glyph_apply :: proc(offs: Vec2, r: rune, scale: Vec2, char_size: IVec2 = 8,
 // TODO: some shapes could use a single inst + linear transform
 //
 
-_BOX_CORNER_POSITIONS :: [8]Vec3 {
-    0 = Vec3{-1, -1, -1},
-    1 = Vec3{-1, -1, +1},
-    2 = Vec3{-1, +1, -1},
-    3 = Vec3{-1, +1, +1},
-    4 = Vec3{+1, -1, -1},
-    5 = Vec3{+1, -1, +1},
-    6 = Vec3{+1, +1, -1},
-    7 = Vec3{+1, +1, +1},
+_BOX_CORNER_POSITIONS :: [8][3]f32 {
+    0 = [3]f32{-1, -1, -1},
+    1 = [3]f32{-1, -1, +1},
+    2 = [3]f32{-1, +1, -1},
+    3 = [3]f32{-1, +1, +1},
+    4 = [3]f32{+1, -1, -1},
+    5 = [3]f32{+1, -1, +1},
+    6 = [3]f32{+1, +1, -1},
+    7 = [3]f32{+1, +1, +1},
 }
 
-draw_line_triangle :: proc(verts: [3]Vec3, col := WHITE) {
+draw_line_triangle :: proc(verts: [3][3]f32, col := WHITE) {
     if col.a < 0.01 do return
     draw_lines(
         pack_vertex(verts[0], col = col), pack_vertex(verts[1], col = col),
@@ -1549,7 +1549,7 @@ draw_line_triangle :: proc(verts: [3]Vec3, col := WHITE) {
     )
 }
 
-draw_line_point :: proc(pos: Vec3, rad: Vec3 = 1, col := WHITE) {
+draw_line_point :: proc(pos: [3]f32, rad: [3]f32 = 1, col := WHITE) {
     if col.a < 0.01 do return
     draw_lines(
         pack_vertex(pos + {-rad.x, 0, 0}, col = col), pack_vertex(pos + {rad.x, 0, 0}, col = col),
@@ -1558,7 +1558,7 @@ draw_line_point :: proc(pos: Vec3, rad: Vec3 = 1, col := WHITE) {
     )
 }
 
-draw_line_box :: proc(pos: Vec3, mat: Mat3 = 1, col := WHITE) {
+draw_line_box :: proc(pos: [3]f32, mat: matrix[3, 3]f32 = 1, col := WHITE) {
     if col.a < 0.01 do return
     corners := _BOX_CORNER_POSITIONS
     for &c in corners {
@@ -1567,7 +1567,7 @@ draw_line_box :: proc(pos: Vec3, mat: Mat3 = 1, col := WHITE) {
     _draw_line_box_corners(corners, col)
 }
 
-draw_line_mat3 :: proc(pos: Vec3, mat: Mat3 = 1) {
+draw_line_mat3 :: proc(pos: [3]f32, mat: matrix[3, 3]f32 = 1) {
     draw_lines(
         pack_vertex(pos, col = WHITE),    pack_vertex(pos + mat[0], col = RED),
         pack_vertex(pos, col = WHITE),  pack_vertex(pos + mat[1], col = GREEN),
@@ -1575,25 +1575,25 @@ draw_line_mat3 :: proc(pos: Vec3, mat: Mat3 = 1) {
     )
 }
 
-draw_line_aabb :: proc(min: Vec3, max: Vec3, col := WHITE) {
+draw_line_aabb :: proc(min: [3]f32, max: [3]f32, col := WHITE) {
     if col.a < 0.01 do return
-    corners := [8]Vec3 {
-        0 = Vec3{min.x, min.y, min.z},
-        1 = Vec3{min.x, min.y, max.z},
-        2 = Vec3{min.x, max.y, min.z},
-        3 = Vec3{min.x, max.y, max.z},
-        4 = Vec3{max.x, min.y, min.z},
-        5 = Vec3{max.x, min.y, max.z},
-        6 = Vec3{max.x, max.y, min.z},
-        7 = Vec3{max.x, max.y, max.z},
+    corners := [8][3]f32 {
+        0 = [3]f32{min.x, min.y, min.z},
+        1 = [3]f32{min.x, min.y, max.z},
+        2 = [3]f32{min.x, max.y, min.z},
+        3 = [3]f32{min.x, max.y, max.z},
+        4 = [3]f32{max.x, min.y, min.z},
+        5 = [3]f32{max.x, min.y, max.z},
+        6 = [3]f32{max.x, max.y, min.z},
+        7 = [3]f32{max.x, max.y, max.z},
     }
     _draw_line_box_corners(corners, col)
 }
 
 draw_line_circle :: proc(
-    pos:        Vec3,
-    rad:        Vec2 = 1,
-    axis:       Vec3 = {0, 1, 0},
+    pos:        [3]f32,
+    rad:        [2]f32 = 1,
+    axis:       [3]f32 = {0, 1, 0},
     col         := WHITE,
     segments    := 12,
 ) {
@@ -1601,7 +1601,7 @@ draw_line_circle :: proc(
 
     circle := _calc_circle_points(segments)
 
-    u := rad.x * linalg.normalize0(linalg.cross(axis, abs(axis.y) > 0.9 ? Vec3{1, 0, 0} : Vec3{0, 1, 0}))
+    u := rad.x * linalg.normalize0(linalg.cross(axis, abs(axis.y) > 0.9 ? [3]f32{1, 0, 0} : [3]f32{0, 1, 0}))
     v := rad.y * linalg.normalize0(linalg.cross(u, axis))
 
     verts := make([]Vertex, segments * 2, context.temp_allocator)
@@ -1616,8 +1616,8 @@ draw_line_circle :: proc(
 }
 
 draw_line_sphere :: proc(
-    pos:        Vec3,
-    mat:        Mat3 = 1,
+    pos:        [3]f32,
+    mat:        matrix[3, 3]f32 = 1,
     col         := WHITE,
     segments    := 12,
 ) {
@@ -1641,12 +1641,12 @@ draw_line_sphere :: proc(
     draw_lines(..verts)
 }
 
-draw_line_cylinder :: proc(pos: [2]Vec3, rad: f32 = 1.0, col := WHITE, segments := 12) {
+draw_line_cylinder :: proc(pos: [2][3]f32, rad: f32 = 1.0, col := WHITE, segments := 12) {
     if col.a < 0.01 do return
 
     axis := linalg.normalize0(pos[1] - pos[0])
 
-    u := rad * linalg.normalize0(linalg.cross(axis, abs(axis.y) > 0.9 ? Vec3{1, 0, 0} : Vec3{0, 1, 0}))
+    u := rad * linalg.normalize0(linalg.cross(axis, abs(axis.y) > 0.9 ? [3]f32{1, 0, 0} : [3]f32{0, 1, 0}))
     v := rad * linalg.normalize0(linalg.cross(u, axis))
 
     circle := _calc_circle_points(segments)
@@ -1674,9 +1674,9 @@ draw_line_cylinder :: proc(pos: [2]Vec3, rad: f32 = 1.0, col := WHITE, segments 
 // The axis vectors determine a single cell size.
 // Segments are the number of lines in ONE QUADRANT.
 draw_line_grid :: proc(
-    pos:        Vec3 = 0,
-    axis_a:     Vec3 = {1, 0, 0},
-    axis_b:     Vec3 = {0, 0, 1},
+    pos:        [3]f32 = 0,
+    axis_a:     [3]f32 = {1, 0, 0},
+    axis_b:     [3]f32 = {0, 0, 1},
     col         := WHITE,
     segments:   [2]i32 = 5,
 ) {
@@ -1702,7 +1702,7 @@ draw_line_grid :: proc(
     draw_lines(..buf)
 }
 
-_draw_line_box_corners :: proc(corners: [8]Vec3, col: Vec4) {
+_draw_line_box_corners :: proc(corners: [8][3]f32, col: [4]f32) {
     if col.a <= 0.01 do return
     draw_lines(
         pack_vertex(corners[0], col = col), pack_vertex(corners[1], col = col),
@@ -1722,7 +1722,7 @@ _draw_line_box_corners :: proc(corners: [8]Vec3, col: Vec4) {
     )
 }
 
-_calc_circle_points :: proc(segments: int) -> []Vec2 {
+_calc_circle_points :: proc(segments: int) -> [][2]f32 {
     /* Can be approximated with:
     import "core:math"
     import "core:fmt"
@@ -1734,7 +1734,7 @@ _calc_circle_points :: proc(segments: int) -> []Vec2 {
     }
     */
     @(rodata, static)
-    _circle_points := [12]Vec2{
+    _circle_points := [12][2]f32{
         {0, 1},
         {0.5, 0.86602539},
         {0.86602545, 0.5},
@@ -1754,7 +1754,7 @@ _calc_circle_points :: proc(segments: int) -> []Vec2 {
         return _circle_points[:]
     }
 
-    buf := make([]Vec2, segments, context.temp_allocator)
+    buf := make([][2]f32, segments, context.temp_allocator)
     for &p, i in buf {
         t := f32(i) * math.TAU / f32(segments)
         p = {math.cos_f32(t), math.sin_f32(t)}
@@ -2309,7 +2309,7 @@ submit_layers :: proc() {
 render_layer :: proc(
     #any_int layer_index:   i32,
     ren_tex_handle:         Render_Texture_Handle = DEFAULT_RENDER_TEXTURE,
-    clear_color:            Maybe(Vec3) = nil,
+    clear_color:            Maybe([3]f32) = nil,
     clear_depth:            bool = true,
     // User configurable GPU parameters.
     // Only first few slots are consumed by built-in ravn resources,
@@ -2622,23 +2622,23 @@ _gpu_fill_mode :: proc(fill: Fill_Mode) -> (gpu.Cull_Mode, gpu.Fill_Mode) {
 //
 
 Camera :: struct {
-    pos:        Vec3,
-    rot:        Quat,
+    pos:        [3]f32,
+    rot:        quaternion128,
     // View to clip transform.
     // NDC box is -1..1 on X and Y, and 0..1 on Z axis.
-    projection: Mat4,
+    projection: matrix[4, 4]f32,
 }
 
 FRUSTUM_FAR_PLANE_INDEX :: 5
 
 Frustum :: struct {
     planes:     [6][4]f32, // xyz normal, w offset
-    corners:    [8]Vec3,
-    bounds_min: Vec3,
-    bounds_max: Vec3,
+    corners:    [8][3]f32,
+    bounds_min: [3]f32,
+    bounds_max: [3]f32,
 }
 
-orthographic_projection :: proc(left, right, top, bottom: f32, near: f32 = 0.01, far: f32 = 1000.0) -> (result: Mat4) {
+orthographic_projection :: proc(left, right, top, bottom: f32, near: f32 = 0.01, far: f32 = 1000.0) -> (result: matrix[4, 4]f32) {
     // D3D11, LH 0..1 NDC
     // https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dxmatrixorthooffcenterlh
 
@@ -2656,7 +2656,7 @@ orthographic_projection :: proc(left, right, top, bottom: f32, near: f32 = 0.01,
 // left handed reverse Z
 // https://iolite-engine.com/blog_posts/reverse_z_cheatsheet
 // NOTE: use Greater depth comparison!
-perspective_projection :: proc(screen: Vec2, fov: f32, near: f32 = 0.01, far: f32 = 1000.0) -> (result: Mat4) {
+perspective_projection :: proc(screen: [2]f32, fov: f32, near: f32 = 0.01, far: f32 = 1000.0) -> (result: matrix[4, 4]f32) {
     assert(fov > 0)
     assert(screen.x > 0)
     assert(screen.y > 0)
@@ -2672,14 +2672,14 @@ perspective_projection :: proc(screen: Vec2, fov: f32, near: f32 = 0.01, far: f3
     return result
 }
 
-calc_camera_world_to_view_matrix :: proc(camera: Camera) -> (result: Mat4) {
+calc_camera_world_to_view_matrix :: proc(camera: Camera) -> (result: matrix[4, 4]f32) {
     result =
         linalg.matrix4_from_quaternion_f32(linalg.quaternion_inverse(camera.rot)) *
         linalg.matrix4_translate_f32(-camera.pos)
     return result
 }
 
-calc_camera_world_to_clip_matrix :: proc(camera: Camera) -> (result: Mat4) {
+calc_camera_world_to_clip_matrix :: proc(camera: Camera) -> (result: matrix[4, 4]f32) {
     result = camera.projection * calc_camera_world_to_view_matrix(camera)
     return result
 }
@@ -2690,19 +2690,19 @@ calc_camera_frustum :: proc(cam: Camera) -> Frustum {
     return calc_matrix_frustum(inv)
 }
 
-calc_matrix_frustum :: proc(clip_to_world: Mat4) -> (result: Frustum) {
+calc_matrix_frustum :: proc(clip_to_world: matrix[4, 4]f32) -> (result: Frustum) {
     // https://iquilezles.org/articles/frustumcorrect/
     // https://iquilezles.org/articles/frustum/
 
-    fru := [8]Vec4{
-        0 = clip_to_world * Vec4{-1, -1,  0, 1.0},
-        1 = clip_to_world * Vec4{+1, -1,  0, 1.0},
-        2 = clip_to_world * Vec4{-1, +1,  0, 1.0},
-        3 = clip_to_world * Vec4{+1, +1,  0, 1.0},
-        4 = clip_to_world * Vec4{-1, -1, +1, 1.0},
-        5 = clip_to_world * Vec4{+1, -1, +1, 1.0},
-        6 = clip_to_world * Vec4{-1, +1, +1, 1.0},
-        7 = clip_to_world * Vec4{+1, +1, +1, 1.0},
+    fru := [8][4]f32{
+        0 = clip_to_world * [4]f32{-1, -1,  0, 1.0},
+        1 = clip_to_world * [4]f32{+1, -1,  0, 1.0},
+        2 = clip_to_world * [4]f32{-1, +1,  0, 1.0},
+        3 = clip_to_world * [4]f32{+1, +1,  0, 1.0},
+        4 = clip_to_world * [4]f32{-1, -1, +1, 1.0},
+        5 = clip_to_world * [4]f32{+1, -1, +1, 1.0},
+        6 = clip_to_world * [4]f32{-1, +1, +1, 1.0},
+        7 = clip_to_world * [4]f32{+1, +1, +1, 1.0},
     }
 
     for p, i in fru {
@@ -2716,7 +2716,7 @@ calc_matrix_frustum :: proc(clip_to_world: Mat4) -> (result: Frustum) {
         result.bounds_max = linalg.max(result.bounds_max, p)
     }
 
-    center: Vec3
+    center: [3]f32
     for p in result.corners {
         center += p
     }
@@ -2733,7 +2733,7 @@ calc_matrix_frustum :: proc(clip_to_world: Mat4) -> (result: Frustum) {
 
     return result
 
-    _tri_plane :: proc(center: Vec3, a, b, c: Vec3) -> Vec4 {
+    _tri_plane :: proc(center: [3]f32, a, b, c: [3]f32) -> [4]f32 {
         normal := linalg.normalize0(linalg.cross(b - a, c - a))
 
         if linalg.dot(a - center, normal) < 0 {
@@ -2749,7 +2749,7 @@ calc_matrix_frustum :: proc(clip_to_world: Mat4) -> (result: Frustum) {
     }
 }
 
-is_box_in_frustum :: proc(fru: Frustum, pos: Vec3, rad: Vec3) -> bool #no_bounds_check {
+is_box_in_frustum :: proc(fru: Frustum, pos: [3]f32, rad: [3]f32) -> bool #no_bounds_check {
     EPS :: 1
 
     bounds_min := fru.bounds_min - rad - EPS
@@ -2776,7 +2776,7 @@ is_box_in_frustum :: proc(fru: Frustum, pos: Vec3, rad: Vec3) -> bool #no_bounds
     return true
 }
 
-is_sphere_in_frustum :: proc(fru: Frustum, pos: Vec3, rad: f32) -> bool #no_bounds_check {
+is_sphere_in_frustum :: proc(fru: Frustum, pos: [3]f32, rad: f32) -> bool #no_bounds_check {
     EPS :: 1
 
     bounds_min := fru.bounds_min - rad - EPS
@@ -2833,7 +2833,7 @@ is_sphere_in_frustum_simd :: proc(
 }
 
 // Returns the ray direction.
-screen_to_world_ray :: proc(pos: Vec2, cam: Camera) -> Vec3 {
+screen_to_world_ray :: proc(pos: [2]f32, cam: Camera) -> [3]f32 {
     cam_mvp := calc_camera_world_to_clip_matrix(cam)
     cam_inv := linalg.matrix4_inverse_f32(cam_mvp)
 
@@ -2842,8 +2842,8 @@ screen_to_world_ray :: proc(pos: Vec2, cam: Camera) -> Vec3 {
     p.x = (p.x / f32(get_screen_size().x)) * 2.0 - 1.0
     p.y = 1.0 - 2.0 * (p.y / f32(get_screen_size().y))
 
-    p0 := cam_inv * Vec4{p.x, p.y, 0.0, 1.0}
-    p1 := cam_inv * Vec4{p.x, p.y, 1.0, 1.0}
+    p0 := cam_inv * [4]f32{p.x, p.y, 0.0, 1.0}
+    p1 := cam_inv * [4]f32{p.x, p.y, 1.0, 1.0}
     p0.xyz /= p0.w
     p1.xyz /= p1.w
 

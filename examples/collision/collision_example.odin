@@ -13,9 +13,9 @@ import "core:math"
 state: ^State
 
 State :: struct {
-    cam_pos:    rv.Vec3,
-    cam_ang:    rv.Vec3,
-    cam_vel:    rv.Vec3,
+    cam_pos:    [3]f32,
+    cam_ang:    [3]f32,
+    cam_vel:    [3]f32,
     arena:      coll.Arena_Handle,
     mesh:       coll.Mesh_Handle,
     radius:     f32,
@@ -72,9 +72,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     delta := rv.get_delta_time()
 
     // Flycam controls
-    mat: rv.Mat3
+    mat: rv.matrix[3, 3]f32
     {
-        move: rv.Vec3
+        move: [3]f32
         if rv.get_key_down(.D) do move.x += 1
         if rv.get_key_down(.A) do move.x -= 1
         if rv.get_key_down(.W) do move.z += 1
@@ -353,7 +353,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_perf_scopes({10, 60, 0.1})
 
     rv.submit_layers()
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, [3]f32{0, 0, 0.1}, true)
     rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, true)
 
     return state

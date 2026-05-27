@@ -8,14 +8,14 @@ import "../../platform"
 import "../../base/ufmt"
 import "../../audio"
 
-SNAKE_RED :: rv.Vec4{1, 0.3, 0, 1}
+SNAKE_RED :: [4]f32{1, 0.3, 0, 1}
 SNAKE_ORANGE :: rv.ORANGE
 
 state: ^State
 
 State :: struct {
-    cam_pos:        rv.Vec3,
-    cam_rot:        rv.Quat,
+    cam_pos:        [3]f32,
+    cam_rot:        rv.quaternion128,
     cam_fov:        f32,
 
     obsts:          [64]Obstacle,
@@ -42,26 +42,26 @@ Screen_ID :: enum u8 {
 }
 
 Obstacle :: struct {
-    pos:    rv.Vec3,
+    pos:    [3]f32,
     rad:    f32,
 }
 
 Berry :: struct {
-    pos:    rv.Vec3,
+    pos:    [3]f32,
 }
 
 MAX_SEGMENTS :: 512
 
 Snake :: struct {
-    dir:            rv.Vec2,
-    pos:            rv.Vec3,
+    dir:            [2]f32,
+    pos:            [3]f32,
     segments:       [MAX_SEGMENTS]Segment,
     num_segments:   i32,
     segment_timer:  f32,
 }
 
 Segment :: struct {
-    pos:    rv.Vec3,
+    pos:    [3]f32,
 }
 
 @export _module_desc := rv.Module_Desc {
@@ -138,8 +138,8 @@ spawn_berry :: proc() {
     rv.create_sound(state.berry_sound, pitch = rand.float32_range(0.9, 1.2))
 }
 
-rand_dir :: proc() -> rv.Vec3 {
-    return linalg.normalize0(rv.Vec3{
+rand_dir :: proc() -> [3]f32 {
+    return linalg.normalize0([3]f32{
         rand.float32() * 2.0 - 1.0,
         rand.float32() * 2.0 - 1.0,
         rand.float32() * 2.0 - 1.0,
@@ -150,7 +150,7 @@ add_snake_segment :: proc() {
     snake := &state.snake
     assert(snake.num_segments > 0)
     pos := snake.num_segments == 0 ? snake.pos : snake.segments[snake.num_segments - 1].pos
-    offs: rv.Vec3
+    offs: [3]f32
     if snake.num_segments > 1 {
         offs = pos - snake.segments[snake.num_segments - 2].pos
     } else {
@@ -186,7 +186,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         mat := linalg.matrix3_from_quaternion_f32(state.cam_rot)
 
         // TODO: Gamepad
-        move_inp: rv.Vec2
+        move_inp: [2]f32
 
         if rv.get_key_down(.D) do move_inp.x += 1
         if rv.get_key_down(.A) do move_inp.x -= 1
@@ -198,7 +198,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         if rv.get_key_down(.Up) do move_inp.y += 1
         if rv.get_key_down(.Down) do move_inp.y -= 1
 
-        // move_dir := move_inp.x * rv.Vec3{1, 0, 0} + mat[1] * rv.Vec3{0, 1, 0}
+        // move_dir := move_inp.x * [3]f32{1, 0, 0} + mat[1] * [3]f32{0, 1, 0}
 
         if linalg.length2(move_inp) > 0.1 {
             move_inp = linalg.normalize0(move_inp)
@@ -285,7 +285,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         sph := rv.get_builtin_mesh(.Icosphere_1)
 
-        rv.draw_mesh(sph, 0, col = rv.Vec4{0.0, 0.6, 0.2, 1})
+        rv.draw_mesh(sph, 0, col = [4]f32{0.0, 0.6, 0.2, 1})
 
         rv.set_draw_texture(rv.get_builtin_texture(.White))
 
@@ -297,8 +297,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         }
 
         for obst in state.obsts[:state.num_obsts] {
-            rv.draw_mesh(sph, obst.pos, scale = obst.rad, col = rv.Vec4{0.0, 0.6, 0.2, 1})
-            rv.draw_mesh(sph, obst.pos * 1.1, scale = obst.rad * 1.2, col = rv.Vec4{0.2, 0.7, 0.3, 1})
+            rv.draw_mesh(sph, obst.pos, scale = obst.rad, col = [4]f32{0.0, 0.6, 0.2, 1})
+            rv.draw_mesh(sph, obst.pos * 1.1, scale = obst.rad * 1.2, col = [4]f32{0.2, 0.7, 0.3, 1})
         }
 
         rv.draw_mesh(sph, state.berry.pos * 1.1, scale = 0.2 + 0.05 * rv.nsin(rv.get_time() * 2), col = rv.RED)
@@ -363,7 +363,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_perf_scopes()
 
     rv.submit_layers()
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0.05, 0.1, 0.2}, true)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, [3]f32{0.05, 0.1, 0.2}, true)
     rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
 
     // rv.end_frame(false) // disable VSYNC
@@ -371,7 +371,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     return state
 }
 
-repel_from_obstacles :: proc(pos: rv.Vec3, rad: f32) -> rv.Vec3 {
+repel_from_obstacles :: proc(pos: [3]f32, rad: f32) -> [3]f32 {
     pos := pos
     for obst in state.obsts[:state.num_obsts] {
         dist := linalg.length(pos - obst.pos)

@@ -22,8 +22,8 @@ State :: struct {
 }
 
 Particle :: struct {
-    pos:    rv.Vec2,
-    vel:    rv.Vec2,
+    pos:    [2]f32,
+    vel:    [2]f32,
     timer:  f32,
     dur:    f32,
 }
@@ -96,7 +96,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
                     rand.float32() * 2.0 - 1.0,
                     rand.float32() * 2.0 - 1.0,
                 },
-                vel = vel * rand.float32() * linalg.normalize0(rv.Vec2{
+                vel = vel * rand.float32() * linalg.normalize0([2]f32{
                     rand.float32() * 2.0 - 1.0,
                     rand.float32() * 2.0 - 1.0,
                 }),
@@ -186,7 +186,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             assert(~block == 0)
         }
 
-        base_pos := rv.Vec3{
+        base_pos := [3]f32{
             64 + f32(i % 8) * (32 + 4),
             64 + f32(i / 8) * (32 + 4),
             0.1,
@@ -202,7 +202,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         )
 
         for i_local in 0..<64 {
-            local_pos := base_pos + rv.Vec3{
+            local_pos := base_pos + [3]f32{
                 f32(i_local % 8) * 4 - 14,
                 f32(i_local / 8) * 4 - 14,
                 -0.05,
@@ -225,7 +225,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     // LL
 
     for i in 0..<64 {
-        base_pos := rv.Vec3{
+        base_pos := [3]f32{
             64  + f32(i % 8) * (32 + 4),
             512 + f32(i / 8) * (32 + 4),
             0.1,
@@ -253,7 +253,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         )
 
         for i_local in 0..<64 {
-            local_pos := base_pos + rv.Vec3{
+            local_pos := base_pos + [3]f32{
                 f32(i_local % 8) * 4 - 14,
                 f32(i_local / 8) * 4 - 14,
                 -0.05,
@@ -278,7 +278,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_text("LMB to spawn particles", {10, 10, 0}, scale = 2)
 
     rv.submit_layers()
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.Vec3{0, 0, 0.1}, clear_depth = true)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = [3]f32{0, 0, 0.1}, clear_depth = true)
 
     return state
 }

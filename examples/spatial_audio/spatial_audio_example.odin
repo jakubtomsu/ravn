@@ -12,8 +12,8 @@ import "core:math"
 state: ^State
 
 State :: struct {
-    cam_pos:    rv.Vec3,
-    cam_ang:    rv.Vec3,
+    cam_pos:    [3]f32,
+    cam_ang:    [3]f32,
     res0:       rv.Sound_Resource_Handle,
     res1:       rv.Sound_Resource_Handle,
     sound:      rv.Sound_Handle,
@@ -68,7 +68,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     // Flycam controls
 
-    move: rv.Vec3
+    move: [3]f32
     if rv.get_key_down(.D) do move.x += 1
     if rv.get_key_down(.A) do move.x -= 1
     if rv.get_key_down(.W) do move.z += 1
@@ -89,7 +89,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         speed *= 0.1
     }
 
-    cam_vel: rv.Vec3
+    cam_vel: [3]f32
     cam_vel += mat[0] * move.x * speed
     cam_vel += mat[2] * move.z * speed
     cam_vel.y += move.y * speed
@@ -104,7 +104,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     sound_vel := math.cos_f32(rv.get_time() * 2) * 10
     state.sound_x += sound_vel * delta
-    sound_pos := rv.Vec3{state.sound_x, 1, 0}
+    sound_pos := [3]f32{state.sound_x, 1, 0}
 
     audio.set_sound_transform(state.sound, sound_pos, {sound_vel, 0, 0})
 
@@ -134,7 +134,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_text("Use WASD and QE to move, mouse to look", {20, 20, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
     rv.submit_layers()
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, [3]f32{0, 0, 0.1}, true)
     rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
 
     return state

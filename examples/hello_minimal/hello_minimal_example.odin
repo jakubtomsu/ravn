@@ -27,7 +27,7 @@ main :: proc() {
         rv.submit_layers()
 
         rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE,
-            clear_color = rv.Vec3{0, 0, 0.5},
+            clear_color = [3]f32{0, 0, 0.5},
             clear_depth = true,
         )
 

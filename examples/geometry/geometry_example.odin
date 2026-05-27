@@ -12,8 +12,8 @@ import "core:math"
 state: ^State
 
 State :: struct {
-    cam_pos:    rv.Vec3,
-    cam_ang:    rv.Vec3,
+    cam_pos:    [3]f32,
+    cam_ang:    [3]f32,
     anim_rot:   bool,
 }
 
@@ -67,9 +67,9 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     delta := rv.get_delta_time()
 
     // Flycam controls
-    mat: rv.Mat3
+    mat: rv.matrix[3, 3]f32
     {
-        move: rv.Vec3
+        move: [3]f32
         if rv.get_key_down(.D) do move.x += 1
         if rv.get_key_down(.A) do move.x -= 1
         if rv.get_key_down(.W) do move.z += 1
@@ -231,13 +231,13 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_text(rv.tprintf("%f", cam_sweep.t), {20, 40, 0.1}, scale = 1)
 
     rv.submit_layers()
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, [3]f32{0, 0, 0.1}, true)
     rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, true)
 
     return state
 }
 
-draw_shape :: proc(shape: Shape_Kind, center: rv.Vec3) {
+draw_shape :: proc(shape: Shape_Kind, center: [3]f32) {
     tri := TRI
     for &v in tri {
         v += center
@@ -293,7 +293,7 @@ draw_shape :: proc(shape: Shape_Kind, center: rv.Vec3) {
     }
 }
 
-sweep_point_vs_shape :: proc(start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, center: rv.Vec3, range: f32 = 1) -> (t: f32, hit: [3]f32, nor: [3]f32, ok: bool) {
+sweep_point_vs_shape :: proc(start: [3]f32, move: [3]f32, shape: Shape_Kind, center: [3]f32, range: f32 = 1) -> (t: f32, hit: [3]f32, nor: [3]f32, ok: bool) {
     tri := TRI
     for &v in tri {
         v += center
@@ -360,11 +360,11 @@ TRI :: [3][3]f32{
 
 Sweep :: struct {
     t:      f32,
-    hit:    rv.Vec3,
-    nor:    rv.Vec3,
+    hit:    [3]f32,
+    nor:    [3]f32,
 }
 
-update_sweep_point_vs_shape :: proc(sweep: ^Sweep, start: rv.Vec3, move: rv.Vec3, shape: Shape_Kind, center: rv.Vec3) {
+update_sweep_point_vs_shape :: proc(sweep: ^Sweep, start: [3]f32, move: [3]f32, shape: Shape_Kind, center: [3]f32) {
     t, hit, nor, ok := sweep_point_vs_shape(start, move, shape, center, range = sweep.t)
 
     if ok && t < sweep.t {

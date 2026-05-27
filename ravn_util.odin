@@ -12,34 +12,34 @@ import "core:simd/x86"
 // TODO: 1d/2d/3d hashing
 
 // TODO: non ugly colors? paletted? more shades?
-WHITE           :: Vec4{1, 1, 1, 1}
-BLACK           :: Vec4{0, 0, 0, 1}
-TRANSPARENT     :: Vec4{1, 1, 1, 0}
-GRAY            :: Vec4{0.5, 0.5, 0.5, 1}
-DARK_GRAY       :: Vec4{0.25, 0.25, 0.25, 1}
-LIGHT_GRAY      :: Vec4{0.75, 0.75, 0.75, 1}
-RED             :: Vec4{1, 0, 0, 1}
-DARK_RED        :: Vec4{0.5, 0, 0, 1}
-LIGHT_RED       :: Vec4{1, 0.5, 0.5, 1}
-GREEN           :: Vec4{0, 1, 0, 1}
-DARK_GREEN      :: Vec4{0, 0.5, 0, 1}
-LIGHT_GREEN     :: Vec4{0.5, 1, 0.5, 1}
-BLUE            :: Vec4{0, 0, 1, 1}
-DARK_BLUE       :: Vec4{0, 0, 0.5, 1}
-LIGHT_BLUE      :: Vec4{0.5, 0.5, 1, 1}
-YELLOW          :: Vec4{1, 1, 0, 1}
-LIGHT_YELLOW    :: Vec4{1, 1, 0.5, 1}
-CYAN            :: Vec4{0, 1, 1, 1}
-DARK_CYAN       :: Vec4{0, 0.5, 0.5, 1}
-LIGHT_CYAN      :: Vec4{0.5, 1, 1, 1}
-PINK            :: Vec4{1, 0, 1, 1}
-DARK_PINK       :: Vec4{0.5, 0, 0.5, 1}
-LIGHT_PINK      :: Vec4{1, 0.5, 1, 1}
-ORANGE          :: Vec4{1, 0.5, 0, 1}
-LIGHT_ORANGE    :: Vec4{1, 0.75, 0.5, 1}
-PURPLE          :: Vec4{0.5, 0, 1, 1}
-DARK_PURPLE     :: Vec4{0.25, 0, 0.5, 1}
-LIGHT_PURPLE    :: Vec4{0.75, 0.5, 1, 1}
+WHITE           :: [4]f32{1, 1, 1, 1}
+BLACK           :: [4]f32{0, 0, 0, 1}
+TRANSPARENT     :: [4]f32{1, 1, 1, 0}
+GRAY            :: [4]f32{0.5, 0.5, 0.5, 1}
+DARK_GRAY       :: [4]f32{0.25, 0.25, 0.25, 1}
+LIGHT_GRAY      :: [4]f32{0.75, 0.75, 0.75, 1}
+RED             :: [4]f32{1, 0, 0, 1}
+DARK_RED        :: [4]f32{0.5, 0, 0, 1}
+LIGHT_RED       :: [4]f32{1, 0.5, 0.5, 1}
+GREEN           :: [4]f32{0, 1, 0, 1}
+DARK_GREEN      :: [4]f32{0, 0.5, 0, 1}
+LIGHT_GREEN     :: [4]f32{0.5, 1, 0.5, 1}
+BLUE            :: [4]f32{0, 0, 1, 1}
+DARK_BLUE       :: [4]f32{0, 0, 0.5, 1}
+LIGHT_BLUE      :: [4]f32{0.5, 0.5, 1, 1}
+YELLOW          :: [4]f32{1, 1, 0, 1}
+LIGHT_YELLOW    :: [4]f32{1, 1, 0.5, 1}
+CYAN            :: [4]f32{0, 1, 1, 1}
+DARK_CYAN       :: [4]f32{0, 0.5, 0.5, 1}
+LIGHT_CYAN      :: [4]f32{0.5, 1, 1, 1}
+PINK            :: [4]f32{1, 0, 1, 1}
+DARK_PINK       :: [4]f32{0.5, 0, 0.5, 1}
+LIGHT_PINK      :: [4]f32{1, 0.5, 1, 1}
+ORANGE          :: [4]f32{1, 0.5, 0, 1}
+LIGHT_ORANGE    :: [4]f32{1, 0.75, 0.5, 1}
+PURPLE          :: [4]f32{0.5, 0, 1, 1}
+DARK_PURPLE     :: [4]f32{0.25, 0, 0.5, 1}
+LIGHT_PURPLE    :: [4]f32{0.75, 0.5, 1, 1}
 
 quat_angle_axis :: linalg.quaternion_angle_axis_f32
 
@@ -83,17 +83,17 @@ move_towards :: proc "contextless" (x, target: $T, rate: f32) -> T {
 }
 
 @(require_results)
-fade :: #force_inline proc "contextless" (alpha: f32) -> Vec4 {
+fade :: #force_inline proc "contextless" (alpha: f32) -> [4]f32 {
     return {1, 1, 1, alpha}
 }
 
 @(require_results)
-gray :: #force_inline proc "contextless" (val: f32) -> Vec4 {
+gray :: #force_inline proc "contextless" (val: f32) -> [4]f32 {
     return {val, val, val, 1}
 }
 
 @(require_results)
-addz :: #force_inline proc "contextless" (v: Vec2, z: f32 = 0.0) -> Vec3 {
+addz :: #force_inline proc "contextless" (v: [2]f32, z: f32 = 0.0) -> [3]f32 {
     return {v.x, v.y, z}
 }
 
@@ -150,8 +150,8 @@ smoothstep :: proc "contextless" (edge0, edge1, x: f32) -> f32 {
 }
 
 @(require_results)
-luminance :: proc "contextless" (rgb: Vec3) -> f32 {
-    return linalg.dot(rgb, Vec3{0.2126, 0.7152, 0.0722})
+luminance :: proc "contextless" (rgb: [3]f32) -> f32 {
+    return linalg.dot(rgb, [3]f32{0.2126, 0.7152, 0.0722})
 }
 
 floor :: proc {
@@ -171,7 +171,7 @@ floor_f32 :: proc (x: f32) -> f32 {
 
 // RGB only!
 @(require_results)
-hex_color :: proc "contextless" (hex: u32) -> Vec4 {
+hex_color :: proc "contextless" (hex: u32) -> [4]f32 {
     bytes := transmute([4]u8)hex
 
     return {
@@ -184,11 +184,11 @@ hex_color :: proc "contextless" (hex: u32) -> Vec4 {
 
 // Oklab lerp - Better color gradients than regular lerp()
 @(require_results)
-oklerp :: proc "contextless" (a, b: Vec4, t: f32) -> (result: Vec4) {
+oklerp :: proc "contextless" (a, b: [4]f32, t: f32) -> (result: [4]f32) {
     // https://bottosson.github.io/posts/oklab
     // https://www.shadertoy.com/view/ttcyRS
-    CONE_TO_LMS :: Mat3{0.4121656120, 0.2118591070, 0.0883097947, 0.5362752080, 0.6807189584, 0.2818474174, 0.0514575653, 0.1074065790, 0.6302613616}
-    LMS_TO_CONE :: Mat3{4.0767245293, -1.2681437731, -0.0041119885, -3.3072168827, 2.6093323231, -0.7034763098, 0.2307590544, -0.3411344290, 1.7068625689}
+    CONE_TO_LMS :: matrix[3, 3]f32{0.4121656120, 0.2118591070, 0.0883097947, 0.5362752080, 0.6807189584, 0.2818474174, 0.0514575653, 0.1074065790, 0.6302613616}
+    LMS_TO_CONE :: matrix[3, 3]f32{4.0767245293, -1.2681437731, -0.0041119885, -3.3072168827, 2.6093323231, -0.7034763098, 0.2307590544, -0.3411344290, 1.7068625689}
 
     // rgb to cone (arg of pow can't be negative)
     lms_a := linalg.pow(CONE_TO_LMS * a.rgb, 1 / 3.0)
@@ -204,7 +204,7 @@ oklerp :: proc "contextless" (a, b: Vec4, t: f32) -> (result: Vec4) {
 
 // 0 -> Red, 0.5 -> Blue, 1 -> Green
 @(require_results)
-heatmap_color :: proc(val: f32) -> (result: Vec4) {
+heatmap_color :: proc(val: f32) -> (result: [4]f32) {
     result.g = smoothstep(0.5, 0.8, val)
     if (val > 0.5) {
         result.b = smoothstep(1, 0.5, val)
@@ -218,7 +218,7 @@ heatmap_color :: proc(val: f32) -> (result: Vec4) {
 
 // ZXY order for first-person view.
 @(require_results)
-euler_rot :: proc(angles: Vec3) -> Quat {
+euler_rot :: proc(angles: [3]f32) -> quaternion128 {
     return linalg.quaternion_from_euler_angle_y_f32(angles.y) *
            linalg.quaternion_from_euler_angle_x_f32(angles.x) *
            linalg.quaternion_from_euler_angle_z_f32(angles.z)
@@ -278,44 +278,44 @@ rcp :: proc "contextless" (denom: f32) -> (result: f32) {
 // MARK: Rect
 //
 
-@(require_results) rect_make :: proc(min: Vec2, full_size: Vec2) -> Rect {
+@(require_results) rect_make :: proc(min: [2]f32, full_size: [2]f32) -> Rect {
     return {
         min = min,
         max = min + full_size,
     }
 }
 
-@(require_results) rect_make_centered :: proc(pos: Vec2, half_size: Vec2) -> Rect {
+@(require_results) rect_make_centered :: proc(pos: [2]f32, half_size: [2]f32) -> Rect {
     return {pos - half_size, pos + half_size}
 }
 
-@(require_results) rect_center :: proc(r: Rect) -> Vec2 {
+@(require_results) rect_center :: proc(r: Rect) -> [2]f32 {
     return (r.min + r.max) * 0.5
 }
 
-@(require_results) rect_anchor :: proc(r: Rect, anchor: Vec2) -> Vec2 {
+@(require_results) rect_anchor :: proc(r: Rect, anchor: [2]f32) -> [2]f32 {
     return {lerp(r.min.x, r.max.x, anchor.x), lerp(r.min.y, r.max.y, anchor.y)}
 }
 
-@(require_results) rect_full_size :: #force_inline proc(r: Rect) -> Vec2 {
+@(require_results) rect_full_size :: #force_inline proc(r: Rect) -> [2]f32 {
     return r.max - r.min
 }
 
-@(require_results) rect_expand :: proc(r: Rect, a: Vec2) -> Rect {
+@(require_results) rect_expand :: proc(r: Rect, a: [2]f32) -> Rect {
     return {r.min - a, r.max + a}
 }
 
-@(require_results) rect_scale :: proc(r: Rect, a: Vec2) -> Rect {
+@(require_results) rect_scale :: proc(r: Rect, a: [2]f32) -> Rect {
     size := rect_full_size(r) * 0.5
     center := rect_center(r)
     return {center - size * a, center + size * a}
 }
 
-@(require_results) rect_contains_point :: proc(r: Rect, p: Vec2) -> bool {
+@(require_results) rect_contains_point :: proc(r: Rect, p: [2]f32) -> bool {
     return p.x > r.min.x && p.y > r.min.y && p.x < r.max.x && p.y < r.max.y
 }
 
-@(require_results) rect_clamp_point :: proc(r: Rect, p: Vec2) -> Vec2 {
+@(require_results) rect_clamp_point :: proc(r: Rect, p: [2]f32) -> [2]f32 {
     return {clamp(p.x, r.min.x, r.max.x), clamp(p.y, r.min.y, r.max.y)}
 }
 
@@ -366,7 +366,7 @@ rcp :: proc "contextless" (denom: f32) -> (result: f32) {
 //
 
 @(require_results)
-make_3d_perspective_camera :: proc(pos: Vec3, rot: Quat, fov: f32 = math.PI * 0.5) -> Camera {
+make_3d_perspective_camera :: proc(pos: [3]f32, rot: quaternion128, fov: f32 = math.PI * 0.5) -> Camera {
     return {
         pos = pos,
         rot = rot,
@@ -378,7 +378,7 @@ make_3d_perspective_camera :: proc(pos: Vec3, rot: Quat, fov: f32 = math.PI * 0.
 }
 
 @(require_results)
-make_3d_orthographic_camera :: proc(pos: Vec3, rot: Quat, fov: f32 = 10) -> Camera {
+make_3d_orthographic_camera :: proc(pos: [3]f32, rot: quaternion128, fov: f32 = 10) -> Camera {
     screen := get_screen_size()
     aspect := screen.x / screen.y
     return {
@@ -396,7 +396,7 @@ make_3d_orthographic_camera :: proc(pos: Vec3, rot: Quat, fov: f32 = 10) -> Came
 }
 
 @(require_results)
-make_2d_camera :: proc(center: Vec3 = 0, fov: Vec2 = 1.0, angle: f32 = 0) -> Camera {
+make_2d_camera :: proc(center: [3]f32 = 0, fov: [2]f32 = 1.0, angle: f32 = 0) -> Camera {
     screen := get_screen_size()
     return {
         pos = center,
@@ -413,7 +413,7 @@ make_2d_camera :: proc(center: Vec3 = 0, fov: Vec2 = 1.0, angle: f32 = 0) -> Cam
 }
 
 @(require_results)
-make_screen_camera :: proc(offset: Vec3 = 0) -> Camera {
+make_screen_camera :: proc(offset: [3]f32 = 0) -> Camera {
     screen := get_screen_size()
     return {
         pos = offset + {0, 0, -1},

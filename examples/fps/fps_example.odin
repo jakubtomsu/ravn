@@ -15,11 +15,11 @@ TERRAIN_SCALE :: 6
 state: ^State
 
 State :: struct {
-    pos:            rv.Vec3,
-    vel:            rv.Vec3,
-    angle:          rv.Vec3,
-    pos_spr:        [2]rv.Vec3,
-    angle_spr:      [2]rv.Vec3,
+    pos:            [3]f32,
+    vel:            [3]f32,
+    angle:          [3]f32,
+    pos_spr:        [2][3]f32,
+    angle_spr:      [2][3]f32,
     arena:          rv.Arena_Handle,
     terrain_mesh:   rv.Mesh_Handle,
     terrain:        [TERRAIN_SIZE][TERRAIN_SIZE]f16
@@ -90,7 +90,7 @@ _init :: proc() {
                     verts[i] = rv.Vertex{
                         pos = {f32(coord.x), height, f32(coord.y)},
                         col = u8(rv.remap_clamped(height, 0, 10, 0, 200)),
-                        uv = rv.Vec2{f32(coord.x), f32(coord.y)} / 16.0,
+                        uv = [2]f32{f32(coord.x), f32(coord.y)} / 16.0,
                     }
                     verts[i].pos.xz -= TERRAIN_SIZE * 0.5
                     verts[i].pos.xz *= TERRAIN_SCALE
@@ -133,7 +133,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     // TODO: abstract basic flycam controls into a simple util?
 
-    move: rv.Vec2
+    move: [2]f32
     if rv.get_key_down(.D) do move.x += 1
     if rv.get_key_down(.A) do move.x -= 1
     if rv.get_key_down(.W) do move.y += 1
@@ -178,7 +178,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state.vel = rv.lexp(state.vel, 0, delta * 8)
     }
 
-    gun_pos := state.pos_spr[0] + mat * rv.Vec3{0.2, -0.1, 0.1}
+    gun_pos := state.pos_spr[0] + mat * [3]f32{0.2, -0.1, 0.1}
 
     if grounded {
         gun_pos.y += 0.005 * math.sin_f32(rv.get_time() * 11) * rv.remap_clamped(linalg.length(state.vel.xz), 0, 2, 0, 1)
@@ -221,7 +221,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_perf_scopes()
 
     rv.submit_layers()
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, [3]f32{0, 0, 0.1}, true)
     rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
 
     return state
@@ -231,7 +231,7 @@ read_terrain :: proc(coord: [2]i32) -> f32 {
     return f32(state.terrain[clamp(coord.x, 0, TERRAIN_SIZE - 1)][clamp(coord.y, 0, TERRAIN_SIZE - 1)])
 }
 
-sample_terrain :: proc(pos: rv.Vec2) -> f32 {
+sample_terrain :: proc(pos: [2]f32) -> f32 {
     p := pos * (1.0 / TERRAIN_SCALE)
     fcoord := rv.floor(p)
     coord := [2]i32{
@@ -255,15 +255,15 @@ sample_terrain :: proc(pos: rv.Vec2) -> f32 {
     }
     else {
         // interpolating within upper right trianglele
-        sub = rv.Vec2{1.0, 1.0} - sub
+        sub = [2]f32{1.0, 1.0} - sub
         return samples[3] + sub.x * (samples[2] - samples[3]) + sub.y * (samples[1] - samples[3])
     }
 }
 
 @(require_results)
 intersect_terrain :: proc(
-    pos:        rv.Vec3,
-    dir:        rv.Vec3,
+    pos:        [3]f32,
+    dir:        [3]f32,
     tmin:       f32 = 0.15,
     tmax:       f32 = 100.0,
     step_size:  f32 = 0.025,

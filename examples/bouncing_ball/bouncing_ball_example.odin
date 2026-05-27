@@ -17,8 +17,8 @@ State :: struct {
 }
 
 Ball :: struct {
-    position: rv.Vec3,
-    speed: rv.Vec2,
+    position: [3]f32,
+    speed: [2]f32,
     radius: f32,
 }
 
@@ -95,7 +95,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_text("PRESS SPACE to PAUSE BALL MOVEMENT", {20, 20, 0}, scale = 4, col = {0, 0, 0, 1})
 
     rv.submit_layers()
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = rv.Vec3{.98, .98, .98}, clear_depth = true)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, clear_color = [3]f32{.98, .98, .98}, clear_depth = true)
 
     return state
 }

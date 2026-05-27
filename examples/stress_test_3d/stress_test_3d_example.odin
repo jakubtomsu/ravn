@@ -10,8 +10,8 @@ import "../../platform"
 state: ^State
 
 State :: struct {
-    cam_pos:    rv.Vec3,
-    cam_ang:    rv.Vec3,
+    cam_pos:    [3]f32,
+    cam_ang:    [3]f32,
 
     death_sound: rv.Sound_Resource_Handle,
     berry_sound: rv.Sound_Resource_Handle,
@@ -60,7 +60,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     // TODO: abstract basic flycam controls into a simple util?
 
-    move: rv.Vec3
+    move: [3]f32
     if rv.get_key_down(.D) do move.x += 1
     if rv.get_key_down(.A) do move.x -= 1
     if rv.get_key_down(.W) do move.z += 1
@@ -102,7 +102,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             rv.get_texture("uv_tex"),
         }
 
-        offs: rv.Vec3
+        offs: [3]f32
 
         for blend in rv.Blend_Mode {
             rv.set_draw_blend(.Opaque)
@@ -122,7 +122,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
                 for texh in tex {
                     rv.set_draw_texture(texh)
 
-                    anim := rv.Vec3{0, rv.nsin(rv.get_time() + (offs.x + offs.y + offs.z) * 0.03), 0}
+                    anim := [3]f32{0, rv.nsin(rv.get_time() + (offs.x + offs.y + offs.z) * 0.03), 0}
 
 
                     stress_draw(rv.get_builtin_mesh(.Cylinder_1), offs + anim)
@@ -149,13 +149,13 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.submit_layers()
 
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, [3]f32{0, 0, 0.1}, true)
     rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
 
     return state
 }
 
-stress_draw :: proc(handle: rv.Mesh_Handle, pos: rv.Vec3, num: int = 256, col: rv.Vec4 = {1, 1, 1, 0.25}) {
+stress_draw :: proc(handle: rv.Mesh_Handle, pos: [3]f32, num: int = 256, col: [4]f32 = {1, 1, 1, 0.25}) {
     for i in 0..<num {
         rv.draw_mesh(handle,
             pos = pos + {0, 0, f32(i) * 3},

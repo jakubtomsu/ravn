@@ -9,8 +9,8 @@ import "core:math"
 state: ^State
 
 State :: struct {
-    cam_pos:    rv.Vec3,
-    cam_ang:    rv.Vec3,
+    cam_pos:    [3]f32,
+    cam_ang:    [3]f32,
     shader:     rv.Pixel_Shader_Handle,
 }
 
@@ -57,7 +57,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     // Flycam controls
 
-    move: rv.Vec3
+    move: [3]f32
     if rv.get_key_down(.D) do move.x += 1
     if rv.get_key_down(.A) do move.x -= 1
     if rv.get_key_down(.W) do move.z += 1
@@ -108,18 +108,18 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
         rv.draw_triangle(
             pos = {
-                rv.Vec3{-0.5, 0, 0} + {-6, 0, 0},
-                rv.Vec3{ 0, 0.7, 0} + {-6, 0, 0},
-                rv.Vec3{ 0.5, 0, 0} + {-6, 0, 0},
+                [3]f32{-0.5, 0, 0} + {-6, 0, 0},
+                [3]f32{ 0, 0.7, 0} + {-6, 0, 0},
+                [3]f32{ 0.5, 0, 0} + {-6, 0, 0},
             },
             col = {rv.RED, rv.BLUE, rv.GREEN},
         )
 
         rv.draw_triangle(
             pos = {
-                rv.Vec3{-0.5, 0, 0} + {-6, 0, 0},
-                rv.Vec3{ 0, -0.7, 0} + {-6, 0, 0},
-                rv.Vec3{ 0.5, 0, 0} + {-6, 0, 0},
+                [3]f32{-0.5, 0, 0} + {-6, 0, 0},
+                [3]f32{ 0, -0.7, 0} + {-6, 0, 0},
+                [3]f32{ 0.5, 0, 0} + {-6, 0, 0},
             },
             col = {rv.RED, rv.GREEN, rv.CYAN},
         )
@@ -143,7 +143,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_text("Use WASD and QE to move, mouse to look", {20, 20, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
     rv.submit_layers()
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, rv.Vec3{0, 0, 0.1}, true)
+    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, [3]f32{0, 0, 0.1}, true)
     rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
 
     return state

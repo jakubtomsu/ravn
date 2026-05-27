@@ -56,7 +56,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     rv.draw_text_2d("Hello Screen!\n(screenspace text)", {10, 10})
 
     rv.submit_layers()
-    rv.render_layer(0, clear_color = rv.Vec3{0, 0, 0.1}, clear_depth = true)
+    rv.render_layer(0, clear_color = [3]f32{0, 0, 0.1}, clear_depth = true)
     rv.render_layer(1, clear_color = nil, clear_depth = false)
 
     return state

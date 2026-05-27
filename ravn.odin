@@ -81,17 +81,6 @@ UV_EPS :: (1.0 / 4096.0)
 
 LANES :: 8
 
-Vec2 :: [2]f32
-Vec3 :: [3]f32
-Vec4 :: [4]f32
-IVec2 :: [2]i32
-IVec3 :: [3]i32
-IVec4 :: [4]i32
-Mat2 :: matrix[2, 2]f32
-Mat3 :: matrix[3, 3]f32
-Mat4 :: matrix[4, 4]f32
-Quat :: quaternion128
-
 Hash :: u64
 
 HANDLE_INDEX_INVALID :: ~Handle_Index(0)
@@ -123,8 +112,8 @@ Module_Update_Proc :: base.Module_Update_Proc
 
 
 Rect :: struct {
-    min:    Vec2,
-    max:    Vec2,
+    min:    [2]f32,
+    max:    [2]f32,
 }
 
 _state: ^State
@@ -317,9 +306,9 @@ Object :: struct {
 
     param:              u64, // user param
 
-    local_pos:          Vec3,
-    local_rot:          Mat3,
-    local_scale:        Vec3,
+    local_pos:          [3]f32,
+    local_rot:          matrix[3, 3]f32,
+    local_scale:        [3]f32,
 }
 
 Mesh :: struct {
@@ -332,8 +321,8 @@ Mesh :: struct {
 
     param:          u64, // user param
 
-    bounds_min:     Vec3,
-    bounds_max:     Vec3,
+    bounds_min:     [3]f32,
+    bounds_max:     [3]f32,
     bounds_rad:     f32, // Centered sphere
 
     verts:          []Vertex,
@@ -349,8 +338,8 @@ Spline :: struct {
 
     param:          u64, // user param
 
-    bounds_min:     Vec3,
-    bounds_max:     Vec3,
+    bounds_min:     [3]f32,
+    bounds_max:     [3]f32,
 }
 
 
@@ -949,12 +938,12 @@ begin_frame :: proc() -> (keep_running: bool) {
         gpad.axes[.Left_Trigger] = inp.axes[.Left_Trigger] > 0.1 ? clamp(gpad.axes[.Left_Trigger], 0, 1) : 0
         gpad.axes[.Right_Trigger] = inp.axes[.Right_Trigger] > 0.1 ? clamp(gpad.axes[.Right_Trigger], 0, 1) : 0
 
-        l_thumb := Vec2{
+        l_thumb := [2]f32{
             gpad.axes[.Left_Thumb_X],
             gpad.axes[.Left_Thumb_Y],
         }
 
-        r_thumb := Vec2{
+        r_thumb := [2]f32{
             gpad.axes[.Right_Thumb_X],
             gpad.axes[.Right_Thumb_Y],
         }
@@ -1222,7 +1211,7 @@ atlas_cell :: proc(split: [2]i32, coord: [2]i32, scale: [2]f32 = 1.0) -> Rect {
     assert(split.x >= 1)
     assert(split.y >= 1)
 
-    p := Vec2{
+    p := [2]f32{
         linalg.fract(f32(coord.x) / f32(split.x)),
         linalg.fract(f32(coord.y) / f32(split.y)),
     }
@@ -2803,10 +2792,10 @@ pack_mesh_inst :: proc(
 
 @(require_results)
 pack_vertex :: proc(
-    pos:    Vec3,
-    uv:     Vec2 = 0,
-    normal: Vec3 = {0, 1, 0},
-    col:    Vec4 = 1,
+    pos:    [3]f32,
+    uv:     [2]f32 = 0,
+    normal: [3]f32 = {0, 1, 0},
+    col:    [4]f32 = 1,
 ) -> Vertex {
     return {
         pos = pos,
@@ -2914,7 +2903,7 @@ _perf_counter_flush :: proc(perf_counter: ^Perf_Counter_State) {
 //
 // Assumes screenspace camera.
 // 'unit' is for converting e.g. nanoseconds into a reasonable range.
-draw_perf_counter :: proc(kind: Perf_Counter_Kind, pos: Vec3, scale: f32 = 1, col: Vec4 = 1, show_text := true) {
+draw_perf_counter :: proc(kind: Perf_Counter_Kind, pos: [3]f32, scale: f32 = 1, col: [4]f32 = 1, show_text := true) {
     scope_draw_state()
     set_draw_texture(_state.builtin_texture[.CGA8x8thick])
     set_draw_blend(.Alpha)
@@ -2994,7 +2983,7 @@ _perf_scope_add :: proc(name: string, loc := #caller_location, start: i64) {
     }
 }
 
-draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
+draw_perf_scopes :: proc(pos: [3]f32 = {10, 40, 0.1}, scale: f32 = 1) {
     when PERF_SCOPES_ENABLED {
         scope_draw_state()
         set_draw_texture(get_builtin_texture(.CGA8x8thick))
@@ -3026,7 +3015,7 @@ draw_perf_scopes :: proc(pos: Vec3 = {10, 40, 0.1}, scale: f32 = 1) {
         cycles_to_ms := f64(_state.frame_dur_ns) / (f64(_state.frame_dur_cycles) * 1e6)
 
         for scope, i in scopes {
-            p := pos + Vec3{0, f32(i) * 16, 0}
+            p := pos + [3]f32{0, f32(i) * 16, 0}
 
             ms := f32(f64(scope.cycles) * cycles_to_ms)
             width := max(1, clamp(ms, 0, 16) * 10)

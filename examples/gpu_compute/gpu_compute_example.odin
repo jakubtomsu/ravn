@@ -14,7 +14,7 @@ SIZE :: 256
 state: ^State
 
 State :: struct {
-    cam_pos:    rv.Vec3,
+    cam_pos:    [3]f32,
     tex_index:  i32,
     tex_len:    i32,
     fill:       f32,
@@ -70,10 +70,10 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     delta := rv.get_delta_time()
 
-    cam_pos := rv.Vec3{-1, 1, -1} * 10
+    cam_pos := [3]f32{-1, 1, -1} * 10
     mouse := rv.get_mouse_pos() / rv.get_screen_size() - 0.5
-    cam_pos += rv.Vec3{1, 0, -1} * mouse.x * 10
-    cam_pos += rv.Vec3{-1, 0, -1} * mouse.y * 10
+    cam_pos += [3]f32{1, 0, -1} * mouse.x * 10
+    cam_pos += [3]f32{-1, 0, -1} * mouse.y * 10
 
     state.cam_pos = rv.lexp(state.cam_pos, cam_pos, delta * 4)
 
