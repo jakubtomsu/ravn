@@ -430,7 +430,7 @@ destroy_mesh :: proc(handle: Mesh_Handle) -> bool {
 //
 
 
-sphere_shape :: proc(pos: [3]f32, rad: f32, #any_int layer: u8 = 0) {
+add_sphere_shape :: proc(pos: [3]f32, rad: f32, #any_int layer: u8 = 0) {
     _add_shape({
         kind = .Sphere,
         pos = pos,
@@ -442,7 +442,7 @@ sphere_shape :: proc(pos: [3]f32, rad: f32, #any_int layer: u8 = 0) {
     })
 }
 
-capsule_shape :: proc(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0) {
+add_capsule_shape :: proc(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0) {
     _add_shape({
         kind = .Capsule,
         pos = p0,
@@ -454,7 +454,7 @@ capsule_shape :: proc(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0) {
     })
 }
 
-box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer: u8 = 0) {
+add_box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer: u8 = 0) {
     _add_shape({
         kind = .Aligned_Box,
         pos = pos,
@@ -466,7 +466,7 @@ box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer: u8
     })
 }
 
-oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: f32 = 0.0, #any_int layer: u8 = 0) {
+add_oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: f32 = 0.0, #any_int layer: u8 = 0) {
     _add_shape({
         kind = .Oriented_Box,
         pos = pos,
@@ -478,7 +478,7 @@ oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: 
     })
 }
 
-mesh_shape :: proc(
+add_mesh_shape :: proc(
     handle: Mesh_Handle,
     pos:    [3]f32,
     scale:  [3]f32 = 1,
@@ -486,7 +486,7 @@ mesh_shape :: proc(
     rad:    f32 = 0.0,
     #any_int layer: u8 = 0
 ) {
-    _, ok := get_mesh(handle)
+    mesh, ok := get_mesh(handle)
     if !ok {
         base.log_warn("Pushing invalid mesh: %v", handle)
         return
