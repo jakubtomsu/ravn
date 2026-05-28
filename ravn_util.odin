@@ -6,7 +6,14 @@ import "core:math"
 import "core:math/linalg"
 import "base:intrinsics"
 import "base/ufmt"
-import "core:simd/x86"
+import "base"
+
+log_err :: base.log_err
+log_warn :: base.log_warn
+log_info :: base.log_info
+log_debug :: base.log_debug
+log_dump :: base.log_dump
+log :: base.log
 
 // TODO: random vector utilities etc
 // TODO: 1d/2d/3d hashing
