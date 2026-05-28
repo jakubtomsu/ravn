@@ -72,7 +72,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     delta := rv.get_delta_time()
 
     // Flycam controls
-    mat: rv.matrix[3, 3]f32
+    mat: matrix[3, 3]f32
     {
         move: [3]f32
         if rv.get_key_down(.D) do move.x += 1
@@ -122,20 +122,20 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     state.radius = rv.nsin(rv.get_time() * 0.25)
 
-    coll.mesh_shape(state.mesh, 5)
-    coll.mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
-    coll.mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
-    coll.sphere_shape({0, 2, 5}, 2)
-    coll.sphere_shape({0, 1, 8}, 1)
-    coll.sphere_shape({0, 1, 9}, 1)
-    coll.sphere_shape({0, 1, 10}, 1)
-    coll.sphere_shape({0, 1, 11}, 1)
-    coll.capsule_shape({0, 1, -5}, 0, 0.5)
-    coll.box_shape({-5, 2, -4}, {2, 1, 2})
-    coll.box_shape({-5, 4 + rv.nsin(rv.get_time()) * 2, -4}, {2, 1, 2})
-    coll.box_shape({-5, 0, -8}, {2, 1, 2}, rad = 1)
-    coll.oriented_box_shape({5, 2, -8}, {1, 0.5, 4}, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}), rad = 0)
-    coll.box_shape({5, -1, -8}, {2, 1, 2})
+    coll.add_mesh_shape(state.mesh, 5)
+    // coll.add_mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
+    // coll.add_mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
+    // coll.add_sphere_shape({0, 2, 5}, 2)
+    // coll.add_sphere_shape({0, 1, 8}, 1)
+    // coll.add_sphere_shape({0, 1, 9}, 1)
+    // coll.add_sphere_shape({0, 1, 10}, 1)
+    // coll.add_sphere_shape({0, 1, 11}, 1)
+    // coll.add_capsule_shape({0, 1, -5}, 0, 0.5)
+    // coll.add_box_shape({-5, 2, -4}, {2, 1, 2})
+    // coll.add_box_shape({-5, 4 + rv.nsin(rv.get_time()) * 2, -4}, {2, 1, 2})
+    // coll.add_box_shape({-5, 0, -8}, {2, 1, 2}, rad = 1)
+    // coll.add_oriented_box_shape({5, 2, -8}, {1, 0.5, 4}, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}), rad = 0)
+    // coll.add_box_shape({5, -1, -8}, {2, 1, 2})
 
     // for i in 0..<100 {
     //     coll.sphere_shape(f32(i) * 3, 2)
@@ -337,7 +337,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         }
     }
 
-    // draw_bvh_node(&coll_step.tlas, 0, 0)
+    draw_bvh_node(&coll_step.tlas, 0, 0)
     // rv.draw_line_aabb(
     //     coll_step.tlas.nodes[0].min,
     //     coll_step.tlas.nodes[0].max,
