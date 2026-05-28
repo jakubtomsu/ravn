@@ -283,6 +283,7 @@ create_mesh_from_data :: proc(
         bounds_rad = 0.001,
         verts = verts,
         indices = indices,
+        collision_mesh = {},
     }
 
     for vert in verts {
@@ -1982,8 +1983,6 @@ _cull_draw_batch :: proc(
             }
         }
     }
-
-    base.log_info("%v/%v", culled_len, batch.len)
 
     // Re-map the data to a new final buffer just for rendering.
     // From this point it cannot be pushed to!

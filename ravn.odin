@@ -311,15 +311,13 @@ Object :: struct {
     local_scale:        [3]f32,
 }
 
-Mesh :: struct {
+Mesh :: struct #all_or_none {
     arena:          Arena_Handle,
 
     vert_num:       i32,
     vert_offs:      i32,
     index_num:      i32,
     index_offs:     i32,
-
-    param:          u64, // user param
 
     bounds_min:     [3]f32,
     bounds_max:     [3]f32,
@@ -1512,7 +1510,7 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
     index_buf := slice.reinterpret([]u16, bin[header.mesh_index_offs:])[:header.mesh_index_num]
     spline_vert_buf := slice.reinterpret([]rscn.Spline_Vertex, bin[header.spline_vert_offs:])[:header.spline_vert_num]
 
-    vertices := make([]Vertex, len(vert_buf), context.temp_allocator)
+    vertices := make([]Vertex, len(vert_buf), _state.allocator)
     for i in 0..<len(vertices) {
         v := vert_buf[i]
         vertices[i] = {
@@ -2439,7 +2437,7 @@ get_internal_file_by_hash :: proc(hash: Hash) -> (file: ^File, ok: bool) {
 // MARK: Collision
 //
 
-create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Mesh_Handle, ok: bool) #optional_ok {
+get_or_create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Mesh_Handle, ok: bool) #optional_ok {
     #assert(size_of(Vertex_Index) == size_of(u16))
 
     mesh, mesh_ok := get_internal_mesh(mesh)
@@ -2468,9 +2466,13 @@ create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Mesh_Hand
     ) or_return
 
     mesh.collision_mesh = result
+    
+    base.log_info("Created collision mesh for %v", mesh)
 
     return result, true
 }
+
+
 
 
 
