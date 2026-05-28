@@ -297,7 +297,7 @@ build_binned :: proc(bvh: ^BVH, num_bins := 8, curr_index := 0) #no_bounds_check
         bins_max: [MAX_BINS][3][3]f32 = min(f32)
         bins_num: [MAX_BINS][3]i32 = 0
 
-        bin_scale := f32(num_bins) / (mid_max - mid_min)
+        bin_scale := f32(num_bins) / (mid_max - mid_min + 1e-5)
 
         for i in 0..<int(node.len) {
             prim := bvh.prims[bvh.indices[int(node.first) + i]]
