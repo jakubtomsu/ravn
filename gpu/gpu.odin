@@ -782,7 +782,7 @@ update_swapchain :: proc(window: rawptr, size: [2]i32) -> (result: Resource_Hand
     validate(size.x > 0, "Swapchain must be non-zero width")
     validate(size.y > 0, "Swapchain must be non-zero height")
 
-    existing, existing_ok := get_internal_resource(_state.swapchain_res)
+    existing, existing_ok := _get_resource(_state.swapchain_res)
     if existing_ok {
         assert(existing.kind == .Swapchain)
         if existing.size.xy == size {
@@ -1034,7 +1034,7 @@ set_pipeline :: proc(handle: Pipeline_Handle) {
         return
     }
 
-    pip, pip_ok := get_internal_pipeline(handle)
+    pip, pip_ok := _get_pipeline(handle)
 
     if !pip_ok {
         base.log_err("GPU: trying to begin invalid pipeline:", handle)
@@ -1087,7 +1087,7 @@ end_compute_pass :: proc() {
 }
 
 set_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) {
-    pip, pip_ok := get_internal_compute_pipeline(handle)
+    pip, pip_ok := _get_compute_pipeline(handle)
 
     if !pip_ok {
         base.log_err("GPU: trying to begin invalid compute pipeline:", handle)
@@ -1114,7 +1114,7 @@ set_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) {
 update_constants :: proc(handle: Resource_Handle, data: []byte) {
     validate(_state.curr_pass_desc == {}, "You must do all constant updates before rendering")
 
-    res, res_ok := get_internal_resource(handle)
+    res, res_ok := _get_resource(handle)
     if !res_ok {
         return
     }
@@ -1139,7 +1139,7 @@ update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte) {
         return
     }
 
-    res, res_ok := get_internal_resource(handle)
+    res, res_ok := _get_resource(handle)
     validate(res_ok)
     if !res_ok {
         return
@@ -1161,7 +1161,7 @@ update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte) {
 update_texture_2d :: proc(handle: Resource_Handle, data: []byte, #any_int slice: i32 = 0) {
     validate(_state.curr_pass_desc == {}, "You must do all texture updates before rendering")
 
-    res, res_ok := get_internal_resource(handle)
+    res, res_ok := _get_resource(handle)
     if !res_ok {
         return
     }
@@ -1270,7 +1270,7 @@ validate_pass_desc :: proc(desc: Pass_Desc) {
             break
         }
 
-        res, res_ok := get_internal_resource(color.resource)
+        res, res_ok := _get_resource(color.resource)
 
         validate(res_ok)
 
@@ -1288,7 +1288,7 @@ validate_pass_desc :: proc(desc: Pass_Desc) {
     }
 
     if desc.depth.resource != {} {
-        res, res_ok := get_internal_resource(desc.depth.resource)
+        res, res_ok := _get_resource(desc.depth.resource)
         validate(res_ok)
         validate(res.kind == .Texture2D)
         validate(res.size.xy == resolution)
@@ -1306,8 +1306,8 @@ validate_pipeline_desc :: proc(desc: Pipeline_Desc, loc := #caller_location) {
     validate(desc.ps != {})
     validate(desc.vs != {})
 
-    vs_res, vs_ok := get_internal_shader(desc.vs)
-    ps_res, ps_ok := get_internal_shader(desc.ps)
+    vs_res, vs_ok := _get_shader(desc.vs)
+    ps_res, ps_ok := _get_shader(desc.ps)
 
     validate(vs_ok)
     validate(ps_ok)
@@ -1353,7 +1353,7 @@ validate_pipeline_desc :: proc(desc: Pipeline_Desc, loc := #caller_location) {
     }
 
     if desc.index.format != .Invalid {
-        _, index_ok := get_internal_resource(desc.index.resource)
+        _, index_ok := _get_resource(desc.index.resource)
         validate(index_ok)
     }
 
@@ -1361,7 +1361,7 @@ validate_pipeline_desc :: proc(desc: Pipeline_Desc, loc := #caller_location) {
         if handle == {} {
             continue
         }
-        res, res_ok := get_internal_resource(handle)
+        res, res_ok := _get_resource(handle)
         validate(res_ok)
         validate(res.kind == .Constants)
     }
@@ -1370,7 +1370,7 @@ validate_pipeline_desc :: proc(desc: Pipeline_Desc, loc := #caller_location) {
         if handle == {} {
             continue
         }
-        res, res_ok := get_internal_resource(handle)
+        res, res_ok := _get_resource(handle)
         validate(res_ok)
         #partial switch res.kind {
         case .Buffer, .Texture2D, .Texture3D:
@@ -1382,7 +1382,7 @@ validate_pipeline_desc :: proc(desc: Pipeline_Desc, loc := #caller_location) {
 
 validate_pipeline_for_pass :: proc(pip: Pipeline_Desc, pass: Pass_Desc) {
     for col, i in pass.colors {
-        _, res_ok := get_internal_resource(col.resource)
+        _, res_ok := _get_resource(col.resource)
         // TODO: validate format
 
         if res_ok {
@@ -1392,7 +1392,7 @@ validate_pipeline_for_pass :: proc(pip: Pipeline_Desc, pass: Pass_Desc) {
         }
     }
 
-    _, depth_ok := get_internal_resource(pass.depth.resource)
+    _, depth_ok := _get_resource(pass.depth.resource)
     if depth_ok {
         validate(pip.depth_format != .Invalid)
     } else {
@@ -1401,7 +1401,7 @@ validate_pipeline_for_pass :: proc(pip: Pipeline_Desc, pass: Pass_Desc) {
 }
 
 validate_compute_pipeline_desc :: proc(desc: Compute_Pipeline_Desc, loc := #caller_location) {
-    sh, sh_ok := get_internal_shader(desc.cs)
+    sh, sh_ok := _get_shader(desc.cs)
     validate(sh_ok)
     validate(sh.kind == .Compute)
 
@@ -1409,7 +1409,7 @@ validate_compute_pipeline_desc :: proc(desc: Compute_Pipeline_Desc, loc := #call
         if handle == {} {
             continue
         }
-        res, res_ok := get_internal_resource(handle)
+        res, res_ok := _get_resource(handle)
         validate(res_ok)
         validate(res.kind == .Constants)
     }
@@ -1418,7 +1418,7 @@ validate_compute_pipeline_desc :: proc(desc: Compute_Pipeline_Desc, loc := #call
         if handle == {} {
             continue
         }
-        res, res_ok := get_internal_resource(handle)
+        res, res_ok := _get_resource(handle)
         validate(res_ok)
         #partial switch res.kind {
         case .Buffer, .Texture2D, .Texture3D:
@@ -1431,7 +1431,7 @@ validate_compute_pipeline_desc :: proc(desc: Compute_Pipeline_Desc, loc := #call
         if handle == {} {
             continue
         }
-        res, res_ok := get_internal_resource(handle)
+        res, res_ok := _get_resource(handle)
         validate(res_ok)
         #partial switch res.kind {
         case .Buffer, .Texture2D, .Texture3D:
@@ -1457,22 +1457,22 @@ validate_compute_pipeline_desc :: proc(desc: Compute_Pipeline_Desc, loc := #call
 //
 
 @(require_results)
-get_internal_pipeline :: proc(handle: Pipeline_Handle) -> (^Pipeline_State, bool) {
+_get_pipeline :: proc(handle: Pipeline_Handle) -> (^Pipeline_State, bool) {
     return _table_get(&_state.pipeline_data, _state.pipeline_gen, handle)
 }
 
 @(require_results)
-get_internal_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) -> (^Compute_Pipeline_State, bool) {
+_get_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) -> (^Compute_Pipeline_State, bool) {
     return _table_get(&_state.compute_pipeline_data, _state.compute_pipeline_gen, handle)
 }
 
 @(require_results)
-get_internal_resource :: proc(handle: Resource_Handle) -> (^Resource_State, bool) {
+_get_resource :: proc(handle: Resource_Handle) -> (^Resource_State, bool) {
     return _table_get(&_state.resource_data, _state.resource_gen, handle)
 }
 
 @(require_results)
-get_internal_shader :: proc(handle: Shader_Handle) -> (^Shader_State, bool) {
+_get_shader :: proc(handle: Shader_Handle) -> (^Shader_State, bool) {
     return _table_get(&_state.shader_data, _state.shader_gen, handle)
 }
 

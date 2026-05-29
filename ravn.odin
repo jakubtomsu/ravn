@@ -18,8 +18,6 @@ import "core:math"
 import "base:runtime"
 import debug_trace "core:debug/trace"
 
-// TODO: try odin's new [dynamic; N]T arrays
-// TODO: fix triangles with pooled textures
 // TODO: actual 3d transform structure
 // TODO: objects in scene data
 // TODO: asset_load and reload
@@ -39,10 +37,6 @@ import debug_trace "core:debug/trace"
 
 RELEASE :: #config(RAVN_RELEASE, base.RELEASE)
 VALIDATION :: #config(RAVN_VALIDATION, !RELEASE)
-
-// Enable internal logs. Mostly useful for debugging internals.
-// TODO: tracing
-LOG_INTERNAL :: #config(RAVN_LOG_INTERNAL, false)
 
 MAX_ARENAS :: 64
 MAX_TEXTURES :: 256 // Use texture pools if you hit this limit.
@@ -988,11 +982,11 @@ begin_frame :: proc() -> (keep_running: bool) {
             data, ok := platform.read_file_by_path(file_path, allocator = _state.allocator)
 
             if !ok {
-                log_internal("Failed to hotreload file {}", file_path)
+                log_err("Failed to hotreload file {}", file_path)
                 continue
             }
 
-            if file, file_ok := get_internal_file_by_hash(hash_name(change)); file_ok {
+            if file, file_ok := _get_file_by_hash(hash_name(change)); file_ok {
                 append(&changed_files, change)
 
                 if .Dynamically_Allocated in file.flags {
@@ -1281,7 +1275,7 @@ get_screen_size :: proc() -> [2]f32 {
 //
 
 @(require_results)
-get_internal_arena :: proc(handle: Arena_Handle) -> (result: ^Arena, ok: bool) {
+_get_arena :: proc(handle: Arena_Handle) -> (result: ^Arena, ok: bool) {
     return _table_get(&_state.arenas, _state.arenas_gen, handle)
 }
 
@@ -1355,7 +1349,7 @@ create_arena :: proc(
 }
 
 clear_arena :: proc(handle: Arena_Handle) {
-    arena, arena_ok := get_internal_arena(handle)
+    arena, arena_ok := _get_arena(handle)
     if !arena_ok {
         return
     }
@@ -1373,7 +1367,7 @@ clear_arena :: proc(handle: Arena_Handle) {
 
 // NOTE: doesn't clear!
 flush_arena_gpu_buffers :: proc(handle: Arena_Handle) {
-    arena, arena_ok := get_internal_arena(handle)
+    arena, arena_ok := _get_arena(handle)
     if !arena_ok || !arena.dirty {
         return
     }
@@ -1423,7 +1417,7 @@ flush_arena_gpu_buffers :: proc(handle: Arena_Handle) {
 }
 
 destroy_arena :: proc(handle: Arena_Handle) {
-    arena, arena_ok := get_internal_arena(handle)
+    arena, arena_ok := _get_arena(handle)
     if !arena_ok {
         return
     }
@@ -1532,7 +1526,7 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
     }
 
     arena: ^Arena
-    arena, ok = get_internal_arena(arena_handle)
+    arena, ok = _get_arena(arena_handle)
 
     if !ok {
         base.log_err("Failed to load scene: Invalid target arena handle")
@@ -1664,7 +1658,7 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
 
     // NOTE: the 2nd pass might be unnecessary if the data is ordered the right way? enforce it in rscn?
     for handle in object_list {
-        obj := get_internal_object(handle) or_continue
+        obj := _get_object(handle) or_continue
 
         if obj.parent.index == HANDLE_INDEX_INVALID {
             continue
@@ -1672,7 +1666,7 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
 
         obj.parent = object_list[obj.parent.index]
 
-        if parent, parent_ok := get_internal_object(obj.parent); parent_ok {
+        if parent, parent_ok := _get_object(obj.parent); parent_ok {
             parent.child_num += 1
         }
 
@@ -1691,7 +1685,7 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
     // Reserve child array space
     child_offset := arena.object_child_num
     for handle in object_list {
-        obj := get_internal_object(handle) or_continue
+        obj := _get_object(handle) or_continue
 
         obj.child_offset = child_offset
 
@@ -1708,9 +1702,9 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
 
     // Fill child array
     for handle in object_list {
-        obj := get_internal_object(handle) or_continue
+        obj := _get_object(handle) or_continue
 
-        parent := get_internal_object(obj.parent) or_continue
+        parent := _get_object(obj.parent) or_continue
 
         arena.object_child_buf[parent.child_offset] = handle
         parent.child_offset += 1
@@ -1718,7 +1712,7 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
 
     // Reset child offsets (this is a bit weird, be careful)
     for handle in object_list {
-        obj := get_internal_object(handle) or_continue
+        obj := _get_object(handle) or_continue
         obj.child_offset -= obj.child_num
     }
 
@@ -1934,13 +1928,13 @@ get_gamepad_pressed :: proc(gamepad_index: int, button: Gamepad_Button, buf: f32
 //
 
 get_children :: proc(handle: Object_Handle, loc := #caller_location) -> ([]Object_Handle, bool) #optional_ok {
-    obj, obj_ok := get_internal_object(handle)
+    obj, obj_ok := _get_object(handle)
     if !obj_ok {
         base.log_err("Failed to get object's children: invalid handle", loc = loc)
         return nil, false
     }
 
-    arena, arena_ok := get_internal_arena(obj.arena)
+    arena, arena_ok := _get_arena(obj.arena)
     if !arena_ok {
         base.log_err("Failed to get object's children: object's arena handle is invalid")
         return nil, false
@@ -2096,7 +2090,7 @@ get_pixel_shader_by_hash :: proc(hash: Hash) -> (result: Pixel_Shader_Handle, ok
 
 
 @(require_results)
-get_internal_draw_layer :: proc(#any_int index: i32) -> (result: ^Draw_Layer, ok: bool) {
+_get_draw_layer :: proc(#any_int index: i32) -> (result: ^Draw_Layer, ok: bool) {
     if index < 0 || index >= MAX_DRAW_LAYERS {
         return nil, false
     }
@@ -2104,27 +2098,27 @@ get_internal_draw_layer :: proc(#any_int index: i32) -> (result: ^Draw_Layer, ok
 }
 
 @(require_results)
-get_internal_mesh :: proc(handle: Mesh_Handle) -> (result: ^Mesh, ok: bool) {
+_get_mesh :: proc(handle: Mesh_Handle) -> (result: ^Mesh, ok: bool) {
     return _table_get(&_state.meshes, _state.meshes_gen, handle)
 }
 
 @(require_results)
-get_internal_object :: proc(handle: Object_Handle) -> (result: ^Object, ok: bool) {
+_get_object :: proc(handle: Object_Handle) -> (result: ^Object, ok: bool) {
     return _table_get(&_state.objects, _state.objects_gen, handle)
 }
 
 @(require_results)
-get_internal_spline :: proc(handle: Spline_Handle) -> (result: ^Spline, ok: bool) {
+_get_spline :: proc(handle: Spline_Handle) -> (result: ^Spline, ok: bool) {
     return _table_get(&_state.splines, _state.splines_gen, handle)
 }
 
 @(require_results)
-get_internal_vertex_shader :: proc(handle: Vertex_Shader_Handle) -> (result: ^Vertex_Shader, ok: bool) {
+_get_vertex_shader :: proc(handle: Vertex_Shader_Handle) -> (result: ^Vertex_Shader, ok: bool) {
     return _table_get(&_state.vertex_shaders, _state.vertex_shaders_gen, handle)
 }
 
 @(require_results)
-get_internal_pixel_shader :: proc(handle: Pixel_Shader_Handle) -> (result: ^Pixel_Shader, ok: bool) {
+_get_pixel_shader :: proc(handle: Pixel_Shader_Handle) -> (result: ^Pixel_Shader, ok: bool) {
     return _table_get(&_state.pixel_shaders, _state.pixel_shaders_gen, handle)
 }
 
@@ -2426,7 +2420,7 @@ watch_asset_directory :: proc(path: string) -> bool {
     return true
 }
 
-get_internal_file_by_hash :: proc(hash: Hash) -> (file: ^File, ok: bool) {
+_get_file_by_hash :: proc(hash: Hash) -> (file: ^File, ok: bool) {
     index := _table_lookup_hash(&_state.files_hash, hash) or_return
     return &_state.files[index], true
 }
@@ -2440,7 +2434,7 @@ get_internal_file_by_hash :: proc(hash: Hash) -> (file: ^File, ok: bool) {
 get_or_create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Mesh_Handle, ok: bool) #optional_ok {
     #assert(size_of(Vertex_Index) == size_of(u16))
 
-    mesh, mesh_ok := get_internal_mesh(mesh)
+    mesh, mesh_ok := _get_mesh(mesh)
     if !mesh_ok {
         base.log_err("Failed to create collision mesh, invalid mesh handle")
         return {}, false
@@ -2450,7 +2444,7 @@ get_or_create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Me
         return mesh.collision_mesh, true
     }
 
-    arena, arena_ok := get_internal_arena(mesh.arena)
+    arena, arena_ok := _get_arena(mesh.arena)
     assert(arena_ok)
     allocator := collision.arena_allocator(arena.collision_arena)
 
@@ -2466,7 +2460,7 @@ get_or_create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Me
     ) or_return
 
     mesh.collision_mesh = result
-    
+
     base.log_info("Created collision mesh for %v", mesh)
 
     return result, true
@@ -2541,13 +2535,6 @@ hash_fnv64a :: proc "contextless" (data: []byte, seed: u64) -> u64 {
         h = (h ~ u64(b)) * 0x100000001b3
     }
     return h
-}
-
-@(disabled=!LOG_INTERNAL)
-log_internal :: proc(format: string, args: ..any, loc := #caller_location) {
-    when LOG_INTERNAL {
-        base.log_debug(format, args = args, location = loc)
-    }
 }
 
 // Clean up a VFS path

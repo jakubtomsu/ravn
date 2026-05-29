@@ -262,7 +262,7 @@ create_mesh_from_data :: proc(
 ) -> (result: Mesh_Handle, ok: bool) #optional_ok {
     base.log_debug("Creating mesh '%s' with %i verts and %i tris", name, len(verts), len(indices) / 3)
 
-    arena := get_internal_arena(arena_handle) or_return
+    arena := _get_arena(arena_handle) or_return
 
     if
         len(verts) > len(arena.vert_upload_buf) - int(arena.vert_upload_offs) ||
@@ -348,7 +348,7 @@ create_texture_pool :: proc(size: [2]i32, slices: i32) -> (ok: bool) {
     return true
 }
 
-get_internal_texture :: proc(handle: Texture_Handle) -> (result: ^Texture, ok: bool) #optional_ok {
+_get_texture :: proc(handle: Texture_Handle) -> (result: ^Texture, ok: bool) #optional_ok {
     return _table_get(&_state.textures, _state.textures_gen, handle)
 }
 
@@ -400,7 +400,6 @@ create_texture_from_data :: proc(name: string, data: Texture_Data) -> (result: T
         used_set := (transmute(u64)pool.slices_used)
 
         if full_set == used_set {
-            log_internal("Pool {} is full", pool_index)
             continue
         }
 
@@ -466,7 +465,7 @@ create_texture_from_data :: proc(name: string, data: Texture_Data) -> (result: T
 }
 
 create_texture_from_resource :: proc(name: string, handle: gpu.Resource_Handle) -> (result: Texture_Handle, ok: bool) {
-    res := gpu.get_internal_resource(handle) or_return
+    res := gpu._get_resource(handle) or_return
 
     if res.kind != .Texture2D {
         return {}, false
@@ -494,7 +493,7 @@ create_texture_from_resource :: proc(name: string, handle: gpu.Resource_Handle) 
 }
 
 destroy_texture :: proc(handle: Texture_Handle) {
-    texture, texture_ok := get_internal_texture(handle)
+    texture, texture_ok := _get_texture(handle)
     if !texture_ok {
         return
     }
@@ -723,7 +722,7 @@ create_render_texture :: proc(size: [2]i32, depth := true) -> (result: Render_Te
 
 destroy_render_texture :: proc(handle: Render_Texture_Handle) {
     assert(handle.index != DEFAULT_RENDER_TEXTURE.index)
-    tex, tex_ok := get_internal_render_texture(handle)
+    tex, tex_ok := _get_render_texture(handle)
     if !tex_ok {
         // Completely fine, No-op
         return
@@ -743,20 +742,20 @@ _destroy_render_texture :: proc(tex: ^Render_Texture) {
 
 // resize_render_texture :: proc(handle: Render_Texture_Handle, size: [2]i32) {
 //     assert(handle.index != DEFAULT_RENDER_TEXTURE.index)
-//     _, tex_ok := get_internal_render_texture(handle)
+//     _, tex_ok := _get_render_texture(handle)
 //     if !tex_ok {
 //         return
 //     }
 // }
 
 @(require_results)
-get_internal_render_texture :: proc(handle: Render_Texture_Handle) -> (result: ^Render_Texture, ok: bool) {
+_get_render_texture :: proc(handle: Render_Texture_Handle) -> (result: ^Render_Texture, ok: bool) {
     return _table_get(&_state.render_textures, _state.render_textures_gen, handle)
 }
 
 @(require_results)
 get_render_texture_size :: proc(handle: Render_Texture_Handle) -> (result: [2]i32, ok: bool) {
-    rt := get_internal_render_texture(handle) or_return
+    rt := _get_render_texture(handle) or_return
     return rt.size.xy, true
 }
 
@@ -817,7 +816,7 @@ set_draw_depth :: proc(depth: Depth_Mode) {
 }
 
 set_draw_pixel_shader :: proc(handle: Pixel_Shader_Handle) {
-    if _, ok := get_internal_pixel_shader(handle); ok {
+    if _, ok := _get_pixel_shader(handle); ok {
         _state.draw_state.ps = u8(handle.index)
     } else {
         _state.draw_state.ps = u8(_state.builtin_pixel_shader[.Default].index)
@@ -825,7 +824,7 @@ set_draw_pixel_shader :: proc(handle: Pixel_Shader_Handle) {
 }
 
 set_draw_vertex_shader :: proc(handle: Vertex_Shader_Handle) {
-    if _, ok := get_internal_vertex_shader(handle); ok {
+    if _, ok := _get_vertex_shader(handle); ok {
         _state.draw_state.vs = u8(handle.index)
     } else {
         _state.draw_state.vs = u8(_state.builtin_vertex_shader[.Default].index)
@@ -839,7 +838,7 @@ set_draw_texture :: proc(handle: Texture_Handle) {
 }
 
 _set_draw_texture :: proc(handle: Texture_Handle) -> bool {
-    tex := get_internal_texture(handle) or_return
+    tex := _get_texture(handle) or_return
     if tex.resource != {} {
         // Standalone tex
         _state.draw_state.texture_kind = .Non_Pooled
@@ -867,7 +866,7 @@ _set_draw_texture :: proc(handle: Texture_Handle) -> bool {
 // In order to WRITE to a render texture, use layers.
 set_draw_render_texture :: proc(handle: Render_Texture_Handle) {
     assert(handle != DEFAULT_RENDER_TEXTURE)
-    tex, tex_ok := get_internal_render_texture(handle)
+    tex, tex_ok := _get_render_texture(handle)
     if !tex_ok {
         _set_draw_texture(_state.builtin_texture[.Error])
         return
@@ -891,7 +890,7 @@ set_layer_params :: proc(
     camera:         Camera,
     flags:          bit_set[Draw_Layer_Flag] = {},
 ) {
-    layer, layer_ok := get_internal_draw_layer(layer)
+    layer, layer_ok := _get_draw_layer(layer)
     if !layer_ok {
         base.log_err("Invalid layer index")
         assert(false)
@@ -1045,7 +1044,7 @@ draw_mesh :: proc(
 ) {
     perf_scope()
 
-    mesh, mesh_ok := get_internal_mesh(handle)
+    mesh, mesh_ok := _get_mesh(handle)
 
     assert(mesh_ok && base.is_finite_vec(pos))
 
@@ -2331,7 +2330,7 @@ render_layer :: proc(
         submit_layers()
     }
 
-    ren_tex, ren_tex_ok := get_internal_render_texture(ren_tex_handle)
+    ren_tex, ren_tex_ok := _get_render_texture(ren_tex_handle)
     if !ren_tex_ok {
         base.log_err("Trying to submit GPU commands of an invalid render texture:", ren_tex_handle)
         return

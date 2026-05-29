@@ -93,7 +93,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             pixel = rand.float32() > state.fill ? 255 : 0
         }
 
-        gpu.update_texture_2d(rv.get_internal_texture(state.tex[0]).resource, gpu.slice_bytes(pixels))
+        gpu.update_texture_2d(rv._get_texture(state.tex[0]).resource, gpu.slice_bytes(pixels))
     }
 
     {
@@ -104,10 +104,10 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         desc := gpu.compute_pipeline_desc(
             state.cs,
             resources = {
-                rv.get_internal_texture(state.tex[state.tex_index]).resource,
+                rv._get_texture(state.tex[state.tex_index]).resource,
             },
             rw_resources = {
-                rv.get_internal_texture(state.tex[next]).resource,
+                rv._get_texture(state.tex[next]).resource,
             },
         )
 

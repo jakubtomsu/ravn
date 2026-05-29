@@ -901,7 +901,7 @@ when BACKEND == BACKEND_D3D11 {
         rtvs: [d3d.SIMULTANEOUS_RENDER_TARGET_COUNT]^d3d.IRenderTargetView
         dsv: ^d3d.IDepthStencilView
 
-        if depth, depth_ok := get_internal_resource(desc.depth.resource); depth_ok {
+        if depth, depth_ok := _get_resource(desc.depth.resource); depth_ok {
             assert(depth.kind == .Texture2D)
             assert(depth.dsv != nil)
 
@@ -916,7 +916,7 @@ when BACKEND == BACKEND_D3D11 {
 
         resolution: [2]i32
         for color, i in desc.colors {
-            res := get_internal_resource(color.resource) or_continue
+            res := _get_resource(color.resource) or_continue
 
             #partial switch res.kind {
             case .Texture2D:
@@ -974,7 +974,7 @@ when BACKEND == BACKEND_D3D11 {
         }
 
         if curr.index != prev.index && curr.index.format != .Invalid {
-            res, res_ok := get_internal_resource(curr.index.resource)
+            res, res_ok := _get_resource(curr.index.resource)
             assert(res_ok)
             assert(res.kind == .Index_Buffer)
             _set_index_buffer(res, curr.index.format, curr.index.offset)
@@ -1008,14 +1008,14 @@ when BACKEND == BACKEND_D3D11 {
         }
 
         if curr.vs != prev.vs {
-            if shader, shader_ok := get_internal_shader(curr.vs); shader_ok {
+            if shader, shader_ok := _get_shader(curr.vs); shader_ok {
                 assert(shader.kind == .Vertex)
                 _set_shader(shader^)
             }
         }
 
         if curr.ps != prev.ps {
-            if shader, shader_ok := get_internal_shader(curr.ps); shader_ok {
+            if shader, shader_ok := _get_shader(curr.ps); shader_ok {
                 assert(shader.kind == .Pixel)
                 _set_shader(shader^)
             }
@@ -1024,7 +1024,7 @@ when BACKEND == BACKEND_D3D11 {
         if curr.resources != prev.resources {
             srvs: [RESOURCE_BIND_SLOTS]^d3d.IShaderResourceView
             for res, i in curr.resources {
-                res := get_internal_resource(res) or_continue
+                res := _get_resource(res) or_continue
                 assert(res.srv != nil)
                 srvs[i] = res.srv
             }
@@ -1034,7 +1034,7 @@ when BACKEND == BACKEND_D3D11 {
         if curr.constants != prev.constants {
             cbufs: [CONSTANTS_BIND_SLOTS]^d3d.IBuffer
             for handle, i in curr.constants {
-                const := get_internal_resource(handle) or_continue
+                const := _get_resource(handle) or_continue
                 cbufs[i] = const.buf
             }
             _set_constants({.Vertex, .Pixel}, cbufs[:], 0)
@@ -1067,7 +1067,7 @@ when BACKEND == BACKEND_D3D11 {
         prev:       Compute_Pipeline_Desc,
     ) {
         if curr.cs != prev.cs {
-            if shader, shader_ok := get_internal_shader(curr.cs); shader_ok {
+            if shader, shader_ok := _get_shader(curr.cs); shader_ok {
                 assert(shader.kind == .Compute)
                 _set_shader(shader^)
             }
@@ -1076,7 +1076,7 @@ when BACKEND == BACKEND_D3D11 {
         if curr.resources != prev.resources {
             srvs: [RESOURCE_BIND_SLOTS]^d3d.IShaderResourceView
             for res, i in curr.resources {
-                res := get_internal_resource(res) or_continue
+                res := _get_resource(res) or_continue
                 assert(res.srv != nil)
                 srvs[i] = res.srv
             }
@@ -1086,7 +1086,7 @@ when BACKEND == BACKEND_D3D11 {
         if curr.rw_resources != prev.rw_resources {
             uavs: [RW_RESOURCE_BIND_SLOTS]^d3d.IUnorderedAccessView
             for res, i in curr.rw_resources {
-                res := get_internal_resource(res) or_continue
+                res := _get_resource(res) or_continue
                 assert(res.uav != nil)
                 uavs[i] = res.uav
             }
@@ -1096,7 +1096,7 @@ when BACKEND == BACKEND_D3D11 {
         if curr.constants != prev.constants {
             cbufs: [SAMPLER_BIND_SLOTS]^d3d.IBuffer
             for handle, i in curr.constants {
-                const := get_internal_resource(handle) or_continue
+                const := _get_resource(handle) or_continue
                 cbufs[i] = const.buf
             }
             _set_constants({.Compute}, cbufs[:], 0)
@@ -1254,7 +1254,7 @@ when BACKEND == BACKEND_D3D11 {
 
             handle := _state.curr_pipeline_desc.constants[i]
 
-            res := get_internal_resource(handle) or_continue
+            res := _get_resource(handle) or_continue
 
             assert(res.kind == .Constants)
 

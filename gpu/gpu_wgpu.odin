@@ -391,7 +391,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         for handle, i in desc.constants {
-            res := get_internal_resource(handle) or_continue
+            res := _get_resource(handle) or_continue
 
             assert(res.kind == .Constants)
 
@@ -418,7 +418,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         for handle, i in desc.resources {
-            res := get_internal_resource(handle) or_continue
+            res := _get_resource(handle) or_continue
 
             binding := u32(RESOURCE_SLOT_SHIFT + i)
 
@@ -472,7 +472,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         for handle, i in desc.rw_resources {
-            res := get_internal_resource(handle) or_continue
+            res := _get_resource(handle) or_continue
 
             binding := u32(RW_RESOURCE_SLOT_SHIFT + i)
 
@@ -591,8 +591,8 @@ when BACKEND == BACKEND_WGPU {
 
         // NOTE: fill mode is ignored.
 
-        ps, ps_ok := get_internal_shader(desc.ps)
-        vs, vs_ok := get_internal_shader(desc.vs)
+        ps, ps_ok := _get_shader(desc.ps)
+        vs, vs_ok := _get_shader(desc.vs)
 
         assert(ps_ok)
         assert(vs_ok)
@@ -746,7 +746,7 @@ when BACKEND == BACKEND_WGPU {
             return {}, false
         }
 
-        cs, cs_ok := get_internal_shader(desc.cs)
+        cs, cs_ok := _get_shader(desc.cs)
         assert(cs_ok)
 
         result.pip = wgpu.DeviceCreateComputePipeline(
@@ -1013,7 +1013,7 @@ when BACKEND == BACKEND_WGPU {
         color_atts: [RENDER_TEXTURE_BIND_SLOTS]wgpu.RenderPassColorAttachment
 
         for color, i in desc.colors {
-            res := get_internal_resource(color.resource) or_break
+            res := _get_resource(color.resource) or_break
 
             num_color_atts += 1
 
@@ -1049,7 +1049,7 @@ when BACKEND == BACKEND_WGPU {
         assert(color_atts != {})
 
         depth_stencil: ^wgpu.RenderPassDepthStencilAttachment
-        if res, res_ok := get_internal_resource(desc.depth.resource); res_ok {
+        if res, res_ok := _get_resource(desc.depth.resource); res_ok {
             depth_stencil = &{
                 view = res.tex_view,
                 depthLoadOp = _wgpu_clear_mode(desc.depth.clear_mode),
@@ -1087,7 +1087,7 @@ when BACKEND == BACKEND_WGPU {
     ) {
         assert(curr_pip.pip != nil)
         assert(_state.render_pass_encoder != nil)
-        if res, res_ok := get_internal_resource(curr.index.resource); res_ok {
+        if res, res_ok := _get_resource(curr.index.resource); res_ok {
             wgpu.RenderPassEncoderSetIndexBuffer(
                 _state.render_pass_encoder,
                 buffer = res.buf,
@@ -1192,7 +1192,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _bind_constants_items :: proc(offsets: []u32) {
-        curr_pip, curr_pip_ok := get_internal_pipeline(_state.curr_pipeline)
+        curr_pip, curr_pip_ok := _get_pipeline(_state.curr_pipeline)
 
         assert(curr_pip_ok)
         assert(_state.bind_group_hash[curr_pip.bind_group.index] != 0)
@@ -1209,7 +1209,7 @@ when BACKEND == BACKEND_WGPU {
 
             handle := _state.curr_pipeline_desc.constants[i]
 
-            res := get_internal_resource(handle) or_continue
+            res := _get_resource(handle) or_continue
 
             assert(res.kind == .Constants)
 
