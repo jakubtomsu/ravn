@@ -15,7 +15,7 @@ state: ^State
 
 State :: struct {
     cam_pos:        [3]f32,
-    cam_rot:        rv.quaternion128,
+    cam_rot:        quaternion128,
     cam_fov:        f32,
 
     obsts:          [64]Obstacle,
