@@ -31,6 +31,7 @@ odin check examples/fps || goto :err
 odin check examples/gpu_compute || goto :err
 odin check examples/draw_2d || goto :err
 odin check examples/draw_3d || goto :err
+odin check examples/render_texture || goto :err
 odin check examples/snake_planet || goto :err
 odin check examples/standalone_audio_simple || goto :err
 odin check examples/standalone_gpu_sdl3_triangle || goto :err

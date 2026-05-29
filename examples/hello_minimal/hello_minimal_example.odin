@@ -15,7 +15,7 @@ main :: proc() {
             break
         }
 
-        rv.update_draw_layer(0, rv.make_screen_camera())
+        rv.update_draw_layer(0, rv.make_screen_camera(rv.get_screen_size()))
 
         rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
         rv.draw_text_2d("Hello World!",

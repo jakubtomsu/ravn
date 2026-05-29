@@ -50,7 +50,7 @@ main :: proc() {
 _update :: proc(_: rawptr) -> rawptr {
     if rv.key_pressed(.Escape) { rv.request_shutdown() }
 
-    rv.set_layer_params(0, rv.make_screen_camera())
+    rv.set_layer_params(0, rv.make_screen_camera(rv.get_screen_size()))
 
     rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.draw_text_2d("Hello World! ☺", {100, 100}, scale = 4, spacing = 1)

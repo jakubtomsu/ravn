@@ -77,7 +77,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     state.cam_pos = rv.lexp(state.cam_pos, cam_pos, delta * 4)
 
-    cam := rv.make_3d_orthographic_camera(
+    cam := rv.make_orthographic_3d_camera(
+        rv.get_screen_size(),
         pos = state.cam_pos,
         rot = linalg.quaternion_from_forward_and_up_f32(-{1, -1, 1}, {0, 1, 0}),
         fov = 5,
@@ -122,7 +123,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     }
 
     rv.update_draw_layer(0, cam)
-    rv.update_draw_layer(1, rv.make_screen_camera())
+    rv.update_draw_layer(1, rv.make_screen_camera(rv.get_screen_size()))
 
     rv.set_draw_depth(.Depth)
 

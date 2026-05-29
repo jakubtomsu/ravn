@@ -685,6 +685,12 @@ create_render_texture :: proc(size: [2]i32, depth := true) -> (result: Render_Te
 
     tex := &_state.render_textures[index]
 
+    tex^ = {
+        size = size,
+        color = {},
+        depth = {},
+    }
+
     tex.color, ok = gpu.create_texture_2d("rv-render-tex",
         format = .RGBA_U8_Norm, // HDR option in the future?
         size = size,
@@ -815,6 +821,11 @@ set_draw_depth :: proc(depth: Depth_Mode) {
     _state.draw_state.depth_mode = depth
 }
 
+set_draw_shader :: proc {
+    set_draw_pixel_shader,
+    set_draw_vertex_shader,
+}
+
 set_draw_pixel_shader :: proc(handle: Pixel_Shader_Handle) {
     if _, ok := _get_pixel_shader(handle); ok {
         _state.draw_state.ps = u8(handle.index)
@@ -883,6 +894,7 @@ set_draw_render_texture :: proc(handle: Render_Texture_Handle) {
 }
 
 
+// Set up layer draw parameters for this frame.
 // NOTE: Prefer calling this before any draw_* commands.
 // But the params persist between frames.
 update_draw_layer :: proc(
@@ -948,6 +960,10 @@ draw_sprite :: proc(
         // No scaling
     }
 
+    log_dump(_state.draw_state.texture_kind)
+    log_dump(_state.draw_state.texture_size)
+    log_dump(size)
+
     center := pos
     center -= rot[0] * anchor.x * size.x
     center -= rot[1] * anchor.y * size.y
@@ -996,6 +1012,7 @@ draw_sprite_2d :: proc(
             0, 0, 1,
         },
         anchor = anchor,
+        scale = scale,
         add_col = add_col,
         scaling = scaling,
         param = param,

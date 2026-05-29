@@ -107,8 +107,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state.cam_pos, state.cam_vel = coll.collide_sphere_swept(state.cam_pos, state.cam_vel, 0.2)
         // state.cam_pos += state.cam_vel * delta
 
-        rv.update_draw_layer(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
-        rv.update_draw_layer(1, rv.make_screen_camera())
+        rv.update_draw_layer(0, rv.make_perspective_3d_camera(rv.get_screen_size(), state.cam_pos, cam_rot))
+        rv.update_draw_layer(1, rv.make_screen_camera(rv.get_screen_size()))
     }
 
     rv.set_draw_depth(.Depth)
@@ -117,30 +117,25 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     SCALE :: 8
     HEIGHT :: 20
 
-    point_t: [N][N]coll.Sweep
-    sphere_t: [N][N]coll.Sweep
+    @static point_t: [N][N]coll.Sweep
+    @static sphere_t: [N][N]coll.Sweep
 
     state.radius = rv.nsin(rv.get_time() * 0.25)
 
     coll.add_mesh_shape(state.mesh, 5)
-    // coll.add_mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
-    // coll.add_mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
-    // coll.add_sphere_shape({0, 2, 5}, 2)
-    // coll.add_sphere_shape({0, 1, 8}, 1)
-    // coll.add_sphere_shape({0, 1, 9}, 1)
-    // coll.add_sphere_shape({0, 1, 10}, 1)
-    // coll.add_sphere_shape({0, 1, 11}, 1)
-    // coll.add_capsule_shape({0, 1, -5}, 0, 0.5)
-    // coll.add_box_shape({-5, 2, -4}, {2, 1, 2})
-    // coll.add_box_shape({-5, 4 + rv.nsin(rv.get_time()) * 2, -4}, {2, 1, 2})
-    // coll.add_box_shape({-5, 0, -8}, {2, 1, 2}, rad = 1)
-    // coll.add_oriented_box_shape({5, 2, -8}, {1, 0.5, 4}, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}), rad = 0)
-    // coll.add_box_shape({5, -1, -8}, {2, 1, 2})
-
-    // for i in 0..<100 {
-    //     coll.sphere_shape(f32(i) * 3, 2)
-    //     coll.mesh_shape(state.mesh, f32(-i) * 2, rad = 0.5)
-    // }
+    coll.add_mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
+    coll.add_mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
+    coll.add_sphere_shape({0, 2, 5}, 2)
+    coll.add_sphere_shape({0, 1, 8}, 1)
+    coll.add_sphere_shape({0, 1, 9}, 1)
+    coll.add_sphere_shape({0, 1, 10}, 1)
+    coll.add_sphere_shape({0, 1, 11}, 1)
+    coll.add_capsule_shape({0, 1, -5}, 0, 0.5)
+    coll.add_box_shape({-5, 2, -4}, {2, 1, 2})
+    coll.add_box_shape({-5, 4 + rv.nsin(rv.get_time()) * 2, -4}, {2, 1, 2})
+    coll.add_box_shape({-5, 0, -8}, {2, 1, 2}, rad = 1)
+    coll.add_oriented_box_shape({5, 2, -8}, {1, 0.5, 4}, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}), rad = 0)
+    coll.add_box_shape({5, -1, -8}, {2, 1, 2})
 
     {
         rv.perf_scope("Point Sweeps")

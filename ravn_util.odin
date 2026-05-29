@@ -373,20 +373,19 @@ rcp :: proc "contextless" (denom: f32) -> (result: f32) {
 //
 
 @(require_results)
-make_3d_perspective_camera :: proc(pos: [3]f32, rot: quaternion128, fov: f32 = math.PI * 0.5) -> Camera {
+make_perspective_3d_camera :: proc(screen: [2]f32, pos: [3]f32, rot: quaternion128, fov: f32 = math.PI * 0.5) -> Camera {
     return {
         pos = pos,
         rot = rot,
         projection = perspective_projection(
-            get_screen_size(),
+            screen,
             fov = clamp(fov, 0.00001, math.PI * 0.99),
         ),
     }
 }
 
 @(require_results)
-make_3d_orthographic_camera :: proc(pos: [3]f32, rot: quaternion128, fov: f32 = 10) -> Camera {
-    screen := get_screen_size()
+make_orthographic_3d_camera :: proc(screen: [2]f32, pos: [3]f32, rot: quaternion128, fov: f32 = 1) -> Camera {
     aspect := screen.x / screen.y
     return {
         pos = pos,
@@ -403,10 +402,9 @@ make_3d_orthographic_camera :: proc(pos: [3]f32, rot: quaternion128, fov: f32 = 
 }
 
 @(require_results)
-make_2d_camera :: proc(center: [3]f32 = 0, fov: [2]f32 = 1.0, angle: f32 = 0) -> Camera {
-    screen := get_screen_size()
+make_2d_camera :: proc(screen: [2]f32, pos: [3]f32 = 0, fov: [2]f32 = 1.0, angle: f32 = 0) -> Camera {
     return {
-        pos = center,
+        pos = pos,
         rot = linalg.quaternion_angle_axis_f32(angle, {0, 0, 1}),
         projection = orthographic_projection(
             left  = -fov.x * screen.x * 0.5,
@@ -420,10 +418,9 @@ make_2d_camera :: proc(center: [3]f32 = 0, fov: [2]f32 = 1.0, angle: f32 = 0) ->
 }
 
 @(require_results)
-make_screen_camera :: proc(offset: [3]f32 = 0) -> Camera {
-    screen := get_screen_size()
+make_screen_camera :: proc(screen: [2]f32, pos: [3]f32 = 0) -> Camera {
     return {
-        pos = offset + {0, 0, -1},
+        pos = pos + {0, 0, -1},
         rot = 1,
         projection = orthographic_projection(
             left = 0,

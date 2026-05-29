@@ -44,6 +44,7 @@ odin check examples/fps
 odin check examples/gpu_compute
 odin check examples/draw_2d
 odin check examples/draw_3d
+odin check examples/render_texture
 odin check examples/snake_planet
 odin check examples/standalone_audio_simple
 odin check examples/standalone_gpu_sdl3_triangle
