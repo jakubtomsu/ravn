@@ -67,7 +67,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     delta := rv.get_delta_time()
 
     // Flycam controls
-    mat: rv.matrix[3, 3]f32
+    mat: matrix[3, 3]f32
     {
         move: [3]f32
         if rv.get_key_down(.D) do move.x += 1
