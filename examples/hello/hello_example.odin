@@ -34,7 +34,7 @@ _update :: proc(_: rawptr) -> rawptr {
 
     // Ravn renders into "draw layers".
     // Layer 0 is the default one, so let's set up a regular screenspace view for it.
-    rv.set_layer_params(0, rv.make_screen_camera())
+    rv.update_draw_layer(0, rv.make_screen_camera())
 
     // To configure draw state like blending, textures, shaders, current layer, etc, call 'rv.set_draw_*'
     // You can also call push_binds/pop_binds to save and restore the bind state.

@@ -80,7 +80,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         }
     }
 
-    rv.set_layer_params(0, rv.make_screen_camera())
+    rv.update_draw_layer(0, rv.make_screen_camera())
 
     rv.set_draw_texture(rv.get_texture("circle"))
     rv.draw_sprite(

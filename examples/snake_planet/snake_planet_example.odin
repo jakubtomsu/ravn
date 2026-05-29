@@ -273,8 +273,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     // MARK: DRAW
     //
 
-    rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, state.cam_rot, state.cam_fov))
-    rv.set_layer_params(1, rv.make_screen_camera())
+    rv.update_draw_layer(0, rv.make_3d_perspective_camera(state.cam_pos, state.cam_rot, state.cam_fov))
+    rv.update_draw_layer(1, rv.make_screen_camera())
 
     rv.set_draw_depth(.Depth)
 

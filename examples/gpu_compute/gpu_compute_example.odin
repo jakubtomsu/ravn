@@ -121,8 +121,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state.tex_len = min(state.tex_len + 1, len(state.tex))
     }
 
-    rv.set_layer_params(0, cam)
-    rv.set_layer_params(1, rv.make_screen_camera())
+    rv.update_draw_layer(0, cam)
+    rv.update_draw_layer(1, rv.make_screen_camera())
 
     rv.set_draw_depth(.Depth)
 

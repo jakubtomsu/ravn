@@ -189,8 +189,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     }
 
     fov := 110 + rv.smoothstep(5, 40, linalg.length(state.vel)) * 10
-    rv.set_layer_params(0, rv.make_3d_perspective_camera(state.pos_spr[0], cam_rot, rv.deg(fov)))
-    rv.set_layer_params(1, rv.make_screen_camera())
+    rv.update_draw_layer(0, rv.make_3d_perspective_camera(state.pos_spr[0], cam_rot, rv.deg(fov)))
+    rv.update_draw_layer(1, rv.make_screen_camera())
 
     rv.set_draw_texture(rv.get_builtin_texture(.Default))
     rv.set_draw_depth(.Depth)

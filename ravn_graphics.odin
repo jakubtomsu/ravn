@@ -885,7 +885,7 @@ set_draw_render_texture :: proc(handle: Render_Texture_Handle) {
 
 // NOTE: Prefer calling this before any draw_* commands.
 // But the params persist between frames.
-set_layer_params :: proc(
+update_draw_layer :: proc(
     #any_int layer: i32,
     camera:         Camera,
     flags:          bit_set[Draw_Layer_Flag] = {},

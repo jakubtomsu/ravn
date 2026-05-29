@@ -95,8 +95,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     cam_vel.y += move.y * speed
     state.cam_pos += cam_vel * delta
 
-    rv.set_layer_params(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
-    rv.set_layer_params(1, rv.make_screen_camera())
+    rv.update_draw_layer(0, rv.make_3d_perspective_camera(state.cam_pos, cam_rot))
+    rv.update_draw_layer(1, rv.make_screen_camera())
 
     rv.set_draw_depth(.Depth)
 

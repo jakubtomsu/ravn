@@ -39,8 +39,8 @@ _update :: proc(hot: rawptr) -> rawptr {
         rv.request_shutdown()
     }
 
-    rv.set_layer_params(0, rv.make_2d_camera())
-    rv.set_layer_params(1, rv.make_screen_camera())
+    rv.update_draw_layer(0, rv.make_2d_camera())
+    rv.update_draw_layer(1, rv.make_screen_camera())
 
     { rv.scope_draw_state()
         rv.set_draw_layer(0)

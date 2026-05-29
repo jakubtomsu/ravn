@@ -64,7 +64,7 @@ _update :: proc(_: rawptr) -> rawptr {
         rv.request_shutdown()
     }
 
-    rv.set_layer_params(0, rv.make_screen_camera())
+    rv.update_draw_layer(0, rv.make_screen_camera())
 
     rv.set_draw_texture(rv.get_builtin_texture(.White))
 
