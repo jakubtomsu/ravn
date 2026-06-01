@@ -24,6 +24,8 @@ when ODIN_OS == .Windows {
     DEFAULT_BACKEND :: BACKEND_D3D11
 } else when ODIN_OS == .JS {
     DEFAULT_BACKEND :: BACKEND_WGPU
+} else when ODIN_OS == .Linux {
+    DEFAULT_BACKEND :: BACKEND_WGPU
 } else {
     #panic("Platform not supported")
 }

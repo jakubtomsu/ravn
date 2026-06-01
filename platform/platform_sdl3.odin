@@ -319,6 +319,8 @@ when BACKEND == BACKEND_SDL3 {
     _get_native_window_ptr :: proc(window: Window) -> rawptr {
         when ODIN_OS == .Windows {
             return sdl3.GetPointerProperty(sdl3.GetWindowProperties(window.window), sdl3.PROP_WINDOW_WIN32_HWND_POINTER, nil)
+        } else when ODIN_OS == .Linux {
+            return window.window
         } else {
             return nil
         }

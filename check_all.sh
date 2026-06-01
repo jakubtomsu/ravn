@@ -19,17 +19,20 @@ odin check examples/hello -debug
 odin check examples/hello -define:RELEASE=true
 
 odin check examples/hello -define:AUDIO_BACKEND=None
-odin check examples/hello -define:AUDIO_BACKEND=WASAPI
+# WASAPI (Windows Audio Session API) is not supported on Linux, without WINE / Proton
+# odin check examples/hello -define:AUDIO_BACKEND=WASAPI
 odin check examples/hello -define:AUDIO_BACKEND=miniaudio
 odin check examples/hello -define:AUDIO_BACKEND=SDL3
 
 odin check examples/hello -define:GPU_BACKEND=Dummy
-odin check examples/hello -define:GPU_BACKEND=D3D11
+# D3D11 (Direct3D 11) is not supported on Linux, without WINE / Proton
+# odin check examples/hello -define:GPU_BACKEND=D3D11
 odin check examples/hello -define:GPU_BACKEND=WGPU
 odin check examples/hello -define:GPU_BACKEND=WGPU -target:js_wasm32
 
 odin check examples/hello -define:PLATFORM_BACKEND=Dummy
-odin check examples/hello -define:PLATFORM_BACKEND=Windows
+# Windows Platform is not supported on Linux, without WINE / Proton
+# odin check examples/hello -define:PLATFORM_BACKEND=Windows
 odin check examples/hello -define:PLATFORM_BACKEND=JS -target:js_wasm32
 odin check examples/hello -define:PLATFORM_BACKEND=SDL3
 
@@ -48,7 +51,8 @@ odin check examples/render_texture
 odin check examples/snake_planet
 odin check examples/standalone_audio_simple
 odin check examples/standalone_gpu_sdl3_triangle
-odin check examples/standalone_platform_d3d11
+# D3D11 (Direct3D 11) is not supported on Linux, without WINE / Proton
+# odin check examples/standalone_platform_d3d11
 
 odin test . -debug
 odin test entities -debug
