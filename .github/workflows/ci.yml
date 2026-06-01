@@ -31,3 +31,31 @@ jobs:
         run: |
           set "PATH=%CD%\Odin;%PATH%"
           call check_all.cmd
+  build_linux:
+    name: Linux Build and Check
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+        - uses: actions/checkout@v4
+        - name: Install Odin dependencies
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y clang llvm
+        - name: Set up Odin
+          run: |
+            git clone https://github.com/odin-lang/Odin.git --depth 1 --single-branch --branch=master
+            cd Odin
+            make
+            ./odin version
+            ./odin report
+        - name: Install Ravn dependencies
+          run: |
+            make -C "$GITHUB_WORKSPACE/Odin/vendor/miniaudio/src"
+            make -C "$GITHUB_WORKSPACE/Odin/vendor/stb/src"
+            curl -L https://github.com/gfx-rs/wgpu-native/releases/download/v29.0.0.0/wgpu-linux-x86_64-release.zip -o wgpu.zip
+            unzip wgpu.zip -d "$GITHUB_WORKSPACE/Odin/vendor/wgpu/lib/wgpu-linux-x86_64-release"
+        - name: Check All
+          run: |
+            # Why "$GITHUB_WORKSPACE"? To be able to call odin from anywhere in the container's file system
+            export PATH="$GITHUB_WORKSPACE/Odin/:$PATH"
+            bash check_all.sh
