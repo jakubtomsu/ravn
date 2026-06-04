@@ -2,7 +2,9 @@
 
 # RAVN
 
-A toolkit for making 2D and 3D games in Odin.
+(pronounced *raven*)
+
+### RAVN is a [Odin](https://odin-lang.org/) lightweight 2D and 3D engine framework for the joy of game development.
 
 ### [Discord](https://discord.com/invite/wn5jMMMYe4)
 
@@ -17,30 +19,24 @@ A toolkit for making 2D and 3D games in Odin.
 
 
 
-## Goal
+## Principles
 A game library made specifically for small indie teams and fast iteration times.
 Something *simple* you can prototype in, but also *stable* enough to make polishing a full game straightforward.
 
 - Batteries-included
 - Simple and hackable
 - Minimal dependencies
-
-> Inspired by Sokol, PICO8 and Raylib.
-
-## Features
-- First-class 3D support
-- Minimal dependencies
-- Code and Asset hotreloading by default
+- Code and Asset hotreloading
 - Zero hidden internal state
 - Modular architecture
-    - the `platform`, `gpu`, `audio` and other packages can be used independently from the engine core
 
+> Inspired by Sokol, PICO8 and Raylib.
 
 ## Simple Example
 
 ```odin
 import rv "ravn"
-
+// Export app info to allow for hot reloading
 @export _module_desc := rv.Module_Desc{update = _update}
 
 main :: proc() {
@@ -49,15 +45,13 @@ main :: proc() {
 
 _update :: proc(_: rawptr) -> rawptr {
     if rv.key_pressed(.Escape) { rv.request_shutdown() }
-
+    // Initialize camera for layer 0
     rv.set_layer_params(0, rv.make_screen_camera(rv.get_screen_size()))
-
+    // Set up draw state
     rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.draw_text_2d("Hello World! ☺", {100, 100}, scale = 4, spacing = 1)
-
-    rv.submit_layers()
+    // Tell the GPU to render layer 0 to default render target
     rv.render_layer(0, clear_color = rv.DARK_BLUE.rgb, clear_depth = true)
-
     return nil
 }
 ```
