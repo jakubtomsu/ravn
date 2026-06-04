@@ -589,15 +589,36 @@ load_pixel_shader :: proc(path: string) -> (result: Pixel_Shader_Handle, ok: boo
     return create_pixel_shader_from_bin(name, data)
 }
 
-_shader_include_proc :: proc(path: string, user: rawptr) -> (result: string, ok: bool) {
-    npath := normalize_path(path, context.temp_allocator)
-    data := get_file_data(npath, flush = false) or_return
-    return string(data), true
+@(require_results)
+create_vertex_shader_from_bin :: proc(name: string, data: []byte) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
+    shader: gpu.Shader_Handle
+    shader, ok = gpu.create_shader(name, data, .Vertex)
+
+    if !ok {
+        base.log_err("Failed to create vertex shader")
+        return
+    }
+
+    // TODO: if this fails the shader gets leaked.
+    // TODO: fix for ALL table inserts, including rscn loading and custom mesh creation etc.
+    return insert_vertex_shader_by_name(name, Vertex_Shader(shader))
 }
 
+@(require_results)
+create_pixel_shader_from_bin :: proc(name: string, data: []byte) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
+    shader: gpu.Shader_Handle
+    shader, ok = gpu.create_shader(name, data, .Pixel)
+
+    if !ok {
+        base.log_err("Failed to create pixel shader")
+        return
+    }
+
+    return insert_pixel_shader_by_name(name, Pixel_Shader(shader))
+}
 
 when SHADER_COMPILER_ENABLED {
-@   (require_results)
+    @(require_results)
     create_vertex_shader_from_source :: proc(name: string, source: []byte) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
         compiled: []byte
         if _state.shader_compiler_target == .Invalid {
@@ -646,33 +667,10 @@ when SHADER_COMPILER_ENABLED {
     }
 }
 
-
-@(require_results)
-create_vertex_shader_from_bin :: proc(name: string, data: []byte) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
-    shader: gpu.Shader_Handle
-    shader, ok = gpu.create_shader(name, data, .Vertex)
-
-    if !ok {
-        base.log_err("Failed to create vertex shader")
-        return
-    }
-
-    // TODO: if this fails the shader gets leaked.
-    // TODO: fix for ALL table inserts, including rscn loading and custom mesh creation etc.
-    return insert_vertex_shader_by_name(name, Vertex_Shader(shader))
-}
-
-@(require_results)
-create_pixel_shader_from_bin :: proc(name: string, data: []byte) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
-    shader: gpu.Shader_Handle
-    shader, ok = gpu.create_shader(name, data, .Pixel)
-
-    if !ok {
-        base.log_err("Failed to create pixel shader")
-        return
-    }
-
-    return insert_pixel_shader_by_name(name, Pixel_Shader(shader))
+_shader_include_proc :: proc(path: string, user: rawptr) -> (result: string, ok: bool) {
+    npath := normalize_path(path, context.temp_allocator)
+    data := get_file_data(npath, flush = false) or_return
+    return string(data), true
 }
 
 

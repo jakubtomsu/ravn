@@ -3,6 +3,8 @@
 // This can be a starting point when writing a new backend from scratch.
 package ravn_platform
 
+import "base:runtime"
+
 when BACKEND == BACKEND_DUMMY {
 
     _State :: struct { _: u8 }
@@ -26,7 +28,7 @@ when BACKEND == BACKEND_DUMMY {
     _init :: proc() { dummy() }
     _shutdown :: proc() { dummy() }
 
-    @(require_results) _get_commandline_args :: proc(allocator := context.allocator) -> []string { dummy() }
+    @(require_results) _get_commandline_args :: proc(allocator: runtime.Allocator) -> []string { dummy() }
     @(require_results) _run_shell_command :: proc(command: string) -> int { dummy() }
     _exit_process :: proc(code: int) -> ! { dummy() }
     _register_default_exception_handler :: proc() {}

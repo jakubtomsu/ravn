@@ -1,10 +1,16 @@
+// Fallback backend using SDL.
+// Missing features use core libraries.
 #+build !js
 #+vet explicit-allocators shadowing style unused
 package ravn_platform
 
+import "core:strings"
+import "core:time"
 import "base:runtime"
 import "vendor:sdl3"
 import "../base"
+import "core:os"
+import "core:dynlib"
 
 _ :: runtime
 _ :: base
@@ -30,7 +36,9 @@ when BACKEND == BACKEND_SDL3 {
         window: ^sdl3.Window,
     }
 
-    _Module :: struct { _: u8 }
+    _Module :: struct {
+        lib: dynlib.Library,
+    }
 
     _init :: proc() {
         if !sdl3.Init({.VIDEO, .EVENTS, .GAMEPAD}) {
@@ -50,13 +58,24 @@ when BACKEND == BACKEND_SDL3 {
     //
 
     @(require_results)
-    _get_commandline_args :: proc(allocator := context.allocator) -> []string {
-        unimplemented()
+    _get_commandline_args :: proc(allocator: runtime.Allocator) -> []string {
+        return os.args
     }
 
     @(require_results)
     _run_shell_command :: proc(command: string) -> int {
-        unimplemented()
+        state, _, _, err := os.process_exec(
+            os.Process_Desc{
+                command = strings.split(command, sep = "", allocator = context.temp_allocator) or_else nil,
+            },
+            allocator = context.temp_allocator,
+        )
+
+        if err != nil {
+            return -1
+        }
+
+        return state.exit_code
     }
 
     _exit_process :: proc(code: int) -> ! {
@@ -166,7 +185,7 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _set_current_directory :: proc(path: string) -> bool {
-        unimplemented()
+        return os.set_working_directory(path) != nil
     }
 
     @(require_results)
@@ -176,20 +195,23 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _load_module :: proc(path: string) -> (result: Module, ok: bool) {
-        return {}, false
+        lib := dynlib.load_library(path, global_symbols = false, allocator = context.temp_allocator) or_return
+        return {
+            lib = lib,
+        }, true
     }
 
     _unload_module :: proc(module: Module) {
-        unimplemented()
+        dynlib.unload_library(module.lib)
     }
 
     @(require_results)
     _get_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
-        unimplemented()
+        return dynlib.symbol_address(module.lib, string(cstr), context.temp_allocator) or_else nil
     }
 
     _sleep_ms :: proc(#any_int ms: int) {
-        unimplemented()
+        time.sleep(time.Millisecond * time.Duration(ms))
     }
 
     @(require_results)

@@ -63,7 +63,7 @@ _shutdown :: proc() {
 
 
 @(require_results)
-_get_commandline_args :: proc(allocator := context.allocator) -> []string {
+_get_commandline_args :: proc(allocator: runtime.Allocator) -> []string {
     return nil
 }
 

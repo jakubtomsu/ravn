@@ -304,7 +304,6 @@ run_shell_command :: proc(command: string) -> int {
 }
 
 exit_process :: proc(code: int) -> ! {
-    runtime._cleanup_runtime_contextless()
     _exit_process(code)
 }
 
