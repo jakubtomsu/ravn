@@ -15,6 +15,10 @@ import "core:dynlib"
 _ :: runtime
 _ :: base
 _ :: sdl3
+_ :: strings
+_ :: time
+_ :: os
+_ :: dynlib
 
 BACKEND_SDL3 :: "SDL3"
 
