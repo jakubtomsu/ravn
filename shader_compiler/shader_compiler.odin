@@ -37,6 +37,8 @@ Include_Proc :: #type proc (path: string, user: rawptr) -> (string, bool)
 // If this returns false the shader compiler is not available. Do not call any other procedures.
 @(require_results)
 init :: proc(state: ^State, target: Target) -> bool {
+    state.target = target
+
     switch target {
     case .Invalid:
         return false

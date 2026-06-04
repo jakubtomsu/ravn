@@ -1,7 +1,9 @@
 struct SLANG_ParameterGroup_rv_batch_constants_std140_0
 {
     @align(16) rv_instance_offset_0 : u32,
-    @align(4) rv_vertex_offset_0 : u32,
+    @align(4) _pad0_0 : u32,
+    @align(8) _pad1_0 : u32,
+    @align(4) _pad2_0 : u32,
 };
 
 @binding(10) @group(0) var<uniform> rv_batch_constants_0 : SLANG_ParameterGroup_rv_batch_constants_std140_0;
@@ -13,7 +15,7 @@ struct RV_Sprite_Inst_Packed_std430_0
     @align(16) add_col_0 : u32,
     @align(4) param_0 : u32,
     @align(8) tex_slice_0 : u32,
-    @align(4) _pad0_0 : u32,
+    @align(4) _pad0_1 : u32,
 };
 
 @binding(16) @group(0) var<storage, read> instances_0 : array<RV_Sprite_Inst_Packed_std430_0>;

@@ -103,8 +103,6 @@ main :: proc() {
 
     pkg_name := fl.pkg[find_last_slash(fl.pkg)+1:]
 
-    init()
-
     switch fl.cmd {
     case .Export_Web:
         if !export_web(strings.concatenate({pkg_name, "-web-export"}), pkg_name, fl.pkg) {

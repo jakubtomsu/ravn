@@ -1142,11 +1142,7 @@ _load_builtin_assets :: proc() {
     default_vs: []byte
     default_ps: []byte
 
-    when !RELEASE {
-        default_sprite_vs = #load("data/default_sprite.vs.hlsl")
-        default_vs = #load("data/default.vs.hlsl")
-        default_ps = #load("data/default.ps.hlsl")
-    } else when gpu.BACKEND ==  gpu.BACKEND_D3D11 {
+    when gpu.BACKEND ==  gpu.BACKEND_D3D11 {
         default_sprite_vs = #load("data/default_sprite.vs.hlsl.dxbc")
         default_vs = #load("data/default.vs.hlsl.dxbc")
         default_ps = #load("data/default.ps.hlsl.dxbc")

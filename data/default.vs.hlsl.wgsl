@@ -1,7 +1,9 @@
 struct SLANG_ParameterGroup_rv_batch_constants_std140_0
 {
     @align(16) rv_instance_offset_0 : u32,
-    @align(4) rv_vertex_offset_0 : u32,
+    @align(4) _pad0_0 : u32,
+    @align(8) _pad1_0 : u32,
+    @align(4) _pad2_0 : u32,
 };
 
 @binding(10) @group(0) var<uniform> rv_batch_constants_0 : SLANG_ParameterGroup_rv_batch_constants_std140_0;
@@ -68,7 +70,7 @@ fn rv_unpack_mesh_inst_0( packed_0 : ptr<function, RV_Mesh_Inst_Packed_std430_0>
     res_0.add_col_0 = rv_unpack_signed_color_unorm8_0((bitcast<u32>(((*packed_0).mat_x_add_col_0.w))));
     var _S1 : u32 = (bitcast<u32>(((*packed_0).mat_y_tex_slice_vert_offs_0.w)));
     res_0.tex_slice_0 = (((_S1 >> (u32(0)))) & (u32(255)));
-    res_0.vert_offs_0 = (((_S1 >> (u32(8)))) & (u32(255)));
+    res_0.vert_offs_0 = (((_S1 >> (u32(8)))) & (u32(16777215)));
     res_0.param_0 = (bitcast<u32>(((*packed_0).mat_z_param_0.w)));
     return res_0;
 }
@@ -86,7 +88,7 @@ fn rv_unpack_vertex_0( packed_1 : ptr<function, RV_Vertex_Packed_std430_0>) -> R
     var res_1 : RV_Vertex_0;
     res_1.pos_2 = (*packed_1).pos_0.xyz;
     res_1.uv_1 = (*packed_1).uv_0;
-    res_1.normal_1 = rv_unpack_unorm8_0((*packed_1).normal_0).xyz;
+    res_1.normal_1 = rv_unpack_unorm8_0((*packed_1).normal_0).xyz * vec3<f32>(2.0f) - vec3<f32>(1.0f);
     res_1.col_2 = rv_unpack_unorm8_0((*packed_1).col_0);
     return res_1;
 }

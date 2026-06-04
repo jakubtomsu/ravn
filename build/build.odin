@@ -6,10 +6,6 @@ import "../base"
 import "../base/ufmt"
 import "core:strings"
 
-init :: proc() {
-    shader_compiler.init(new(shader_compiler.State))
-}
-
 compile_builtin_shaders :: proc() -> bool {
     targets := []shader_compiler.Target{
         .DXBC,
@@ -17,23 +13,27 @@ compile_builtin_shaders :: proc() -> bool {
     }
 
     for target in targets {
-        _compile_builtin_shader("data/default.vs.hlsl", target, .Vertex) or_return
-        _compile_builtin_shader("data/default_sprite.vs.hlsl", target, .Vertex) or_return
-        _compile_builtin_shader("data/default.ps.hlsl", target, .Pixel) or_return
+        state: shader_compiler.State
+        if !shader_compiler.init(&state, target) {
+            base.log_err("Failed to initialize shader compiler for target '{}'", target)
+        }
+
+        _compile_builtin_shader(&state, "data/default.vs.hlsl", .Vertex) or_return
+        _compile_builtin_shader(&state, "data/default_sprite.vs.hlsl", .Vertex) or_return
+        _compile_builtin_shader(&state, "data/default.ps.hlsl", .Pixel) or_return
     }
 
     return true
 }
 
 _compile_builtin_shader :: proc(
+    state:  ^shader_compiler.State,
     $Path:  string,
-    target: shader_compiler.Target,
     stage:  shader_compiler.Stage,
 ) -> bool {
     source := #load("../" + Path)
 
-    bin, bin_ok := shader_compiler.compile(Path, string(source), {
-        target = target,
+    bin, bin_ok := shader_compiler.compile(state, Path, string(source), {
         stage = stage,
         release = true,
         defines = {
@@ -48,7 +48,7 @@ _compile_builtin_shader :: proc(
     }
 
     ext: string
-    switch target {
+    switch state.target {
     case .Invalid:
         panic("Invalid target")
 
