@@ -56,21 +56,17 @@ Fill_Mode :: enum u8 {
     Wire, // Two-sided wireframe mode
 }
 
-// TODO: pack vertex data into the following format:
-// [3]u16    pos         6
-// [2]u8     normal      2
-// [2]u16    uv          4
-// [3]u8     color       3
-// [1]u8     _pad        1
-// total 16 bytes
+#assert(size_of(Vertex) == 32)
 
 Vertex :: struct #align(16) {
-    pos:    [3]f32,
-    _pad:   f32,
-    uv:     [2]f32,
-    normal: [3]u8,
-    p0:     u8, // NOTE: this padding could store user parameters..?
-    col:    [4]u8,
+    pos:        [3]f32,
+    uv:         [2]u16,
+
+    normal:     [2]u8,
+    _:          [2]u8,
+    col:        [4]u8,
+    joints:     [4]u8,
+    weights:    [4]u8,
 }
 
 

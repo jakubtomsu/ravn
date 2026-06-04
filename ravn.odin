@@ -73,7 +73,7 @@ MAX_PROBE_DIST :: #config(RAVN_MAX_TABLE_PROBE_DIST, 16)
 
 HASH_ALG :: "fnv64a"
 
-UV_EPS :: (1.0 / 4096.0)
+UV_EPS :: (1.0 / 2048.0)
 
 LANES :: 8
 
@@ -1507,12 +1507,17 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
     vertices := make([]Vertex, len(vert_buf), _state.allocator)
     for i in 0..<len(vertices) {
         v := vert_buf[i]
-        vertices[i] = {
+
+        col: [4]f32
+        col.rgb = cast([3]f32)v.color * (1.0 / 255.0)
+        col.a = 1
+
+        vertices[i] = pack_vertex(
             pos = v.pos,
             uv = v.uv,
-            normal = v.normal,
-            col = {v.color.r, v.color.g, v.color.b, 255},
-        }
+            normal = unpack_unorm8(v.normal.xyzz).xyz * 2.0 - 1.0,
+            col = col,
+        )
     }
 
     if arena_handle == {} {
@@ -2713,17 +2718,58 @@ unpack_signed_color_unorm8 :: proc "contextless" (val: [4]u8) -> [4]f32 {
     return unpack_unorm8(val) * 4.0 - 2.0
 }
 
-// No UV precision loss up to 4096x4096 textures.
-// 16 bits -> 65536 values.
-// Input in range -8..8
+// No UV precision loss up to 2048x2048 textures.
+// Input in range -16..16
 @(require_results)
 pack_uv_unorm16 :: proc "contextless" (val: [2]f32) -> [2]u16 {
-    return #force_inline pack_unorm16((val + 8.0) * (1.0 / 16.0))
+    return #force_inline pack_unorm16((val + 16.0) * (1.0 / 32.0))
 }
 
 @(require_results)
 unpack_uv_unorm16 :: proc "contextless" (val: [2]u16) -> [2]f32 {
-    return #force_inline unpack_unorm16(val) * 16.0 - 8.0
+    return #force_inline unpack_unorm16(val) * 32.0 - 16.0
+}
+
+@(require_results)
+pack_normal_octahedral_unorm8 :: proc "contextless" (val: [3]f32) -> [2]u8 {
+    return pack_unorm8(encode_octahedral(val).xyyy).xy
+}
+
+@(require_results)
+unpack_normal_octahedral_unorm8 :: proc "contextless" (val: [2]u8) -> [3]f32 {
+    return decode_octahedral(unpack_unorm8(val.xyyy).xy)
+}
+
+@(require_results)
+_wrap_octahedral :: proc "contextless" (v: [2]f32) -> [2]f32 {
+    f: [2]f32
+    f.x = v.x >= 0 ? 1 : -1
+    f.y = v.y >= 0 ? 1 : -1
+    return (1.0 - linalg.abs(v.yx)) * f
+}
+
+// Input is vector from a sphere.
+// Output is in range 0..1
+@(require_results)
+encode_octahedral :: proc "contextless" (n: [3]f32) -> [2]f32 {
+    n := n
+    n /= (linalg.abs(n.x) + linalg.abs(n.y) + linalg.abs(n.z))
+    n.xz = n.z >= 0.0 ? n.xz : cast([2]f32)_wrap_octahedral(n.xz)
+    n.xz = n.xz * 0.5 + 0.5
+    return n.xz
+}
+
+// Result is normalized vector on a sphere
+@(require_results)
+decode_octahedral :: proc "contextless" (f: [2]f32) -> [3]f32 {
+    f := f
+    f = f * 2.0 - 1.0
+    // https://twitter.com/Stubbesaurus/status/937994790553227264
+    n := [3]f32{f.x, 1.0 - abs(f.x) - abs(f.y), f.y}
+    t: f32 = clamp(-n.y, 0, 1)
+    n.x += n.x >= 0 ? -t : t
+    n.z += n.z >= 0 ? -t : t
+    return linalg.normalize(n)
 }
 
 
@@ -2781,16 +2827,20 @@ pack_mesh_inst :: proc(
 
 @(require_results)
 pack_vertex :: proc(
-    pos:    [3]f32,
-    uv:     [2]f32 = 0,
-    normal: [3]f32 = {0, 1, 0},
-    col:    [4]f32 = 1,
+    pos:        [3]f32,
+    uv:         [2]f32 = 0,
+    normal:     [3]f32 = {0, 1, 0},
+    col:        [4]f32 = 1,
+    joints:     [4]u8 = 0,
+    weights:    [4]f32 = {1, 0, 0, 0},
 ) -> Vertex {
     return {
         pos = pos,
-        uv = uv,
-        normal = pack_unorm8(normal.xyzz * 0.5 + 0.5).xyz,
+        uv = pack_uv_unorm16(uv),
+        normal = pack_normal_octahedral_unorm8(normal.xyz),
         col = pack_unorm8(col),
+        joints = joints,
+        weights = pack_unorm8(weights),
     }
 }
 

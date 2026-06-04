@@ -26,6 +26,15 @@
 #endif
 
 
+float3 rv_decode_octahedral(float2 f) {
+    f = f * 2.0 - 1.0;
+    float3 n = float3(f.x, 1.0 - abs(f.x) - abs(f.y), f.y);
+    float t = clamp(-n.y, 0, 1);
+    n.x += n.x >= 0 ? -t : t;
+    n.z += n.z >= 0 ? -t : t;
+    return normalize(n);
+}
+
 float4 rv_unpack_unorm8(uint val) {
     return float4(
         (val      ) & 0xff,
@@ -48,7 +57,15 @@ float4 rv_unpack_signed_color_unorm8(uint val) {
 }
 
 float2 rv_unpack_uv_unorm16(uint val) {
-    return rv_unpack_unorm16(val) * 16.0f - 8.0f;
+    return rv_unpack_unorm16(val) * 32.0f - 16.0f;
+}
+
+float3 rv_unpack_normal_unorm8(uint val) {
+    float2 f = float2(
+        (val      ) & 0xff,
+        (val >>  8) & 0xff
+    ) * (1.0f / 255.0f);
+    return rv_decode_octahedral(f);
 }
 
 
@@ -80,10 +97,11 @@ RV_CONSTANTS_SLOT(2, cbuffer rv_batch_constants) {
 // Mesh Vertex
 
 struct RV_Vertex_Packed {
-    float4  pos;
-    float2  uv;
+    float4  pos_uv;
     uint    normal;
     uint    col;
+    uint    joints;
+    uint    weights;
 };
 
 struct RV_Vertex {
@@ -95,9 +113,9 @@ struct RV_Vertex {
 
 RV_Vertex rv_unpack_vertex(RV_Vertex_Packed packed) {
     RV_Vertex res;
-    res.pos = packed.pos.xyz;
-    res.uv = packed.uv;
-    res.normal = rv_unpack_unorm8(packed.normal).xyz * 2.0 - 1.0;
+    res.pos = packed.pos_uv.xyz;
+    res.uv = rv_unpack_uv_unorm16(asuint(packed.pos_uv.w));
+    res.normal = rv_unpack_normal_unorm8(packed.normal);
     res.col = rv_unpack_unorm8(packed.col);
     return res;
 }

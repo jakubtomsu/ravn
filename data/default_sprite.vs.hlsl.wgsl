@@ -50,7 +50,7 @@ fn rv_unpack_unorm16_0( val_2 : u32) -> vec2<f32>
 
 fn rv_unpack_uv_unorm16_0( val_3 : u32) -> vec2<f32>
 {
-    return rv_unpack_unorm16_0(val_3) * vec2<f32>(16.0f) - vec2<f32>(8.0f);
+    return rv_unpack_unorm16_0(val_3) * vec2<f32>(32.0f) - vec2<f32>(16.0f);
 }
 
 struct RV_Sprite_Inst_0
