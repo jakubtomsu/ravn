@@ -38,6 +38,7 @@ import debug_trace "core:debug/trace"
 RELEASE :: #config(RAVN_RELEASE, base.RELEASE)
 VALIDATION :: #config(RAVN_VALIDATION, !RELEASE)
 DEBUG_TRACE_ENABLED :: ODIN_DEBUG && #config(RAVN_DEBUG_TRACE, !RELEASE) // Debug symbols are required
+SHADER_COMPILER_ENABLED :: #config(RAVN_SHADER_COMPILER, !RELEASE)
 
 MAX_ARENAS :: 64
 MAX_TEXTURES :: 256 // Use texture pools if you hit this limit.
@@ -134,7 +135,7 @@ State :: struct #align(64) {
     shutdown_requested:         bool,
     submitted_layers:           bool,
 
-    debug_trace_ctx:            _State_Debug_Trace,
+    debug_trace_ctx:            (debug_trace.Context when DEBUG_TRACE_ENABLED else struct {}),
     context_state:              Context_State,
 
     input:                      Input,
@@ -212,17 +213,13 @@ State :: struct #align(64) {
     sound_resources_hash:       [MAX_SOUNDS]Hash,
     sound_resources:            [MAX_SOUNDS]Sound_Resource_Handle,
 
+    shader_compiler_state:      (shader_compiler.State when SHADER_COMPILER_ENABLED else struct {}),
+    shader_compiler_target:     shader_compiler.Target,
+
     platform_state:             platform.State,
     gpu_state:                  gpu.State,
     audio_state:                audio.State,
-    shader_compiler_state:      shader_compiler.State,
     collision_state:            collision.State,
-}
-
-when DEBUG_TRACE_ENABLED {
-    _State_Debug_Trace :: debug_trace.Context
-} else {
-    _State_Debug_Trace :: struct{}
 }
 
 Context_State :: struct {
@@ -352,7 +349,6 @@ set_state_ptr :: proc "contextless" (state: ^State) {
     platform._state = &_state.platform_state
     gpu._state = &_state.gpu_state
     audio._state = &_state.audio_state
-    shader_compiler._state = &_state.shader_compiler_state
     collision._state = &_state.collision_state
 }
 
@@ -581,8 +577,13 @@ init_state :: proc(allocator: runtime.Allocator) {
         panic("Failed to initialize GPU")
     }
 
-    when !RELEASE {
-        shader_compiler.init(&_state.shader_compiler_state)
+    when SHADER_COMPILER_ENABLED {
+        if shader_compiler.init(&_state.shader_compiler_state, target = SHADER_TARGET) {
+            _state.shader_compiler_target = SHADER_TARGET
+        } else {
+            _state.shader_compiler_target = .Invalid
+            base.log_err("Failed to load shader compiler, likely a missing DLL. Compiling shaders from source won't be available.")
+        }
     }
 
     collision.init(&_state.collision_state, _state.allocator)
@@ -1149,25 +1150,19 @@ _load_builtin_assets :: proc() {
         default_sprite_vs = #load("data/default_sprite.vs.hlsl.dxbc")
         default_vs = #load("data/default.vs.hlsl.dxbc")
         default_ps = #load("data/default.ps.hlsl.dxbc")
-
     } else when gpu.BACKEND == gpu.BACKEND_WGPU {
         default_sprite_vs = #load("data/default_sprite.vs.hlsl.wgsl")
         default_vs = #load("data/default.vs.hlsl.wgsl")
         default_ps = #load("data/default.ps.hlsl.wgsl")
-    } else {
-        #panic("GPU backend not supported")
     }
 
-    // TODO: if slang dll is not present and is required, can we use precompiled WGSL?
-    // The reason is prototyping.
-
     _state.builtin_vertex_shader = {
-        .Default = create_vertex_shader("default", default_vs) or_else panic("Failed to load default vertex shader"),
-        .Default_Sprite = create_vertex_shader("default_sprite", default_sprite_vs) or_else panic("Failed to load default sprite vertex shader"),
+        .Default = create_vertex_shader_from_bin("default", default_vs) or_else panic("Failed to load default vertex shader"),
+        .Default_Sprite = create_vertex_shader_from_bin("default_sprite", default_sprite_vs) or_else panic("Failed to load default sprite vertex shader"),
     }
 
     _state.builtin_pixel_shader = {
-        .Default = create_pixel_shader("default", default_ps) or_else panic("Failed to load default pixel shader"),
+        .Default = create_pixel_shader_from_bin("default", default_ps) or_else panic("Failed to load default pixel shader"),
     }
 
     _state.builtin_arena = load_scene_from_data(

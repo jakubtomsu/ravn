@@ -5,7 +5,10 @@ import "../base"
 
 import "base:runtime"
 
-SLANG_ENABLED :: #config(SHADER_COMPILER_SLANG_ENABLED, true)
+State :: struct {
+    target:             Target,
+    slang:              _Slang_State,
+}
 
 Target :: enum u8 {
     Invalid = 0,
@@ -21,7 +24,6 @@ Stage :: enum u8 {
 }
 
 Options :: struct {
-    target:         Target,
     stage:          Stage,
     defines:        [][2]string,
     release:        bool,
@@ -32,29 +34,35 @@ Options :: struct {
 
 Include_Proc :: #type proc (path: string, user: rawptr) -> (string, bool)
 
-_state: ^State
+// If this returns false the shader compiler is not available. Do not call any other procedures.
+@(require_results)
+init :: proc(state: ^State, target: Target) -> bool {
+    switch target {
+    case .Invalid:
+        return false
 
-State :: struct {
-    using slang: _Slang_State,
-}
+    case .DXBC:
+        // Requires d3d11compiler DLL
+        return ODIN_OS == .Windows
 
-init :: proc(state: ^State) {
-    _state = state
+    case .WGSL:
+        return _slang_init(&state.slang)
+    }
+
+    return false
 }
 
 compile :: proc(
+    state:          ^State,
     name:           string,
     source:         string,
     opts:           Options,
     loc := #caller_location,
 ) -> (result: []byte, ok: bool) {
-    assert(_state != nil, "You must first call init()")
-    assert(opts.target != .Invalid, "You must specify the target output format")
+    assert(state != nil)
     assert(opts.stage != .Invalid, "You must specify the shader stage")
 
-    base.log_info("Compiling %s: %v, %v", name, opts.stage, opts.target, loc = loc)
-
-    switch opts.target {
+    switch state.target {
     case .Invalid:
         assert(false)
 
@@ -62,17 +70,11 @@ compile :: proc(
         when ODIN_OS == .Windows {
             result, ok = _compile_dxbc(name, source, opts)
         } else {
-            base.log_err("D3D11 shader compilation is not supported on non-windows platforms")
             assert(false)
         }
 
     case .WGSL:
-        // TODO: Call slang/naga/dawn here...
-        // base.log_err("WGSL transpilation is not supported yet.")
-        // HACK: for now passthrough, assume WGPU input
-        // return transmute([]byte)source, true
-
-        result, ok = _compile_slang_wgsl(name, source, opts)
+        result, ok = _compile_slang_wgsl(state, name, source, opts)
     }
 
     return result, ok

@@ -1,3 +1,4 @@
+#+vet shadowing unused explicit-allocators style
 package ravn
 
 import "core:slice"
@@ -18,6 +19,14 @@ DRAW_BATCH_TABLE_MAX_PROBE :: 32
 GPU_SAMPLER_SLOTS :: 4
 GPU_CONSTANT_SLOTS :: 4
 GPU_RESOURCE_SLOTS :: 4
+
+when gpu.BACKEND == gpu.BACKEND_D3D11 {
+    SHADER_TARGET :: shader_compiler.Target.DXBC
+} else when gpu.BACKEND == gpu.BACKEND_WGPU {
+    SHADER_TARGET :: shader_compiler.Target.WGSL
+} else {
+    #panic("Invalid GPU Target")
+}
 
 DEFAULT_SAMPLER :: gpu.Sampler_Desc{
     filter = .Unfiltered,
@@ -562,7 +571,7 @@ load_vertex_shader :: proc(path: string) -> (result: Vertex_Shader_Handle, ok: b
     }
 
     name := strip_path_name(npath)
-    return create_vertex_shader(name, data)
+    return create_vertex_shader_from_bin(name, data)
 }
 
 @(require_results)
@@ -577,7 +586,7 @@ load_pixel_shader :: proc(path: string) -> (result: Pixel_Shader_Handle, ok: boo
 
     name := strip_path_name(npath)
 
-    return create_pixel_shader(name, data)
+    return create_pixel_shader_from_bin(name, data)
 }
 
 _shader_include_proc :: proc(path: string, user: rawptr) -> (result: string, ok: bool) {
@@ -586,38 +595,62 @@ _shader_include_proc :: proc(path: string, user: rawptr) -> (result: string, ok:
     return string(data), true
 }
 
-when gpu.BACKEND == gpu.BACKEND_D3D11 {
-    SHADER_COMPILER_TARGET :: shader_compiler.Target.DXBC
-} else when gpu.BACKEND == gpu.BACKEND_WGPU {
-    SHADER_COMPILER_TARGET :: shader_compiler.Target.WGSL
-} else {
-    SHADER_COMPILER_TARGET :: shader_compiler.Target.Invalid
-}
 
-@(require_results)
-create_vertex_shader :: proc(name: string, data: []byte) -> (result: Vertex_Shader_Handle, ok: bool) {
-    compiled: []byte
-    when RELEASE {
-        compiled = data
-    } else {
-        compiled, ok = shader_compiler.compile(
-            name = name,
-            source = string(data),
-            opts = {
-                target = SHADER_COMPILER_TARGET,
-                stage = .Vertex,
-                include_proc = _shader_include_proc,
-            },
-        )
+when SHADER_COMPILER_ENABLED {
+@   (require_results)
+    create_vertex_shader_from_source :: proc(name: string, source: []byte) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
+        compiled: []byte
+        if _state.shader_compiler_target == .Invalid {
+            base.log_err("Cannot compile shader from source, failed to init shader compiler")
+        } else {
+            compiled, ok = shader_compiler.compile(&_state.shader_compiler_state,
+                name = name,
+                source = string(source),
+                opts = {
+                    stage = .Vertex,
+                    include_proc = _shader_include_proc,
+                },
+            )
 
-        if !ok {
-            base.log_err("Failed to compile vertex shader '%s'", name)
-            return {}, false
+            if !ok {
+                base.log_err("Failed to compile vertex shader '%s'", name)
+                return {}, false
+            }
         }
+
+        return create_vertex_shader_from_bin(name, compiled)
     }
 
+    @(require_results)
+    create_pixel_shader_from_source :: proc(name: string, source: []byte) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
+        compiled: []byte
+        if _state.shader_compiler_target == .Invalid {
+            base.log_err("Cannot compile shader from source, failed to init shader compiler")
+        } else {
+            compiled, ok = shader_compiler.compile(&_state.shader_compiler_state,
+                name = name,
+                source = string(source),
+                opts = {
+                    stage = .Pixel,
+                    include_proc = _shader_include_proc,
+                },
+            )
+
+            if !ok {
+                base.log_err("Failed to compile pixel shader '%s'", name)
+                return {}, false
+            }
+        }
+
+        return create_pixel_shader_from_bin(name, compiled)
+    }
+}
+
+
+@(require_results)
+create_vertex_shader_from_bin :: proc(name: string, data: []byte) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
     shader: gpu.Shader_Handle
-    shader, ok = gpu.create_shader(name, compiled, .Vertex)
+    shader, ok = gpu.create_shader(name, data, .Vertex)
 
     if !ok {
         base.log_err("Failed to create vertex shader")
@@ -629,31 +662,10 @@ create_vertex_shader :: proc(name: string, data: []byte) -> (result: Vertex_Shad
     return insert_vertex_shader_by_name(name, Vertex_Shader(shader))
 }
 
-
 @(require_results)
-create_pixel_shader :: proc(name: string, data: []byte) -> (result: Pixel_Shader_Handle, ok: bool) {
-    compiled: []byte
-    when RELEASE {
-        compiled = data
-    } else {
-        compiled, ok = shader_compiler.compile(
-            name = name,
-            source = string(data),
-            opts = {
-                target = SHADER_COMPILER_TARGET,
-                stage = .Pixel,
-                include_proc = _shader_include_proc,
-            },
-        )
-
-        if !ok {
-            base.log_err("Failed to compile pixel shader '%s'", name)
-            return {}, false
-        }
-    }
-
+create_pixel_shader_from_bin :: proc(name: string, data: []byte) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
     shader: gpu.Shader_Handle
-    shader, ok = gpu.create_shader(name, compiled, .Pixel)
+    shader, ok = gpu.create_shader(name, data, .Pixel)
 
     if !ok {
         base.log_err("Failed to create pixel shader")
@@ -1443,9 +1455,9 @@ draw_text :: proc(
                 f32(_state.draw_state.texture_size.y) * rect_size.y,
             }
 
-            center := p
-            center -= rot[0] * anchor.x * size.x
-            center -= rot[1] * anchor.y * size.y
+            inst_center := p
+            inst_center -= rot[0] * anchor.x * size.x
+            inst_center -= rot[1] * anchor.y * size.y
 
             eps := [2]f32{
                 rect_size.x > 0 ? UV_EPS : -UV_EPS,
@@ -1453,7 +1465,7 @@ draw_text :: proc(
             }
 
             inst := pack_sprite_inst(
-                pos = center,
+                pos = inst_center,
                 mat_x = rot[0] * size.x,
                 mat_y = rot[1] * size.y,
                 uv_min = rect.min + eps,
@@ -1864,7 +1876,6 @@ _draw_batch_table_find_or_create :: proc(table: ^$T/Draw_Batch_Table($Inst), key
 
     lookup_index := u64(hash % DRAW_BATCH_TABLE_LOOKUP)
     index := -1
-    found := false
 
     for _ in 0..<DRAW_BATCH_TABLE_MAX_PROBE {
         batch_index := table.lookup[lookup_index]

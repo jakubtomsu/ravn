@@ -176,7 +176,7 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _load_module :: proc(path: string) -> (result: Module, ok: bool) {
-        unimplemented()
+        return {}, false
     }
 
     _unload_module :: proc(module: Module) {
