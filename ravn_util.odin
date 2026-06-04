@@ -368,6 +368,78 @@ rcp :: proc "contextless" (denom: f32) -> (result: f32) {
 
 
 
+/////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Affine Transform
+//
+
+Transform :: struct {
+    pos:    [3]f32,
+    mat:    matrix[3, 3]f32,
+}
+
+TRANSFORM_IDENTITY :: Transform{
+    pos = 0,
+    mat = 1,
+}
+
+@(require_results)
+transform_make :: proc "contextless" (
+    pos:    [3]f32 = 0,
+    scale:  [3]f32 = 1,
+    rot:    quaternion128 = QUAT_IDENTITY,
+) -> Transform {
+    return {
+        pos = pos,
+        mat = linalg.matrix3_from_quaternion_f32(rot) * linalg.matrix3_scale_f32(scale),
+    }
+}
+
+transform_make_angle_axis :: proc "contextless" (
+    pos:    [3]f32 = 0,
+    scale:  [3]f32 = 1,
+    angle:  f32 = 0,
+    axis:   [3]f32 = {0, 1, 0},
+) -> Transform {
+    return {
+        pos = pos,
+        mat = linalg.matrix3_rotate_f32(angle, axis),
+    }
+}
+
+@(require_results)
+transform_point :: proc "contextless" (tran: Transform, point: [3]f32) -> [3]f32 {
+    return tran.pos + tran.mat * point
+}
+
+@(require_results)
+transform_mul :: proc "contextless" (parent, child: Transform) -> Transform {
+    return {
+        pos = transform_point(parent, child.pos),
+        mat = parent.mat * child.mat,
+    }
+}
+
+@(require_results)
+transform_inv :: proc "contextless" (tran: Transform) -> Transform {
+    // M = R * S
+    // inv(M) = inv(R * S) = inv(S) * inv(R) = R^T / S
+    inv_scale := [3]f32{
+        1.0 / max(1e-9, linalg.length2(tran.mat[0])),
+        1.0 / max(1e-9, linalg.length2(tran.mat[1])),
+        1.0 / max(1e-9, linalg.length2(tran.mat[2])),
+    }
+    inv_rot := transpose(tran.mat)
+    inv_rot[0] *= inv_scale[0]
+    inv_rot[1] *= inv_scale[1]
+    inv_rot[2] *= inv_scale[2]
+    return {
+        pos = inv_rot * -tran.pos,
+        mat = inv_rot,
+    }
+}
+
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Camera
 //
