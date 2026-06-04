@@ -37,6 +37,7 @@ import debug_trace "core:debug/trace"
 
 RELEASE :: #config(RAVN_RELEASE, base.RELEASE)
 VALIDATION :: #config(RAVN_VALIDATION, !RELEASE)
+DEBUG_TRACE_ENABLED :: ODIN_DEBUG && #config(RAVN_DEBUG_TRACE, !RELEASE) // Debug symbols are required
 
 MAX_ARENAS :: 64
 MAX_TEXTURES :: 256 // Use texture pools if you hit this limit.
@@ -133,7 +134,7 @@ State :: struct #align(64) {
     shutdown_requested:         bool,
     submitted_layers:           bool,
 
-    debug_trace_ctx:            debug_trace.Context,
+    debug_trace_ctx:            _State_Debug_Trace,
     context_state:              Context_State,
 
     input:                      Input,
@@ -216,6 +217,12 @@ State :: struct #align(64) {
     audio_state:                audio.State,
     shader_compiler_state:      shader_compiler.State,
     collision_state:            collision.State,
+}
+
+when DEBUG_TRACE_ENABLED {
+    _State_Debug_Trace :: debug_trace.Context
+} else {
+    _State_Debug_Trace :: struct{}
 }
 
 Context_State :: struct {
@@ -520,7 +527,9 @@ get_context :: proc "contextless" () -> (result: runtime.Context) {
 init_context_state :: proc(ctx: ^Context_State, allocator: runtime.Allocator) {
     mem.tracking_allocator_init(&_state.context_state.tracking, allocator, allocator)
 
-    debug_trace.init(&_state.debug_trace_ctx)
+    when DEBUG_TRACE_ENABLED {
+        debug_trace.init(&_state.debug_trace_ctx)
+    }
 }
 
 // Create state, init context, init subsystems.
@@ -2636,7 +2645,7 @@ _assertion_failure_proc :: proc(prefix, message: string, loc: runtime.Source_Cod
     }
     runtime.print_byte('\n')
 
-    when ODIN_DEBUG {
+    when DEBUG_TRACE_ENABLED {
         ctx := &_state.debug_trace_ctx
         if _state != nil && !debug_trace.in_resolve(ctx) {
             buf: [64]debug_trace.Frame
