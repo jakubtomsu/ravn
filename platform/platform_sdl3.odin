@@ -1,4 +1,5 @@
 #+build !js
+#+vet explicit-allocators shadowing style unused
 package ravn_platform
 
 import "base:runtime"
@@ -74,7 +75,7 @@ when BACKEND == BACKEND_SDL3 {
     @(require_results)
     _clipboard_set :: proc(data: string) -> bool {
         return sdl3.SetClipboardText(
-            clone_to_cstring(data),
+            clone_to_cstring(data, context.temp_allocator),
         )
     }
 
@@ -203,7 +204,7 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _create_thread :: proc(procedure: Thread_Proc, name: string) -> (result: Thread) {
-        result.thread = sdl3.CreateThread(_thread_proc, clone_to_cstring(name), rawptr(procedure))
+        result.thread = sdl3.CreateThread(_thread_proc, clone_to_cstring(name, context.temp_allocator), rawptr(procedure))
 
         return
 
@@ -273,7 +274,7 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     _set_window_title :: proc(window: Window, name: string) {
-        sdl3.SetWindowTitle(window.window, clone_to_cstring(name))
+        sdl3.SetWindowTitle(window.window, clone_to_cstring(name, context.temp_allocator))
     }
 
     _set_window_style :: proc(window: Window, style: Window_Style) {

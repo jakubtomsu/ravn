@@ -690,7 +690,7 @@ _event_queue_clear :: proc() {
 
 clone_to_cstring :: proc(
     s: string,
-    allocator := context.allocator,
+    allocator: runtime.Allocator,
     loc := #caller_location,
 ) -> (
     res: cstring,
