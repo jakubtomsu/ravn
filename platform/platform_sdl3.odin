@@ -323,7 +323,7 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _get_window_rect :: proc(window: Window) -> (result: Rect) {
-        sdl3.GetWindowSize(window.window, &result.size.x, &result.size.y)
+        sdl3.GetWindowSizeInPixels(window.window, &result.size.x, &result.size.y) // HACK
         sdl3.GetWindowPosition(window.window, &result.min.x, &result.min.y)
         return result
     }

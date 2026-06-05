@@ -5,7 +5,6 @@ import "core:math/linalg"
 import "core:math/rand"
 import "core:math/noise"
 import rv "../.."
-import "../../base"
 import "../../platform"
 import "../../base/ufmt"
 
@@ -89,7 +88,7 @@ _init :: proc() {
                     height := f32(state.terrain[coord.x][coord.y])
                     verts[i] = rv.pack_vertex(
                         pos = {f32(coord.x), height, f32(coord.y)},
-                        col = rv.remap_clamped(height, 0, 10, 0, 0.1),
+                        col = rv.remap_clamped(height, 0, 12, 0, 1),
                         uv = [2]f32{f32(coord.x), f32(coord.y)} / 16.0,
                     )
                     verts[i].pos.xz -= TERRAIN_SIZE * 0.5
