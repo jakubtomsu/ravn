@@ -4,7 +4,7 @@
 
 (pronounced *raven*)
 
-### RAVN is a [Odin](https://odin-lang.org/) lightweight 2D and 3D engine framework for the joy of game development.
+### RAVN is a lightweight 2D and 3D engine framework for the joy of game development for [Odin](https://odin-lang.org).
 
 ### [Discord](https://discord.com/invite/wn5jMMMYe4)
 
