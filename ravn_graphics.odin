@@ -25,7 +25,7 @@ when gpu.BACKEND == gpu.BACKEND_D3D11 {
 } else when gpu.BACKEND == gpu.BACKEND_WGPU {
     SHADER_TARGET :: shader_compiler.Target.WGSL
 } else {
-    #panic("Invalid GPU Target")
+    SHADER_TARGET :: shader_compiler.Target.Invalid
 }
 
 DEFAULT_SAMPLER :: gpu.Sampler_Desc{

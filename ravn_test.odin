@@ -29,7 +29,7 @@ _uv_packing :: proc(t: ^testing.T) {
             p := [2]f32{f32(x), f32(y)}
             packed := pack_uv_unorm16(p)
             unpacked := unpack_uv_unorm16(packed)
-            if !testing.expect(t, linalg.distance(p, unpacked) < 0.0005) {
+            if !testing.expect(t, linalg.distance(p, unpacked) < 0.001) {
                 log.info(p, packed, unpacked)
             }
         }

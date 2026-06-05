@@ -24,10 +24,11 @@ when ODIN_OS == .Windows {
     DEFAULT_BACKEND :: BACKEND_D3D11
 } else when ODIN_OS == .JS {
     DEFAULT_BACKEND :: BACKEND_WGPU
-} else when ODIN_OS == .Linux {
+} else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
     DEFAULT_BACKEND :: BACKEND_WGPU
 } else {
     #panic("Platform not supported")
+    DEFAULT_BACKEND :: BACKEND_DUMMY
 }
 
 // Base metric for the minimum recommended triangles per mesh draw, to fully utilize the HW.

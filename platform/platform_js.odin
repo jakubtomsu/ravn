@@ -13,6 +13,7 @@ NOTE: frame loop is done by the odin.js repeatedly calling `step`:
 package ravn_platform
 
 import "../base"
+import "base:runtime"
 import "core:sys/wasm/js"
 
 #assert(BACKEND == BACKEND_JS)

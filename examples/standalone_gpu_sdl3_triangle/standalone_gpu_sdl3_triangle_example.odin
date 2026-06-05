@@ -5,6 +5,12 @@ import "../../gpu"
 import "../../shader_compiler"
 import sdl "vendor:sdl3"
 
+when gpu.BACKEND == gpu.BACKEND_WGPU {
+    SHADER_TARGET :: shader_compiler.Target.WGSL
+} else {
+    SHADER_TARGET :: shader_compiler.Target.DXBC
+}
+
 main :: proc() {
     assert(sdl.Init({.VIDEO}))
     defer sdl.Quit()
@@ -26,9 +32,12 @@ main :: proc() {
 
     gpu.update_swapchain(native_window, size)
 
-    shader_compiler.init(new(shader_compiler.State))
-    ps_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Pixel, target = .DXBC}) or_else panic("ps_blob")
-    vs_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Vertex, target = .DXBC}) or_else panic("vs_blob")
+    shc: shader_compiler.State
+    if !shader_compiler.init(&shc, SHADER_TARGET) {
+        panic("No shader compiler")
+    }
+    ps_blob := shader_compiler.compile(&shc, "triangle.hlsl", _shader_code, {stage = .Pixel}) or_else panic("ps_blob")
+    vs_blob := shader_compiler.compile(&shc, "triangle.hlsl", _shader_code, {stage = .Vertex}) or_else panic("vs_blob")
 
     pip := gpu.create_pipeline("triangle-pip", gpu.pipeline_desc(
         ps = gpu.create_shader("triangle-ps", ps_blob, .Pixel) or_else panic("ps"),

@@ -18,6 +18,8 @@ when ODIN_OS == .Windows {
     DEFAULT_BACKEND :: BACKEND_JS
 } else when ODIN_OS == .Linux {
     DEFAULT_BACKEND :: BACKEND_SDL3
+} else when ODIN_OS == .Darwin {
+    DEFAULT_BACKEND :: BACKEND_SDL3
 } else {
     #panic("Platform not supported")
     DEFAULT_BACKEND :: BACKEND_DUMMY

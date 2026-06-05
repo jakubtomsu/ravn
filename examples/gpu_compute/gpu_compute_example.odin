@@ -38,7 +38,12 @@ _init :: proc() {
 
     life_hlsl := #load("gpu_compute_life.hlsl", string)
 
-    cs_bin := shader_compiler.compile("life.hlsl", life_hlsl, {target = rv.SHADER_COMPILER_TARGET, stage = .Compute, include_proc = rv._shader_include_proc}) or_else panic("Shader compile")
+    shc: shader_compiler.State
+    if !shader_compiler.init(&shc, rv.SHADER_TARGET) {
+        panic("No shader compiler")
+    }
+    cs_bin := shader_compiler.compile(&shc, "life.hlsl", life_hlsl, {stage = .Compute, include_proc = rv._shader_include_proc}) or_else panic("Shader compile")
+
     state.cs = gpu.create_shader("life", cs_bin, .Compute) or_else panic("Shader")
 
     pixels := make([][4]u8, SIZE * SIZE, context.temp_allocator)

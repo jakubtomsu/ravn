@@ -386,7 +386,7 @@ TRANSFORM_IDENTITY :: Transform{
 transform_make :: proc "contextless" (
     pos:    [3]f32 = 0,
     scale:  [3]f32 = 1,
-    rot:    quaternion128 = QUAT_IDENTITY,
+    rot:    quaternion128 = 1,
 ) -> Transform {
     return {
         pos = pos,
@@ -428,7 +428,7 @@ transform_inv :: proc "contextless" (tran: Transform) -> Transform {
         1.0 / max(1e-9, linalg.length2(tran.mat[1])),
         1.0 / max(1e-9, linalg.length2(tran.mat[2])),
     }
-    inv_rot := transpose(tran.mat)
+    inv_rot := intrinsics.transpose(tran.mat)
     inv_rot[0] *= inv_scale[0]
     inv_rot[1] *= inv_scale[1]
     inv_rot[2] *= inv_scale[2]

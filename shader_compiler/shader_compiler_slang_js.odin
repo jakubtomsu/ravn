@@ -2,14 +2,15 @@ package ravn_shader_compiler
 
 _Slang_State :: struct {}
 
-_slang_init :: proc() {
-    panic("Slang is disabled in the ravn shader compiler (SLANG_ENABLED=false)")
+_slang_init :: proc(state: ^_Slang_State) -> bool {
+    return false
 }
 
 _compile_slang_wgsl :: proc(
+    state:          ^State,
     name:           string,
     source:         string,
     opts:           Options,
 ) -> (result: []byte, ok: bool) {
-    panic("Slang is disabled in the ravn shader compiler (SLANG_ENABLED=false)")
+    return nil, false
 }

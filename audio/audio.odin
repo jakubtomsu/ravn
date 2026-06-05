@@ -27,6 +27,8 @@ when ODIN_OS == .Windows {
     BACKEND_DEFAULT :: BACKEND_WASAPI
 } else when ODIN_OS == .JS {
     BACKEND_DEFAULT :: BACKEND_WEBAUDIO
+} else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
+    BACKEND_DEFAULT :: BACKEND_SDL3
 } else {
     BACKEND_DEFAULT :: BACKEND_MINIAUDIO
 }
