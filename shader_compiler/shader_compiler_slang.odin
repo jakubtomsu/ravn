@@ -10,7 +10,7 @@ import "base:runtime"
 when ODIN_OS == .Windows {
     SLANG_DYNLIB_PATH :: "slang.dll"
 } else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
-    SLANG_DYNLIB_PATH :: "libslang.so"
+    SLANG_DYNLIB_PATH :: "./libslang.so"
 } else {
     SLANG_DYNLIB_PATH :: ""
 }
@@ -29,7 +29,7 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
     module_ok: bool
     state.module, module_ok = platform.load_module(SLANG_DYNLIB_PATH)
     if !module_ok {
-        base.log_err("Failed to load slang.dll. Ensure it's in your working directory to compile shaders.")
+        base.log_err("Failed to load " + SLANG_DYNLIB_PATH + ". Ensure it's in your working directory to compile shaders.")
         return false
     }
 
@@ -137,6 +137,8 @@ _compile_slang_wgsl :: proc(
 
     cname := clone_to_cstring(name, context.temp_allocator)
 
+    base.log_info("SOURCE:\n %s\n", source)
+
     source_blob := state.slang.createBlob(raw_data(source), len(source))
     diag: ^slang.IBlob
     module := session->loadModuleFromSource(cname, cname, source_blob, &diag)
@@ -157,22 +159,18 @@ _compile_slang_wgsl :: proc(
     }
 
     entry_point: ^slang.IEntryPoint
-    _slang_check(module->findAndCheckEntryPoint(entry_point_name, _slang_stage(opts.stage), &entry_point, &diag))
-    _slang_diag(diag)
+    _slang_check_diag(module->findAndCheckEntryPoint(entry_point_name, _slang_stage(opts.stage), &entry_point, &diag), diag)
 
     components := [?]^slang.IComponentType{module, entry_point}
     composite: ^slang.IComponentType
-    _slang_check(session->createCompositeComponentType(&components[0], len(components), &composite, &diag))
+    _slang_check_diag(session->createCompositeComponentType(&components[0], len(components), &composite, &diag), diag)
 
-    _slang_diag(diag)
     if composite == nil {
         return nil, false
     }
 
     wgsl_code: ^slang.IBlob
-    _slang_check(composite->getEntryPointCode(0, 0, &wgsl_code, &diag))
-
-    _slang_diag(diag)
+    _slang_check_diag(composite->getEntryPointCode(0, 0, &wgsl_code, &diag), diag)
     if wgsl_code == nil {
         return nil, false
     }
@@ -186,17 +184,28 @@ _compile_slang_wgsl :: proc(
 
 _slang_check :: proc(res: slang.Result, expr := #caller_expression(res), loc := #caller_location) -> bool {
     if res != .OK {
-        base.log_err("%v (%x)", res, transmute(u32)res, loc = loc)
+        base.log_err("Slang Error: %v (%x)", res, transmute(u32)res, loc = loc)
         assert(false, message = expr, loc = loc)
         return false
     }
     return true
 }
 
-_slang_diag :: proc(diag: ^slang.IBlob, loc := #caller_location) {
+_slang_check_diag :: proc(res: slang.Result, diag: ^slang.IBlob, expr := #caller_expression(res), loc := #caller_location) -> bool {
+    if res != .OK {
+        base.log_err("Slang Error: %v (%x):\n%s", res, transmute(u32)res, _slang_blob_str(diag), loc = loc)
+        assert(false, message = expr, loc = loc)
+        return false
+    }
+    return true
+}
+
+_slang_diag :: proc(diag: ^slang.IBlob, loc := #caller_location) -> bool {
     if diag != nil {
         base.log_err("Slang Error: %s", _slang_blob_str(diag), loc = loc)
+        return false
     }
+    return true
 }
 
 _slang_blob_buf :: proc(blob: ^slang.IBlob) -> []byte {

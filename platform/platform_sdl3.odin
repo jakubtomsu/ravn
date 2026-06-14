@@ -199,7 +199,7 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _load_module :: proc(path: string) -> (result: Module, ok: bool) {
-        lib := dynlib.load_library(path, global_symbols = false, allocator = context.temp_allocator) or_return
+        lib := dynlib.load_library(path, global_symbols = true, allocator = context.temp_allocator) or_return
         return {
             lib = lib,
         }, true
@@ -579,7 +579,9 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _read_file_by_path :: proc(path: string, allocator := context.allocator) -> (data: []byte, ok: bool) {
-        unimplemented()
+        size: uint
+        ptr := cast([^]byte)sdl3.LoadFile(clone_to_cstring(path, context.temp_allocator), &size)
+        return ptr[:size], ptr != nil
     }
 
     @(require_results)

@@ -480,7 +480,7 @@ add_oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, r
 
 add_mesh_shape :: proc(
     handle: Mesh_Handle,
-    pos:    [3]f32,
+    pos:    [3]f32 = 0,
     scale:  [3]f32 = 1,
     rot:    quaternion128 = 1,
     rad:    f32 = 0.0,

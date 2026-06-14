@@ -239,7 +239,10 @@ Watched_Dir :: struct {
     watcher:    platform.File_Watcher,
 }
 
-Shader :: gpu.Shader_Handle
+Shader :: struct #all_or_none {
+    shader: gpu.Shader_Handle,
+    hash:   Hash,
+}
 
 
 // Data Scope
@@ -576,7 +579,7 @@ init_state :: proc(allocator: runtime.Allocator) {
             _state.shader_compiler_target = SHADER_TARGET
         } else {
             _state.shader_compiler_target = .Invalid
-            base.log_err("Failed to load shader compiler, likely a missing DLL. Compiling shaders from source won't be available.")
+            base.log_err("Failed to load shader compiler, likely a missing dynamic library. Compiling shaders from source won't be available.")
         }
     }
 
@@ -1462,8 +1465,18 @@ _delete_arena_buffers :: proc(arena: ^Arena) {
 
 load_scene :: proc(name: string, arena_handle: Arena_Handle = {}) -> (result_arena: Arena_Handle, ok: bool) {
     bin_name := strings_join(name, ".bin", allocator = context.temp_allocator)
-    txt_data := get_file_data(name) or_return
-    bin_data := get_file_data(bin_name) or_return
+    txt_data, txt_ok := get_file_data(name)
+    bin_data, bin_ok := get_file_data(bin_name)
+
+    if !txt_ok {
+        base.log_err("Failed to load scene, '%s' is missing", name)
+        return {}, false
+    }
+
+    if !bin_ok {
+        base.log_err("Failed to load scene, '%s.bin' is missing", name)
+        return {}, false
+    }
 
     return load_scene_from_data(string(txt_data), bin_data, arena_handle = arena_handle)
 }

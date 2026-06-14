@@ -958,12 +958,12 @@ create_index_buffer :: proc(
 
     state: Resource_State
     state.kind = .Index_Buffer
-    state.size = {size, 1, 1}
+    state.size = {i32(runtime.align_forward_int(int(size), 64)), 1, 1}
     state.usage = usage
 
     state.native = _create_index_buffer(
         name = name,
-        size = size,
+        size = i32(state.size.x),
         data = data,
         usage = usage,
     ) or_return
@@ -1312,11 +1312,11 @@ validate_pipeline_desc :: proc(desc: Pipeline_Desc, loc := #caller_location) {
     vs_res, vs_ok := _get_shader(desc.vs)
     ps_res, ps_ok := _get_shader(desc.ps)
 
-    validate(vs_ok)
-    validate(ps_ok)
+    validate(vs_ok, "Vertex stage must have an assigned shader")
+    validate(ps_ok, "Pixel stage must have an assigned shader")
 
-    validate(vs_res.kind == .Vertex)
-    validate(ps_res.kind == .Pixel)
+    validate(vs_res.kind == .Vertex, "Shader bound to vertex stage must be a vertex shader")
+    validate(ps_res.kind == .Pixel, "Shader bound to pixel stage must be a pixel shader")
 
     validate(desc.color_format != {} || desc.depth_format != {})
 
@@ -1574,7 +1574,7 @@ _combine_buffer_writes_temp :: proc(buffers: [][]byte) -> (result: []byte) {
         sum_len += len(buf)
     }
 
-    result = make([]byte, sum_len, context.temp_allocator)
+    result = runtime.make_aligned([]byte, sum_len, 4096, context.temp_allocator)
 
     write_ptr := uintptr(raw_data(result))
     for buf in buffers {

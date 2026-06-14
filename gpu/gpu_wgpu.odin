@@ -954,7 +954,7 @@ when BACKEND == BACKEND_WGPU {
         data:   []u8,
         usage:  Usage,
     ) -> (result: _Resource, ok: bool) {
-        result.buf = wgpu.DeviceCreateBuffer(_state.device, &{
+        result.buf = wgpu.DeviceCreateBuffer(_state.device, &wgpu.BufferDescriptor{
             label            = name,
             usage            = _wgpu_buffer_usage(usage) + {.Index},
             size             = u64(size),
@@ -966,7 +966,8 @@ when BACKEND == BACKEND_WGPU {
         }
 
         if data != nil {
-            mapping := wgpu.RawBufferGetMappedRange(result.buf, offset = 0, size = len(data))
+            assert(len(data) <= int(size))
+            mapping := wgpu.RawBufferGetMappedRange(result.buf, offset = 0, size = uint(size))
             intrinsics.mem_copy_non_overlapping(mapping, raw_data(data), len(data))
 
             wgpu.BufferUnmap(result.buf)

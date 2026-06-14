@@ -560,7 +560,7 @@ load_shader :: proc(path: string) -> (result: Shader_Handle, ok: bool) #optional
 
         if source_ok {
             name := strip_path_name(npath)
-            return create_shader_from_source(name, source)
+            return create_shader_from_source(name, cast(string)source)
         }
     }
 
@@ -577,13 +577,19 @@ load_shader :: proc(path: string) -> (result: Shader_Handle, ok: bool) #optional
 
 @(require_results)
 create_shader_from_bin :: proc(name: string, data: []byte) -> (result: Shader_Handle, ok: bool) #optional_ok {
-    kind: gpu.Shader_Kind
+    hash := hash_fnv64a(data, HASH_SEED)
 
-    if string_has_suffix(name, ".ps.hlsl") {
-        kind = .Pixel
-    } else if string_has_suffix(name, ".vs.hlsl") {
-        kind = .Vertex
-    } else {
+    if eq_handle, eq_ok := _try_get_equivalent_existing_shader(name, hash); eq_ok {
+        return eq_handle, true
+    }
+
+    return _create_shader_from_bin_hash(name, data, hash)
+}
+
+@(require_results)
+_create_shader_from_bin_hash :: proc(name: string, data: []byte, hash: Hash) -> (result: Shader_Handle, ok: bool) #optional_ok {
+    kind := _shader_kind_from_name(name)
+    if kind == .Invalid {
         base.log_err("Failed to create shader, invalid extension")
         return {}, false
     }
@@ -598,21 +604,37 @@ create_shader_from_bin :: proc(name: string, data: []byte) -> (result: Shader_Ha
 
     // TODO: if this fails the shader gets leaked.
     // TODO: fix for ALL table inserts, including rscn loading and custom mesh creation etc.
-    return insert_shader_by_name(name, shader)
+    return insert_shader_by_name(name, {
+        shader = shader,
+        hash = hash,
+    })
 }
 
 when SHADER_COMPILER_ENABLED {
     @(require_results)
-    create_shader_from_source :: proc(name: string, source: []byte) -> (result: Shader_Handle, ok: bool) #optional_ok {
+    create_shader_from_source :: proc(name: string, source: string) -> (result: Shader_Handle, ok: bool) #optional_ok {
+        hash := hash_fnv64a(transmute([]byte)source, HASH_SEED)
+
+        if eq_handle, eq_ok := _try_get_equivalent_existing_shader(name, hash); eq_ok {
+            return eq_handle, true
+        }
+
         compiled: []byte
         if _state.shader_compiler_target == .Invalid {
             base.log_err("Cannot compile shader from source, failed to init shader compiler")
+            return {}, false
         } else {
+            kind := _shader_kind_from_name(name)
+            if kind == .Invalid {
+                base.log_err("Failed to create shader, invalid extension")
+                return {}, false
+            }
+
             compiled, ok = shader_compiler.compile(&_state.shader_compiler_state,
                 name = name,
                 source = string(source),
                 opts = {
-                    stage = .Vertex,
+                    stage = _shader_kind_to_shader_compiler_stage(kind),
                     include_proc = _shader_include_proc,
                 },
             )
@@ -623,8 +645,58 @@ when SHADER_COMPILER_ENABLED {
             }
         }
 
-        return create_shader_from_bin(name, compiled)
+        return _create_shader_from_bin_hash(name, compiled, hash)
     }
+
+    QUICK_SHADER_PREFIX :: #load("data/ravn.hlsli", string) + `
+
+RV_RESOURCE_SLOT(2, Texture2DArray tex);
+RV_SAMPLER_SLOT(0, SamplerState smp);
+
+float4 ps_main(RV_Varyings vars, uint frontface : SV_IsFrontFace) : SV_Target {
+    float3 normal = normalize(bool(frontface) ? vars.normal : -vars.normal);
+    float4 tex_col = tex.Sample(smp, float3(vars.uv, float(vars.tex_slice)));
+    float4 col = vars.add_col + vars.col * tex_col;
+` // Your code contiunes the shader
+
+    QUICK_SHADER_SUFFIX :: `
+    return col;    
+}`
+
+    experimental_create_quick_pixel_shader :: proc(name: string, source_body: string) -> (Shader_Handle, bool) #optional_ok {
+        return create_shader_from_source(name,
+            strings_join(QUICK_SHADER_PREFIX, source_body, QUICK_SHADER_SUFFIX, allocator = context.temp_allocator),
+        )
+    }
+}
+
+_try_get_equivalent_existing_shader :: proc(name: string, input_hash: Hash) -> (result: Shader_Handle, ok: bool) {
+    if existing_handle, existing_ok := get_shader_by_name(name); existing_ok {
+        existing := _get_shader(existing_handle) or_else panic("Found invalid shader")
+        if existing.hash == input_hash {
+            return existing_handle, true
+        }        
+    }
+    return {}, false
+}
+
+_shader_kind_from_name :: proc(name: string) -> gpu.Shader_Kind {
+    if string_has_suffix(name, ".ps.hlsl") {
+        return .Pixel
+    } else if string_has_suffix(name, ".vs.hlsl") {
+        return .Vertex
+    }
+    return .Invalid
+}
+
+_shader_kind_to_shader_compiler_stage :: proc(kind: gpu.Shader_Kind) -> shader_compiler.Stage {
+    switch kind {
+    case .Invalid: return .Invalid
+    case .Vertex:  return .Vertex
+    case .Pixel:   return .Pixel
+    case .Compute: return .Compute
+    }
+    return .Invalid
 }
 
 _shader_include_proc :: proc(path: string, user: rawptr) -> (result: string, ok: bool) {
@@ -793,16 +865,16 @@ set_draw_depth :: proc(depth: Depth_Mode) {
 
 set_draw_shader :: proc(handle: Shader_Handle) {
     if shader, ok := _get_shader(handle); ok {
-        if shader_state, shader_state_ok := gpu._get_shader(shader^); shader_state_ok {
+        if shader_state, shader_state_ok := gpu._get_shader(shader.shader); shader_state_ok {
             switch shader_state.kind {
             case .Invalid:
 
             case .Vertex:
-                _state.draw_state.ps = u8(handle.index)
+                _state.draw_state.vs = u8(handle.index)
                 return
 
             case .Pixel:
-                _state.draw_state.vs = u8(handle.index)
+                _state.draw_state.ps = u8(handle.index)
                 return
 
             case .Compute:
@@ -1021,7 +1093,7 @@ draw_rect_2d :: proc(
 
 draw_mesh :: proc(
     handle:     Mesh_Handle,
-    pos:        [3]f32,
+    pos:        [3]f32 = 0,
     scale:      [3]f32 = 1,
     rot:        quaternion128 = 1,
     col:        [4]f32 = 1,
@@ -2574,8 +2646,8 @@ _gpu_pipeline_desc_apply_draw_key :: proc(pip_desc: ^gpu.Pipeline_Desc, key: Dra
     pip_desc.cull, pip_desc.fill = _gpu_fill_mode(key.fill_mode)
     pip_desc.depth_comparison = bool(u8(key.depth_mode) & (1 << 0)) ? .Greater_Equal : .Always
     pip_desc.depth_write = bool(u8(key.depth_mode) & (1 << 1))
-    pip_desc.ps = gpu.Shader_Handle(_state.shaders[key.ps])
-    pip_desc.vs = gpu.Shader_Handle(_state.shaders[key.vs])
+    pip_desc.ps = gpu.Shader_Handle(_state.shaders[key.ps].shader)
+    pip_desc.vs = gpu.Shader_Handle(_state.shaders[key.vs].shader)
 
     tex_res: gpu.Resource_Handle
     switch key.texture_kind {
