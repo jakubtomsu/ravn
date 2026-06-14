@@ -961,10 +961,6 @@ draw_sprite :: proc(
         // No scaling
     }
 
-    log_dump(_state.draw_state.texture_kind)
-    log_dump(_state.draw_state.texture_size)
-    log_dump(size)
-
     center := pos
     center -= rot[0] * anchor.x * size.x
     center -= rot[1] * anchor.y * size.y

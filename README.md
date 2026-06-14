@@ -96,6 +96,15 @@ To run the app locally, you must also create a tiny HTTP file server. VSCode liv
 > [!NOTE]
 > In case you're having issues with rendering, you can test WebGPU is behaving correctly locally with `odin run my_package -define:GPU_BACKEND=WGPU`, however the wgpu-native used on desktop can be slightly different than the Chrome Dawn implementation.
 
+## Cross platform shaders
+
+The engine comes with a few built-in shaders. Those always work everywhere by default.
+
+Compiling custom shaders is handled internally using the `shader_compiler` package when you load a shader from source.
+This requires a ***slang compiler dynamic library*** on non-D3D11 builds. Install it from [slang github](https://github.com/shader-slang/slang) releases.
+
+- Windows: copy `slang.dll` and `slang-compiler.dll` into the project
+- Linux: copy `libslang-compiler.so.*` as `libslang.so` into the project.
 
 ## Cheatsheet
 

@@ -7,6 +7,14 @@ import "../platform"
 import "slang"
 import "base:runtime"
 
+when ODIN_OS == .Windows {
+    SLANG_DYNLIB_PATH :: "slang.dll"
+} else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
+    SLANG_DYNLIB_PATH :: "libslang.so"
+} else {
+    SLANG_DYNLIB_PATH :: ""
+}
+
 _Slang_State :: struct {
     using vtable:   slang.Global_VTable,
     module:         platform.Module,
@@ -14,8 +22,12 @@ _Slang_State :: struct {
 }
 
 _slang_init :: proc(state: ^_Slang_State) -> bool {
+    if SLANG_DYNLIB_PATH == "" {
+        return false
+    }
+
     module_ok: bool
-    state.module, module_ok = platform.load_module("slang.dll")
+    state.module, module_ok = platform.load_module(SLANG_DYNLIB_PATH)
     if !module_ok {
         base.log_err("Failed to load slang.dll. Ensure it's in your working directory to compile shaders.")
         return false
@@ -35,6 +47,8 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
     if !_slang_check(state.createGlobalSession(slang.API_VERSION, &state.global_session)) {
         return false
     }
+
+    base.log_info("Successfully loaded slang compiler")
 
     return true
 
