@@ -640,7 +640,7 @@ sweep_point :: proc(
     move:           [3]f32,
     range:          f32 = 1,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
-) -> (result: Sweep, ok: bool) #no_bounds_check {
+) -> (result: Sweep, ok: bool) #no_bounds_check #optional_ok {
     result = make_sweep(pos, move, rad = 0, range = range)
 
     step := &_state.step_data[_state.step_read]

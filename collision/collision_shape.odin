@@ -532,6 +532,7 @@ get_shape_gradient :: proc(shape: Shape, origin_pos: [3]f32, hit: [3]f32, prim: 
         inv := conj(shape.rot)
         local_pos := linalg.quaternion128_mul_vector3(inv, hit - shape.pos)
         _, result = geometry.get_box_dist_grad(local_pos, 0, shape.ext)
+        result = linalg.quaternion128_mul_vector3(shape.rot, result)
         return result
 
     case .Mesh:

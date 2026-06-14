@@ -1,5 +1,6 @@
 package ravn_fps_example
 
+import "base:intrinsics"
 import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
@@ -19,6 +20,7 @@ State :: struct {
     angle:          [3]f32,
     pos_spr:        [2][3]f32,
     angle_spr:      [2][3]f32,
+    seed:           i64,
     arena:          rv.Arena_Handle,
     terrain_mesh:   rv.Mesh_Handle,
     terrain:        [TERRAIN_SIZE][TERRAIN_SIZE]f16
@@ -35,6 +37,14 @@ main :: proc() {
     rv.run_main_loop(_module_desc)
 }
 
+sample_height :: proc(pos: [3]f32) -> (height: f32) {
+    p := cast([3]f64)pos
+    height += noise.noise_3d_improve_xz(state.seed, p * {0.0542, 1, 0.04} - 1300.2329)
+    height += noise.noise_3d_improve_xz(state.seed, p * {0.542, 1, 0.6} + 1) * 0.2
+    height *= 8
+    return height
+}
+
 _init :: proc() {
     state = new(State)
 
@@ -46,25 +56,29 @@ _init :: proc() {
     platform.set_mouse_relative(rv.get_window(), true)
     platform.set_mouse_visible(false)
 
+    state.seed = intrinsics.read_cycle_counter()
+
     state.pos = {0, 1, 0}
     state.angle = {0, 0, 0}
 
     // Generate a simple heightmap
 
-    for x in 0..<TERRAIN_SIZE {
-        for y in 0..<TERRAIN_SIZE {
-            height: f32
-            height += rand.float32() * 0.9
-            prim := 0.5 + 0.5 * f32(noise.noise_2d(29837293, {f64(x), f64(y)} * 0.0742 + 13.2329))
-            prim = prim > 0.5 ? 1 : 0
-            height += prim
-            height += f32(0.5 + 0.5 * noise.noise_2d(980273, {f64(x), f64(y)} * 0.0542 - 1300.2329)) * 8
-            state.terrain[x][y] = f16(height * 2)
-        }
-    }
-
     // Turn the heightmap into a mesh
     // (currently the verts are duplicated)
+
+    state.arena = rv.create_arena(.Dynamic)
+
+    generate_heightmap()
+}
+
+generate_heightmap :: proc() {
+    rv.clear_arena(state.arena)
+
+    for x in 0..<TERRAIN_SIZE {
+        for y in 0..<TERRAIN_SIZE {
+            state.terrain[x][y] = f16(sample_height({f32(x), 0, f32(y)}))
+        }
+    }
 
     NUM_QUADS :: TERRAIN_SIZE * TERRAIN_SIZE
 
@@ -88,7 +102,7 @@ _init :: proc() {
                     height := f32(state.terrain[coord.x][coord.y])
                     verts[i] = rv.pack_vertex(
                         pos = {f32(coord.x), height, f32(coord.y)},
-                        col = rv.remap_clamped(height, 0, 12, 0, 1),
+                        col = rv.remap_clamped(height, -10, 12, 0, 1),
                         uv = [2]f32{f32(coord.x), f32(coord.y)} / 16.0,
                     )
                     verts[i].pos.xz -= TERRAIN_SIZE * 0.5
@@ -107,8 +121,6 @@ _init :: proc() {
         }
     }
 
-    state.arena = rv.create_arena(.Static)
-
     state.terrain_mesh = rv.create_mesh_from_data("terrain", state.arena, verts, inds)
 }
 
@@ -126,6 +138,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     }
 
     delta := rv.get_delta_time()
+
+    generate_heightmap()
 
     ground_height := sample_terrain(state.pos.xz)
     grounded := state.pos.y <= (ground_height + 1)

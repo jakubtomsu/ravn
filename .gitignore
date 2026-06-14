@@ -12,6 +12,7 @@
 *.html
 *.wasm
 *-export
+*.out
 
 *.blend
 *.blend1

@@ -79,8 +79,6 @@ LANES :: 8
 
 Hash :: u64
 
-HANDLE_INDEX_INVALID :: ~Handle_Index(0)
-
 Handle_Index :: u16
 Handle_Gen :: u8
 
@@ -88,6 +86,8 @@ Handle :: struct {
     index:  Handle_Index,
     gen:    Handle_Gen,
 }
+
+HANDLE_INDEX_INVALID :: ~Handle_Index(0)
 
 Arena_Handle :: distinct Handle
 Object_Handle :: distinct Handle
@@ -105,7 +105,6 @@ Module_Desc :: base.Module_Desc
 Module_Init_Proc :: base.Module_Init_Proc
 Module_Shutdown_Proc :: base.Module_Shutdown_Proc
 Module_Update_Proc :: base.Module_Update_Proc
-
 
 Rect :: struct {
     min:    [2]f32,
@@ -193,6 +192,8 @@ State :: struct #align(64) {
     textures_hash:              [MAX_TEXTURES]Hash,
     textures_gen:               [MAX_TEXTURES]Handle_Gen,
     textures:                   [MAX_TEXTURES]Texture,
+
+    // Texture pools are append only. Destroying is not allowed.
     texture_pools:              [MAX_TEXTURE_POOLS]Texture_Pool,
     texture_pools_len:          i32,
 

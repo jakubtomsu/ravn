@@ -80,14 +80,49 @@ nlexp :: proc "contextless" (a, b: $T, rate: f32) -> T {
     return nlerp(b, a, approx_nexp(rate))
 }
 
+move_towards :: proc {
+    move_towards_scalar,
+    move_towards_vec,
+    move_towards_quat,
+}
+
 @(require_results)
-move_towards :: proc "contextless" (x, target: $T, rate: f32) -> T {
+move_towards_scalar :: proc "contextless" (x, target: f32, rate: f32) -> f32 {
     if abs(x - target) < rate {
         return target
     } else {
         return x + rate * (x < target ? 1 : -1)
     }
 }
+
+@(require_results)
+move_towards_vec :: proc "contextless" (x, target: [$N]$E, rate: f32) -> [N]E {
+    if rate <= 0.00001 {
+        return x
+    }
+    rel := x - target
+    len_rel := linalg.length(x - target)
+    if len_rel < rate {
+        return target
+    } else {
+        return x + rate * rel / len_rel
+    }
+}
+
+@(require_results)
+move_towards_quat :: proc "contextless" (x, target: $Q, rate: f32) -> Q where intrinsics.type_is_quaternion(Q) {
+    if rate <= 0.00001 {
+        return x
+    }
+    rel := x - target
+    len_rel := linalg.length(x - target)
+    if len_rel < rate {
+        return target
+    } else {
+        return linalg.quaternion_slerp(x, x + target, rate / len_rel)
+    }
+}
+
 
 @(require_results)
 fade :: #force_inline proc "contextless" (alpha: f32) -> [4]f32 {
@@ -141,12 +176,12 @@ unlerp :: proc "contextless" (a, b: f32, x: f32) -> f32 {
 
 // Linearly transform x from range a0..a1 to b0..b1
 @(require_results)
-remap :: proc "contextless" (x, a0, a1, b0, b1: f32) -> f32 {
+remap :: proc "contextless" (x, a0, a1: f32, b0: f32 = 0, b1: f32 = 1) -> f32 {
     return ((x - a0) / (a1 - a0)) * (b1 - b0) + b0
 }
 
 @(require_results)
-remap_clamped :: #force_inline proc "contextless" (x, a0, a1, b0, b1: f32) -> f32 {
+remap_clamped :: #force_inline proc "contextless" (x, a0, a1: f32, b0: f32 = 0, b1: f32 = 1) -> f32 {
     return remap(clamp(x, a0, a1), a0, a1, b0, b1)
 }
 

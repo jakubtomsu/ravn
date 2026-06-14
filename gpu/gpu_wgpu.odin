@@ -15,7 +15,6 @@ when BACKEND == BACKEND_WGPU {
 
     _BIND_GROUP_CACHE_SIZE :: 512
     _SAMPLER_CACHE_BUCKET :: 8
-    _DRAW_DATA_BUFFER_SIZE :: 1024 * 64
 
     _State :: struct {
         instance:               wgpu.Instance,

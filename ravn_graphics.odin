@@ -550,11 +550,6 @@ destroy_decoded_texture_data :: proc(data: ^Texture_Data) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Shaders
 //
-// TODO:
-// Two ways to create:
-// - from source: run shaderprep with VFS includes. Primarily for development.
-// - from native: load HLSL/GLSL or whatever directly. Primarily for pakfiles.
-//
 
 @(require_results)
 load_vertex_shader :: proc(path: string) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
@@ -1133,6 +1128,25 @@ draw_box :: proc(
         get_builtin_mesh(.Cube),
         pos = pos,
         scale = scale,
+        rot = rot,
+        col = col,
+        add_col = add_col,
+        param = param,
+    )
+}
+
+draw_plane :: proc(
+    pos:        [3]f32,
+    scale:      [2]f32 = 1,
+    rot:        quaternion128 = 1,
+    col:        [4]f32 = 1,
+    add_col:    [4]f32 = 0,
+    param:      u32 = 0,
+) {
+    draw_mesh(
+        get_builtin_mesh(.Plane),
+        pos = pos,
+        scale = {scale.x, 1, scale.y},
         rot = rot,
         col = col,
         add_col = add_col,
