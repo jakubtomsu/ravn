@@ -66,14 +66,12 @@ _init :: proc() {
     // Turn the heightmap into a mesh
     // (currently the verts are duplicated)
 
-    state.arena = rv.create_arena(.Dynamic)
+    state.arena = rv.create_arena(.Static)
 
     generate_heightmap()
 }
 
 generate_heightmap :: proc() {
-    rv.clear_arena(state.arena)
-
     for x in 0..<TERRAIN_SIZE {
         for y in 0..<TERRAIN_SIZE {
             state.terrain[x][y] = f16(sample_height({f32(x), 0, f32(y)}))
@@ -138,8 +136,6 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     }
 
     delta := rv.get_delta_time()
-
-    generate_heightmap()
 
     ground_height := sample_terrain(state.pos.xz)
     grounded := state.pos.y <= (ground_height + 1)
