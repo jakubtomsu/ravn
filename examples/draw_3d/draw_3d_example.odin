@@ -11,7 +11,7 @@ state: ^State
 State :: struct {
     cam_pos:    [3]f32,
     cam_ang:    [3]f32,
-    shader:     rv.Pixel_Shader_Handle,
+    shader:     rv.Shader_Handle,
 }
 
 @export _module_desc := rv.Module_Desc {
@@ -34,7 +34,7 @@ _init :: proc() {
 
     rv.register_file_data("test_shader.ps.hlsl", #load("../data/test_shader.ps.hlsl"))
 
-    state.shader = rv.load_pixel_shader("test_shader.ps.hlsl")
+    state.shader = rv.load_shader("test_shader.ps.hlsl")
 
     state.cam_pos = {1.5, 3, -8}
     state.cam_ang = {0.3, 0, 0}
@@ -133,7 +133,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         rv.draw_line_cylinder({{6, -1, 5}, {6, 1, 5}}, rad = 0.5)
         rv.draw_line_sphere({8, 0, 5}, mat = 0.7, col = rv.RED)
 
-        rv.set_draw_pixel_shader(state.shader)
+        rv.set_draw_shader(state.shader)
         rv.draw_mesh(rv.get_builtin_mesh(.Cube), {3, -5, 0}, col = rv.GRAY, add_col = rv.WHITE * rv.nsin(rv.get_time()))
     }
 

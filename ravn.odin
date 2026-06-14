@@ -96,8 +96,7 @@ Texture_Handle :: distinct Handle
 Texture_Resource_Handle :: distinct Handle
 Spline_Handle :: distinct Handle
 Render_Texture_Handle :: distinct Handle
-Vertex_Shader_Handle :: distinct Handle
-Pixel_Shader_Handle :: distinct Handle
+Shader_Handle :: distinct Handle
 Sound_Resource_Handle :: audio.Resource_Handle
 Sound_Handle :: audio.Sound_Handle
 
@@ -146,8 +145,7 @@ State :: struct #align(64) {
     builtin_arena:              Arena_Handle,
     builtin_mesh:               [Builtin_Mesh]Mesh_Handle,
     builtin_texture:            [Builtin_Texture]Texture_Handle,
-    builtin_pixel_shader:       [Builtin_Pixel_Shader]Pixel_Shader_Handle,
-    builtin_vertex_shader:      [Builtin_Vertex_Shader]Vertex_Shader_Handle,
+    builtin_shader:             [Builtin_Shader]Shader_Handle,
 
     quad_ibuf:                  gpu.Resource_Handle,
 
@@ -197,13 +195,9 @@ State :: struct #align(64) {
     texture_pools:              [MAX_TEXTURE_POOLS]Texture_Pool,
     texture_pools_len:          i32,
 
-    pixel_shaders_hash:         [MAX_SHADERS]Hash,
-    pixel_shaders_gen:          [MAX_SHADERS]Handle_Gen,
-    pixel_shaders:              [MAX_SHADERS]Pixel_Shader,
-
-    vertex_shaders_hash:        [MAX_SHADERS]Hash,
-    vertex_shaders_gen:         [MAX_SHADERS]Handle_Gen,
-    vertex_shaders:             [MAX_SHADERS]Vertex_Shader,
+    shaders_hash:               [MAX_SHADERS]Hash,
+    shaders_gen:                [MAX_SHADERS]Handle_Gen,
+    shaders:                    [MAX_SHADERS]Shader,
 
     files_hash:                 [MAX_FILES]Hash,
     files:                      [MAX_FILES]File,
@@ -245,8 +239,7 @@ Watched_Dir :: struct {
     watcher:    platform.File_Watcher,
 }
 
-Pixel_Shader :: distinct gpu.Shader_Handle
-Vertex_Shader :: distinct gpu.Shader_Handle
+Shader :: gpu.Shader_Handle
 
 
 // Data Scope
@@ -1029,13 +1022,12 @@ begin_frame :: proc() -> (keep_running: bool) {
 
     _state.draw_states_len = 0
     _state.draw_state = {
-        ps = int_cast(u8, _state.builtin_pixel_shader[.Default].index),
-        vs = int_cast(u8, _state.builtin_vertex_shader[.Default].index),
+        ps = int_cast(u8, _state.builtin_shader[.Default_PS].index),
+        vs = int_cast(u8, _state.builtin_shader[.Default_VS].index),
         blend_mode = .Opaque,
     }
 
-    set_draw_pixel_shader({})
-    set_draw_vertex_shader({})
+    set_draw_shader({})
     _set_draw_texture(_state.builtin_texture[.Default])
 
     if _state.shutdown_requested {
@@ -1100,13 +1092,11 @@ Builtin_Mesh :: enum u8 {
     Suzanne,
 }
 
-Builtin_Vertex_Shader :: enum u8 {
-    Default = 0,
-    Default_Sprite,
-}
+Builtin_Shader :: enum u8 {
+    Default_VS,
+    Default_VS_Sprite,
 
-Builtin_Pixel_Shader :: enum u8 {
-    Default,
+    Default_PS,
 }
 
 
@@ -1121,13 +1111,8 @@ get_builtin_mesh :: proc(id: Builtin_Mesh) -> Mesh_Handle {
 }
 
 @(require_results)
-get_builtin_vertex_shader :: proc(id: Builtin_Vertex_Shader) -> Vertex_Shader_Handle {
-    return _state.builtin_vertex_shader[id]
-}
-
-@(require_results)
-get_builtin_pixel_shader :: proc(id: Builtin_Pixel_Shader) -> Pixel_Shader_Handle {
-    return _state.builtin_pixel_shader[id]
+get_builtin_shader :: proc(id: Builtin_Shader) -> Shader_Handle {
+    return _state.builtin_shader[id]
 }
 
 _load_builtin_assets :: proc() {
@@ -1153,13 +1138,10 @@ _load_builtin_assets :: proc() {
         default_ps = #load("data/default.ps.hlsl.wgsl")
     }
 
-    _state.builtin_vertex_shader = {
-        .Default = create_vertex_shader_from_bin("default", default_vs) or_else panic("Failed to load default vertex shader"),
-        .Default_Sprite = create_vertex_shader_from_bin("default_sprite", default_sprite_vs) or_else panic("Failed to load default sprite vertex shader"),
-    }
-
-    _state.builtin_pixel_shader = {
-        .Default = create_pixel_shader_from_bin("default", default_ps) or_else panic("Failed to load default pixel shader"),
+    _state.builtin_shader = {
+        .Default_VS = create_shader_from_bin("default.vs.hlsl", default_vs) or_else panic("Failed to load default vertex shader"),
+        .Default_VS_Sprite = create_shader_from_bin("default_sprite.vs.hlsl", default_sprite_vs) or_else panic("Failed to load default sprite vertex shader"),
+        .Default_PS = create_shader_from_bin("default.ps.hlsl", default_ps) or_else panic("Failed to load default pixel shader"),
     }
 
     _state.builtin_arena = load_scene_from_data(
@@ -2054,44 +2036,23 @@ get_spline_by_hash :: proc(hash: Hash) -> (result: Spline_Handle, ok: bool) #opt
 
 
 @(require_results)
-get_vertex_shader :: proc($Name: string) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
-    return get_vertex_shader_by_hash(hash_const_name(Name))
+get_shader :: proc($Name: string) -> (result: Shader_Handle, ok: bool) #optional_ok {
+    return get_shader_by_hash(hash_const_name(Name))
 }
 
 @(require_results)
-get_vertex_shader_by_name :: proc(name: string) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
-    return get_vertex_shader_by_hash(hash_name(name))
+get_shader_by_name :: proc(name: string) -> (result: Shader_Handle, ok: bool) #optional_ok {
+    return get_shader_by_hash(hash_name(name))
 }
 
 @(require_results)
-get_vertex_shader_by_hash :: proc(hash: Hash) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
-    index := _table_lookup_hash(&_state.vertex_shaders_hash, hash) or_return
+get_shader_by_hash :: proc(hash: Hash) -> (result: Shader_Handle, ok: bool) #optional_ok {
+    index := _table_lookup_hash(&_state.shaders_hash, hash) or_return
     return {
         index = Handle_Index(index),
-        gen = _state.vertex_shaders_gen[index],
+        gen = _state.shaders_gen[index],
     }, true
 }
-
-
-@(require_results)
-get_pixel_shader :: proc($Name: string) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
-    return get_pixel_shader_by_hash(hash_const_name(Name))
-}
-
-@(require_results)
-get_pixel_shader_by_name :: proc(name: string) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
-    return get_pixel_shader_by_hash(hash_name(name))
-}
-
-@(require_results)
-get_pixel_shader_by_hash :: proc(hash: Hash) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
-    index := _table_lookup_hash(&_state.pixel_shaders_hash, hash) or_return
-    return {
-        index = Handle_Index(index),
-        gen = _state.pixel_shaders_gen[index],
-    }, true
-}
-
 
 
 
@@ -2119,15 +2080,9 @@ _get_spline :: proc(handle: Spline_Handle) -> (result: ^Spline, ok: bool) {
 }
 
 @(require_results)
-_get_vertex_shader :: proc(handle: Vertex_Shader_Handle) -> (result: ^Vertex_Shader, ok: bool) {
-    return _table_get(&_state.vertex_shaders, _state.vertex_shaders_gen, handle)
+_get_shader :: proc(handle: Shader_Handle) -> (result: ^Shader, ok: bool) {
+    return _table_get(&_state.shaders, _state.shaders_gen, handle)
 }
-
-@(require_results)
-_get_pixel_shader :: proc(handle: Pixel_Shader_Handle) -> (result: ^Pixel_Shader, ok: bool) {
-    return _table_get(&_state.pixel_shaders, _state.pixel_shaders_gen, handle)
-}
-
 
 
 
@@ -2147,13 +2102,8 @@ insert_spline_by_name :: proc(name: string, spline: Spline) -> (result: Spline_H
 }
 
 @(require_results)
-insert_vertex_shader_by_name :: proc(name: string, shader: Vertex_Shader) -> (result: Vertex_Shader_Handle, ok: bool) {
+insert_shader_by_name :: proc(name: string, shader: Shader) -> (result: Shader_Handle, ok: bool) {
     return insert_vertex_shader_by_hash(hash_name(name), shader)
-}
-
-@(require_results)
-insert_pixel_shader_by_name :: proc(name: string, shader: Pixel_Shader) -> (result: Pixel_Shader_Handle, ok: bool) {
-    return insert_pixel_shader_by_hash(hash_name(name), shader)
 }
 
 
@@ -2200,34 +2150,18 @@ insert_spline_by_hash :: proc(hash: Hash, spline: Spline) -> (result: Spline_Han
 }
 
 @(require_results)
-insert_vertex_shader_by_hash :: proc(hash: Hash, shader: Vertex_Shader) -> (result: Vertex_Shader_Handle, ok: bool) {
-    index, _ := _table_insert_hash(&_state.vertex_shaders_hash, hash) or_return
+insert_vertex_shader_by_hash :: proc(hash: Hash, shader: Shader) -> (result: Shader_Handle, ok: bool) {
+    index, _ := _table_insert_hash(&_state.shaders_hash, hash) or_return
 
-    _state.vertex_shaders[index] = shader
+    _state.shaders[index] = shader
 
     result = {
         index = Handle_Index(index),
-        gen = _state.vertex_shaders_gen[index],
+        gen = _state.shaders_gen[index],
     }
 
     return result, true
 }
-
-
-@(require_results)
-insert_pixel_shader_by_hash :: proc(hash: Hash, shader: Pixel_Shader) -> (result: Pixel_Shader_Handle, ok: bool) {
-    index, _ := _table_insert_hash(&_state.pixel_shaders_hash, hash) or_return
-
-    _state.pixel_shaders[index] = shader
-
-    result = {
-        index = Handle_Index(index),
-        gen = _state.pixel_shaders_gen[index],
-    }
-
-    return result, true
-}
-
 
 
 @(require_results)
@@ -2583,11 +2517,6 @@ strip_path_name :: proc "contextless" (str: string) -> (result: string) {
     result = str[max(back_index, forw_index) + 1:]
     dot_index := bytes.index_byte(transmute([]byte)result, '.')
     return result[:dot_index]
-}
-
-@(deferred_out = runtime.default_temp_allocator_temp_end)
-temp_allocator_guard :: proc(loc := #caller_location) -> (temp: runtime.Arena_Temp, location: runtime.Source_Code_Location) {
-    return runtime.default_temp_allocator_temp_begin(loc), loc
 }
 
 @(require_results)

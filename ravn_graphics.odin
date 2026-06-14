@@ -552,65 +552,58 @@ destroy_decoded_texture_data :: proc(data: ^Texture_Data) {
 //
 
 @(require_results)
-load_vertex_shader :: proc(path: string) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
+load_shader :: proc(path: string) -> (result: Shader_Handle, ok: bool) #optional_ok {
     npath := normalize_path(path, context.temp_allocator)
-    data, data_ok := get_file_data(npath)
 
-    if !data_ok {
-        base.log_err("Failed to load vertex shader: couldn't load '%s'", path)
-        return {}, false
+    when SHADER_COMPILER_ENABLED {
+        source, source_ok := get_file_data(npath)
+
+        if source_ok {
+            name := strip_path_name(npath)
+            return create_shader_from_source(name, source)
+        }
     }
 
-    name := strip_path_name(npath)
-    return create_vertex_shader_from_bin(name, data)
+    bin, bin_ok := get_file_data(strings_join(npath, ".bin", allocator = context.temp_allocator))
+    
+    if bin_ok {
+        name := strip_path_name(npath)
+        return create_shader_from_bin(name, bin)
+    }
+    
+    base.log_err("Failed to load vertex shader: couldn't load '%s'", path)
+    return {}, false
 }
 
 @(require_results)
-load_pixel_shader :: proc(path: string) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
-    npath := normalize_path(path, context.temp_allocator)
-    data, data_ok := get_file_data(npath)
+create_shader_from_bin :: proc(name: string, data: []byte) -> (result: Shader_Handle, ok: bool) #optional_ok {
+    kind: gpu.Shader_Kind
 
-    if !data_ok {
-        base.log_err("Failed to load pixel shader: couldn't load '%s'", path)
+    if string_has_suffix(name, ".ps.hlsl") {
+        kind = .Pixel
+    } else if string_has_suffix(name, ".vs.hlsl") {
+        kind = .Vertex
+    } else {
+        base.log_err("Failed to create shader, invalid extension")
         return {}, false
     }
 
-    name := strip_path_name(npath)
-
-    return create_pixel_shader_from_bin(name, data)
-}
-
-@(require_results)
-create_vertex_shader_from_bin :: proc(name: string, data: []byte) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
     shader: gpu.Shader_Handle
-    shader, ok = gpu.create_shader(name, data, .Vertex)
+    shader, ok = gpu.create_shader(name, data, kind)
 
     if !ok {
-        base.log_err("Failed to create vertex shader")
+        base.log_err("Failed to create shader")
         return
     }
 
     // TODO: if this fails the shader gets leaked.
     // TODO: fix for ALL table inserts, including rscn loading and custom mesh creation etc.
-    return insert_vertex_shader_by_name(name, Vertex_Shader(shader))
-}
-
-@(require_results)
-create_pixel_shader_from_bin :: proc(name: string, data: []byte) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
-    shader: gpu.Shader_Handle
-    shader, ok = gpu.create_shader(name, data, .Pixel)
-
-    if !ok {
-        base.log_err("Failed to create pixel shader")
-        return
-    }
-
-    return insert_pixel_shader_by_name(name, Pixel_Shader(shader))
+    return insert_shader_by_name(name, shader)
 }
 
 when SHADER_COMPILER_ENABLED {
     @(require_results)
-    create_vertex_shader_from_source :: proc(name: string, source: []byte) -> (result: Vertex_Shader_Handle, ok: bool) #optional_ok {
+    create_shader_from_source :: proc(name: string, source: []byte) -> (result: Shader_Handle, ok: bool) #optional_ok {
         compiled: []byte
         if _state.shader_compiler_target == .Invalid {
             base.log_err("Cannot compile shader from source, failed to init shader compiler")
@@ -630,31 +623,7 @@ when SHADER_COMPILER_ENABLED {
             }
         }
 
-        return create_vertex_shader_from_bin(name, compiled)
-    }
-
-    @(require_results)
-    create_pixel_shader_from_source :: proc(name: string, source: []byte) -> (result: Pixel_Shader_Handle, ok: bool) #optional_ok {
-        compiled: []byte
-        if _state.shader_compiler_target == .Invalid {
-            base.log_err("Cannot compile shader from source, failed to init shader compiler")
-        } else {
-            compiled, ok = shader_compiler.compile(&_state.shader_compiler_state,
-                name = name,
-                source = string(source),
-                opts = {
-                    stage = .Pixel,
-                    include_proc = _shader_include_proc,
-                },
-            )
-
-            if !ok {
-                base.log_err("Failed to compile pixel shader '%s'", name)
-                return {}, false
-            }
-        }
-
-        return create_pixel_shader_from_bin(name, compiled)
+        return create_shader_from_bin(name, compiled)
     }
 }
 
@@ -822,25 +791,27 @@ set_draw_depth :: proc(depth: Depth_Mode) {
     _state.draw_state.depth_mode = depth
 }
 
-set_draw_shader :: proc {
-    set_draw_pixel_shader,
-    set_draw_vertex_shader,
-}
+set_draw_shader :: proc(handle: Shader_Handle) {
+    if shader, ok := _get_shader(handle); ok {
+        if shader_state, shader_state_ok := gpu._get_shader(shader^); shader_state_ok {
+            switch shader_state.kind {
+            case .Invalid:
 
-set_draw_pixel_shader :: proc(handle: Pixel_Shader_Handle) {
-    if _, ok := _get_pixel_shader(handle); ok {
-        _state.draw_state.ps = u8(handle.index)
-    } else {
-        _state.draw_state.ps = u8(_state.builtin_pixel_shader[.Default].index)
-    }
-}
+            case .Vertex:
+                _state.draw_state.ps = u8(handle.index)
+                return
 
-set_draw_vertex_shader :: proc(handle: Vertex_Shader_Handle) {
-    if _, ok := _get_vertex_shader(handle); ok {
-        _state.draw_state.vs = u8(handle.index)
-    } else {
-        _state.draw_state.vs = u8(_state.builtin_vertex_shader[.Default].index)
+            case .Pixel:
+                _state.draw_state.vs = u8(handle.index)
+                return
+
+            case .Compute:
+            }
+        }
     }
+
+    _state.draw_state.ps = u8(_state.builtin_shader[.Default_PS].index)
+    _state.draw_state.vs = u8(_state.builtin_shader[.Default_VS].index)
 }
 
 set_draw_texture :: proc(handle: Texture_Handle) {
@@ -893,6 +864,7 @@ set_draw_render_texture :: proc(handle: Render_Texture_Handle) {
         u16(tex.size.y),
     }
 }
+
 
 
 // Set up layer draw parameters for this frame.
@@ -978,7 +950,7 @@ draw_sprite :: proc(
     )
 
     key := _state.draw_state.key
-    key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
+    key.vs = u8(_state.builtin_shader[.Default_VS_Sprite].index) // for now the VS is fixed
 
     _draw_batch_table_push(&draw_layer.sprites, key, inst)
 }
@@ -1040,7 +1012,7 @@ draw_rect_2d :: proc(
     )
 
     key := _state.draw_state.key
-    key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
+    key.vs = u8(_state.builtin_shader[.Default_VS_Sprite].index) // for now the VS is fixed
 
     draw_layer := &_state.draw_layers[_state.draw_state.draw_layer]
     _draw_batch_table_push(&draw_layer.sprites, key, inst)
@@ -1423,7 +1395,7 @@ draw_text :: proc(
     offs: [2]f32
 
     key := _state.draw_state.key
-    key.vs = u8(_state.builtin_vertex_shader[.Default_Sprite].index) // for now the VS is fixed
+    key.vs = u8(_state.builtin_shader[.Default_VS_Sprite].index) // for now the VS is fixed
 
     table := &_state.draw_layers[_state.draw_state.draw_layer].sprites
     batch_index, batch_ok := _draw_batch_table_find_or_create(table, key)
@@ -2602,8 +2574,8 @@ _gpu_pipeline_desc_apply_draw_key :: proc(pip_desc: ^gpu.Pipeline_Desc, key: Dra
     pip_desc.cull, pip_desc.fill = _gpu_fill_mode(key.fill_mode)
     pip_desc.depth_comparison = bool(u8(key.depth_mode) & (1 << 0)) ? .Greater_Equal : .Always
     pip_desc.depth_write = bool(u8(key.depth_mode) & (1 << 1))
-    pip_desc.ps = gpu.Shader_Handle(_state.pixel_shaders[key.ps])
-    pip_desc.vs = gpu.Shader_Handle(_state.vertex_shaders[key.vs])
+    pip_desc.ps = gpu.Shader_Handle(_state.shaders[key.ps])
+    pip_desc.vs = gpu.Shader_Handle(_state.shaders[key.vs])
 
     tex_res: gpu.Resource_Handle
     switch key.texture_kind {
