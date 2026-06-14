@@ -103,8 +103,8 @@ The engine comes with a few built-in shaders. Those always work everywhere by de
 Compiling custom shaders is handled internally using the `shader_compiler` package when you load a shader from source.
 This requires a ***slang compiler dynamic library*** on non-D3D11 builds. Install it from [slang github](https://github.com/shader-slang/slang) releases.
 
-- Windows: copy `slang.dll` and `slang-compiler.dll` into the project
-- Linux: copy `libslang-compiler.so.*` as `libslang.so` into the project.
+- Windows: copy `slang.dll` and `slang-compiler.dll` into your project
+- Linux: copy `libslang-compiler.so.*` as `libslang.so` into your project.
 
 ## Cheatsheet
 
