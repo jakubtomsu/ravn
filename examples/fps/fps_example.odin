@@ -3,11 +3,9 @@ package ravn_fps_example
 import "base:intrinsics"
 import "core:math"
 import "core:math/linalg"
-import "core:math/rand"
 import "core:math/noise"
 import rv "../.."
 import "../../platform"
-import "../../base/ufmt"
 
 TERRAIN_SIZE :: 32
 TERRAIN_SCALE :: 6
@@ -40,8 +38,8 @@ main :: proc() {
 sample_height :: proc(pos: [3]f32) -> (height: f32) {
     p := cast([3]f64)pos
     height += noise.noise_3d_improve_xz(state.seed, p * {0.0542, 1, 0.04} - 1300.2329)
-    height += noise.noise_3d_improve_xz(state.seed, p * {0.542, 1, 0.6} + 1) * 0.2
-    height *= 8
+    height += noise.noise_3d_improve_xz(state.seed, p * {0.2542, 1, 0.26} + 1) * 0.2
+    height *= 16
     return height
 }
 
@@ -61,11 +59,6 @@ _init :: proc() {
     state.pos = {0, 1, 0}
     state.angle = {0, 0, 0}
 
-    // Generate a simple heightmap
-
-    // Turn the heightmap into a mesh
-    // (currently the verts are duplicated)
-
     state.arena = rv.create_arena(.Static)
 
     generate_heightmap()
@@ -78,48 +71,71 @@ generate_heightmap :: proc() {
         }
     }
 
-    NUM_QUADS :: TERRAIN_SIZE * TERRAIN_SIZE
+    NUM_VERTS :: TERRAIN_SIZE * TERRAIN_SIZE
+    NUM_QUADS :: (TERRAIN_SIZE - 1) * (TERRAIN_SIZE - 1)
 
-    verts := make([]rv.Vertex, NUM_QUADS * 6 , context.temp_allocator)
-    inds  := make([]rv.Vertex_Index, NUM_QUADS * 6, context.temp_allocator)
+    normals := make([][3]f32, NUM_VERTS, context.temp_allocator)
+    verts := make([]rv.Vertex, NUM_VERTS , context.temp_allocator)
+    quads  := make([]rv.Vertex_Index, NUM_QUADS * 6, context.temp_allocator)
 
-    for &ind, i in inds {
-        ind = rv.Vertex_Index(i)
-    }
-
-    verts_offs := 0
-    for x in 0..<i32(TERRAIN_SIZE)-1 {
-        for y in 0..<i32(TERRAIN_SIZE)-1 {
-            index := x + TERRAIN_SIZE * y
-
-            _tri(verts[index * 6 + 0:], {{x + 0, y + 0}, {x + 1, y + 0}, {x + 0, y + 1}})
-            _tri(verts[index * 6 + 3:], {{x + 1, y + 1}, {x + 0, y + 1}, {x + 1, y + 0}})
-
-            _tri :: proc(verts: []rv.Vertex, coords: [3][2]i32) {
-                for coord, i in coords {
-                    height := f32(state.terrain[coord.x][coord.y])
-                    verts[i] = rv.pack_vertex(
-                        pos = {f32(coord.x), height, f32(coord.y)},
-                        col = rv.remap_clamped(height, -10, 12, 0, 1),
-                        uv = [2]f32{f32(coord.x), f32(coord.y)} / 16.0,
-                    )
-                    verts[i].pos.xz -= TERRAIN_SIZE * 0.5
-                    verts[i].pos.xz *= TERRAIN_SCALE
-                }
-
-                normal := linalg.normalize0(linalg.cross(verts[1].pos - verts[0].pos, verts[2].pos - verts[0].pos))
-                if normal.y < 0 {
-                    normal = -normal
-                }
-
-                for &v in verts[:3] {
-                    v.normal = rv.pack_normal_octahedral_unorm8(normal)
-                }
-            }
+    for x in 0..<i32(TERRAIN_SIZE) {
+        for y in 0..<i32(TERRAIN_SIZE) {
+            i := _coord_index({x, y})
+            height := f32(state.terrain[x][y])
+            verts[i] = rv.pack_vertex(
+                pos = {f32(x), height, f32(y)},
+                col = rv.remap_clamped(height, -16, 16, 0.2, 1),
+                uv = [2]f32{f32(x), f32(y)} / 16.0,
+            )
+            verts[i].pos.xz -= TERRAIN_SIZE * 0.5
+            verts[i].pos.xz *= TERRAIN_SCALE
         }
     }
 
-    state.terrain_mesh = rv.create_mesh_from_data("terrain", state.arena, verts, inds)
+    for x in 0..<i32(TERRAIN_SIZE-1) {
+        for y in 0..<i32(TERRAIN_SIZE-1) {
+            i := x + y * (TERRAIN_SIZE-1)
+
+            _set_tri(verts, normals, quads[i * 6 + 0:], {
+                {x + 0, y + 0},
+                {x + 1, y + 0},
+                {x + 0, y + 1},
+            })
+
+            _set_tri(verts, normals, quads[i * 6 + 3:], {
+                {x + 1, y + 0},
+                {x + 1, y + 1},
+                {x + 0, y + 1},
+            })
+        }
+    }
+
+    for &v, i in verts {
+        v.normal = rv.pack_normal_octahedral_unorm8(linalg.normalize0(normals[i]))
+    }
+
+    state.terrain_mesh = rv.create_mesh_from_data("terrain", state.arena, verts, quads)
+
+    return
+
+    _coord_index :: proc(coord: [2]i32) -> rv.Vertex_Index {
+        return rv.Vertex_Index(coord.x + coord.y * TERRAIN_SIZE)
+    }
+
+    _set_tri :: proc(verts: []rv.Vertex, normals: [][3]f32, quads: []rv.Vertex_Index, coords: [3][2]i32) {
+        quads[0] = _coord_index(coords[0])
+        quads[1] = _coord_index(coords[1])
+        quads[2] = _coord_index(coords[2])
+
+        normal := linalg.normalize0(linalg.cross(
+            verts[quads[1]].pos - verts[quads[0]].pos,
+            verts[quads[2]].pos - verts[quads[0]].pos,
+        ))
+
+        normals[quads[0]] += normal
+        normals[quads[1]] += normal
+        normals[quads[2]] += normal
+    }
 }
 
 _shutdown :: proc() {
@@ -165,9 +181,15 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     cam_rot := linalg.quaternion_normalize(rv.euler_rot(state.angle))
     mat := linalg.matrix3_from_quaternion_f32(cam_rot)
 
-    speed: f32 = grounded ? 60 : 20
-    state.vel += mat[0] * move.x * delta * speed
-    state.vel += mat[2] * move.y * delta * speed
+    accel: f32 = grounded ? 60 : 40
+    max_speed: f32 = 20
+    speed := linalg.length(state.vel)
+    move_vec := mat[0] * move.x + mat[2] * move.y
+    move_align := 0.5 + 0.5 * linalg.dot(linalg.normalize0(state.vel), move_vec)
+
+    accel *= rv.lerp(f32(1), rv.smoothstep(max_speed, max_speed * 0.75, speed), move_align)
+
+    state.vel += move_vec * delta * accel
 
     if grounded && rv.get_key_pressed(.Space, buf = 0.2) {
         state.vel.y = 10
@@ -175,7 +197,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     }
 
     state.vel.y -= delta * (state.vel.y < 0 ? 30 : 20)
-    state.vel = rv.lexp(state.vel, 0, delta * 0.5)
+    state.vel = rv.lexp(state.vel, 0, delta * 0.1)
 
     state.pos += state.vel * delta
 
@@ -224,14 +246,14 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.set_draw_texture(rv.get_builtin_texture(.CGA8x8thick))
     rv.draw_text("Use WASD and QE to move, mouse to look", {14, 14, 0.1}, scale = 2)
-    rv.draw_text(ufmt.tprintf("speed: %v, vel: %v", linalg.length(state.vel), state.vel),
+    rv.draw_text(rv.tprintf("speed: %v, vel: %v", linalg.length(state.vel), state.vel),
         {14, 64, 0.1}, scale = math.ceil(rv._state.dpi_scale)) // DPI HACK
 
     rv.draw_perf_scopes()
 
     rv.submit_layers()
-    rv.render_layer(0, rv.DEFAULT_RENDER_TEXTURE, [3]f32{0, 0, 0.1}, true)
-    rv.render_layer(1, rv.DEFAULT_RENDER_TEXTURE, nil, false)
+    rv.render_layer(0, clear_color = rv.BLACK.rgb, clear_depth = true)
+    rv.render_layer(1, clear_depth = true)
 
     return state
 }
