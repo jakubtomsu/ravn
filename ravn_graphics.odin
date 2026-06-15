@@ -654,7 +654,7 @@ RV_RESOURCE_SLOT(2, Texture2DArray tex);
 RV_SAMPLER_SLOT(0, SamplerState smp);
 
 float4 ps_main(RV_Varyings vars, uint frontface : SV_IsFrontFace) : SV_Target {
-    float3 normal = normalize(bool(frontface) ? vars.normal : -vars.normal);
+    float3 normal = normalize(bool(frontface) ? -vars.normal : vars.normal);
     float4 tex_col = tex.Sample(smp, float3(vars.uv, float(vars.tex_slice)));
     float4 col = vars.add_col + vars.col * tex_col;
 ` // Your code contiunes the shader
@@ -663,10 +663,10 @@ float4 ps_main(RV_Varyings vars, uint frontface : SV_IsFrontFace) : SV_Target {
     return col;    
 }`
 
-    experimental_create_quick_pixel_shader :: proc(name: string, source_body: string) -> (Shader_Handle, bool) #optional_ok {
+    experimental_create_quick_pixel_shader :: proc(name: string, source_body: string) -> Shader_Handle {
         return create_shader_from_source(name,
             strings_join(QUICK_SHADER_PREFIX, source_body, QUICK_SHADER_SUFFIX, allocator = context.temp_allocator),
-        )
+        ) or_else panic("Failed to create quick shader")
     }
 }
 

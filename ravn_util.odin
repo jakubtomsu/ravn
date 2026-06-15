@@ -186,6 +186,11 @@ remap_clamped :: #force_inline proc "contextless" (x, a0, a1: f32, b0: f32 = 0, 
 }
 
 @(require_results)
+remap_smooth :: #force_inline proc "contextless" (x, a0, a1: f32, b0: f32 = 0, b1: f32 = 1) -> f32 {
+    return smoothstep(a0, a1, x) * (b1 - b0) + b0
+}
+
+@(require_results)
 smoothstep :: proc "contextless" (edge0, edge1, x: f32) -> f32 {
     t := clamp((x - edge0) / (edge1 - edge0), 0.0, 1)
     return t * t * (3.0 - 2.0 * t)

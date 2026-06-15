@@ -137,8 +137,6 @@ _compile_slang_wgsl :: proc(
 
     cname := clone_to_cstring(name, context.temp_allocator)
 
-    base.log_info("SOURCE:\n %s\n", source)
-
     source_blob := state.slang.createBlob(raw_data(source), len(source))
     diag: ^slang.IBlob
     module := session->loadModuleFromSource(cname, cname, source_blob, &diag)

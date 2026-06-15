@@ -28,10 +28,10 @@
 
 float3 rv_decode_octahedral(float2 f) {
     f = f * 2.0 - 1.0;
-    float3 n = float3(f.x, 1.0 - abs(f.x) - abs(f.y), f.y);
-    float t = clamp(-n.y, 0, 1);
+    float3 n = float3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
+    float t = clamp(-n.z, 0, 1);
     n.x += n.x >= 0 ? -t : t;
-    n.z += n.z >= 0 ? -t : t;
+    n.y += n.y >= 0 ? -t : t;
     return normalize(n);
 }
 

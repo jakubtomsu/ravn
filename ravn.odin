@@ -2696,10 +2696,9 @@ _wrap_octahedral :: proc "contextless" (v: [2]f32) -> [2]f32 {
 @(require_results)
 encode_octahedral :: proc "contextless" (n: [3]f32) -> [2]f32 {
     n := n
-    n /= (linalg.abs(n.x) + linalg.abs(n.y) + linalg.abs(n.z))
-    n.xz = n.z >= 0.0 ? n.xz : cast([2]f32)_wrap_octahedral(n.xz)
-    n.xz = n.xz * 0.5 + 0.5
-    return n.xz
+    n /= (abs(n.x) + abs(n.y) + abs(n.z))
+    n.xy = n.z >= 0.0 ? n.xy : cast([2]f32)_wrap_octahedral(n.xy)
+    return n.xy * 0.5 + 0.5
 }
 
 // Result is normalized vector on a sphere
@@ -2708,10 +2707,10 @@ decode_octahedral :: proc "contextless" (f: [2]f32) -> [3]f32 {
     f := f
     f = f * 2.0 - 1.0
     // https://twitter.com/Stubbesaurus/status/937994790553227264
-    n := [3]f32{f.x, 1.0 - abs(f.x) - abs(f.y), f.y}
-    t: f32 = clamp(-n.y, 0, 1)
+    n := [3]f32{f.x, f.y, 1.0 - abs(f.x) - abs(f.y)}
+    t: f32 = clamp(-n.z, 0, 1)
     n.x += n.x >= 0 ? -t : t
-    n.z += n.z >= 0 ? -t : t
+    n.y += n.y >= 0 ? -t : t
     return linalg.normalize(n)
 }
 
