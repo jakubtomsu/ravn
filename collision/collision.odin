@@ -629,7 +629,7 @@ make_sweep :: proc(pos: [3]f32, move: [3]f32, rad: f32 = 0, range: f32 = 1) -> S
         shape = -1,
         prim = -1,
         end = pos + move * range,
-        normal = {0, 1, 0},
+        normal = {0, 0, 0},
     }
 }
 

@@ -186,7 +186,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     sweep, sweep_ok := coll.sweep_point(state.cam_pos, mat[2], range = 100)
     hit := state.cam_pos + mat[2] * sweep.t
 
-    rv.draw_capsule(1, 2, 0.5, rv.RED)
+    rv.draw_capsule_line(1, 2, 0.5, rv.RED)
 
     // {
 

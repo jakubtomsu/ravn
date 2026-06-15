@@ -257,7 +257,7 @@ draw_shape :: proc(shape: Shape_Kind, center: [3]f32) {
         rv.draw_mesh(rv.get_builtin_mesh(.Cylinder_1), center, col = rv.GRAY)
 
     case .Capsule:
-        rv.draw_capsule(center + {0, 0, 1}, center + {0, 0, -1}, col = rv.GRAY)
+        rv.draw_capsule_line(center + {0, 0, 1}, center + {0, 0, -1}, col = rv.GRAY)
 
     case .Triangle:
         rv.draw_triangle(tri, col = rv.GRAY)

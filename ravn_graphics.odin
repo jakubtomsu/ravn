@@ -640,7 +640,7 @@ when SHADER_COMPILER_ENABLED {
             )
 
             if !ok {
-                base.log_err("Failed to compile vertex shader '%s'", name)
+                base.log_err("Failed to compile shader '%s'", name)
                 return {}, false
             }
         }
@@ -1194,7 +1194,7 @@ draw_plane :: proc(
     )
 }
 
-draw_capsule :: proc(
+draw_capsule_line :: proc(
     pos0:       [3]f32,
     pos1:       [3]f32,
     rad:        f32 = 1,
@@ -1217,6 +1217,36 @@ draw_capsule :: proc(
 
     draw_mesh(get_builtin_mesh(.UV_Sphere_1), pos0, scale = rad, rot = rot, col = col, add_col = add_col, param = param)
     draw_mesh(get_builtin_mesh(.UV_Sphere_1), pos1, scale = rad, rot = rot, col = col, add_col = add_col, param = param)
+    draw_mesh(get_builtin_mesh(.Cylinder_1), (pos0 + pos1) * 0.5,
+        scale = {rad, linalg.length(pos1 - pos0) * 0.5, rad},
+        rot = rot,
+        col = col,
+        add_col = add_col,
+        param = param,
+    )
+}
+
+draw_cylinder_line :: proc(
+    pos0:       [3]f32,
+    pos1:       [3]f32,
+    rad:        f32 = 1,
+    col:        [4]f32 = 1,
+    add_col:    [4]f32 = 0,
+    param:      u32 = 0,
+) {
+    axis := linalg.normalize(pos1 - pos0)
+    tangent: [3]f32 = {0, 1, 0}
+    if abs(axis.y) > 0.9 {
+        tangent = {1, 0, 0}
+    }
+
+    mat: matrix[3, 3]f32
+    mat[1] = axis
+    mat[0] = linalg.normalize(linalg.cross(axis, tangent))
+    mat[2] = linalg.normalize(linalg.cross(mat[0], axis))
+
+    rot := linalg.quaternion_from_matrix3_f32(mat)
+
     draw_mesh(get_builtin_mesh(.Cylinder_1), (pos0 + pos1) * 0.5,
         scale = {rad, linalg.length(pos1 - pos0) * 0.5, rad},
         rot = rot,
