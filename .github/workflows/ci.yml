@@ -30,7 +30,7 @@ jobs:
         shell: cmd
         run: |
           set "PATH=%CD%\Odin;%PATH%"
-          call check_all.cmd
+          call examples\check_all.cmd
   build_linux:
     name: Linux Build and Check
     runs-on: ubuntu-slim
@@ -58,4 +58,4 @@ jobs:
           run: |
             # Why "$GITHUB_WORKSPACE"? To be able to call odin from anywhere in the container's file system
             export PATH="$GITHUB_WORKSPACE/Odin/:$PATH"
-            bash check_all.sh
+            bash examples\check_all.sh
