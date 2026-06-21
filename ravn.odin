@@ -2384,10 +2384,10 @@ _get_file_by_hash :: proc(hash: Hash) -> (file: ^File, ok: bool) {
 // MARK: Collision
 //
 
-get_or_create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Mesh_Handle, ok: bool) #optional_ok {
+get_or_create_collision_mesh :: proc(mesh_handle: Mesh_Handle) -> (result: collision.Mesh_Handle, ok: bool) #optional_ok {
     #assert(size_of(Vertex_Index) == size_of(u16))
 
-    mesh, mesh_ok := _get_mesh(mesh)
+    mesh, mesh_ok := _get_mesh(mesh_handle)
     if !mesh_ok {
         base.log_err("Failed to create collision mesh, invalid mesh handle")
         return {}, false
@@ -2414,7 +2414,7 @@ get_or_create_collision_mesh :: proc(mesh: Mesh_Handle) -> (result: collision.Me
 
     mesh.collision_mesh = result
 
-    base.log_info("Created collision mesh for %v", mesh)
+    base.log_info("Created collision mesh for %v", mesh_handle)
 
     return result, true
 }
