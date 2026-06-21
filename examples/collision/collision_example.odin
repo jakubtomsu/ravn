@@ -304,7 +304,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
             rv.draw_sphere(shape.pos, shape.rad, col = rv.LIGHT_GREEN)
 
         case .Capsule:
-            rv.draw_capsule(shape.pos, shape.ext, shape.rad, rv.LIGHT_GREEN)
+            rv.draw_capsule_line(shape.pos, shape.ext, shape.rad, rv.LIGHT_GREEN)
 
         case .Aligned_Box:
             rv.draw_box(shape.pos, shape.ext, col = rv.LIGHT_GREEN)
