@@ -40,8 +40,10 @@ Base :: struct {
 }
 
 /*
+Container for all the entities.
+
 Val_Union:
-    - union of all possible item values
+    - union of all possible entity types
     - all fields must be a struct with 'Base' at offset 0
 
 Sub_Union:
@@ -63,7 +65,7 @@ System :: struct($Val_Union: typeid, $Sub_Union: typeid)
 Buffer :: struct {
     data:       [^]byte,
     cap:        i32, // In number of values, not bytes!
-    top:        i32,
+    top:        i32, // Inclusive index watermark
     free:       i32,
 }
 
@@ -205,6 +207,7 @@ _create_empty :: proc(sys: ^$S/System($Val_Union, $Sub_Union), variant_index: in
 
 destroy :: proc(sys: ^$S/System($Val_Union, $Sub_Union), handle: Handle) -> bool  {
     if handle.variant >= UNION_LEN(Val_Union) {
+        runtime.print_caller_location(#location())
         return false
     }
 
@@ -213,12 +216,14 @@ destroy :: proc(sys: ^$S/System($Val_Union, $Sub_Union), handle: Handle) -> bool
     if  handle.index <= 0 ||
         i32(handle.index) > buf.top
     {
+        runtime.print_caller_location(#location())
         return false
     }
 
     base := cast(^Base)(uintptr(buf.data) + uintptr(handle.index) * uintptr(sys.sizes[handle.variant]))
 
     if handle != base.handle {
+        runtime.print_caller_location(#location())
         return false
     }
 
@@ -296,8 +301,8 @@ get_buffer :: proc(sys: ^$S/System($Val_Union, $Sub_Union), $Val: typeid) -> []V
 
 
 
-//
-// MARK: Iteration
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Iterators
 //
 // Usage:
 // for it := begin(&s, Val_Or_Sub_Type); val := next(&it) { ... }
@@ -314,31 +319,36 @@ next :: proc {
 }
 
 Iter_Val :: struct($Val: typeid) {
-    ptr:    uintptr,
-    step:   uintptr,
+    val:    ^Val,
     end:    uintptr,
 }
 
 @(require_results)
-begin_val :: proc(sys: ^$S/System($Val_Union, $Sub_Union), $Val: typeid) -> (result: Iter_Val(Val)) where UNION_HAS(Val_Union, Val) {
+begin_val :: proc(sys: ^$S/System($Val_Union, $Sub_Union), $Val: typeid) -> (it: Iter_Val(Val)) where UNION_HAS(Val_Union, Val) {
     buf := sys.buffers[UNION_INDEX(Val_Union, Val)]
-    result = {
-        ptr = uintptr(buf.data),
-        step = size_of(Val),
+    it = {
+        val = cast(^Val)buf.data,
         end = uintptr(buf.data) + uintptr(buf.top) * size_of(Val),
     }
-    return result
+    return it
 }
 
 next_val :: proc(it: ^Iter_Val($Val)) -> (value: ^Val, ok: bool) {
-    if it.ptr == it.end {
-        return nil, false
+    for {
+        it.val = cast(^Val)(uintptr(it.val) + size_of(Val))
+        if uintptr(it.val) > it.end {
+            break
+        }
+        if it.val.handle.index != 0 {
+            return it.val, true
+        }
     }
-    it.ptr += it.step
-    value = transmute(^Val)(it.ptr)
-    return value, true
+    return nil, false
 }
 
+
+
+// MARK: Subtype iteration
 
 // The handle isn't exposed directly, but it's stored in the iterator through base pointer.
 Iter_Sub :: struct($Val_Union: typeid, $Sub_Union: typeid, $Sub: typeid) {
@@ -361,15 +371,20 @@ begin_sub :: proc(sys: ^$S/System($Val_Union, $Sub_Union), $Sub: typeid) -> (res
 }
 
 next_sub :: proc(it: ^Iter_Sub($Val_Union, $Sub_Union, $Sub)) -> (value: ^Sub, ok: bool) {
-    for uintptr(it.ptr) >= it.end {
-        if !_iter_sub_next_variant(it) {
-            return
+    for {
+        it.ptr = cast(^Base)(uintptr(it.ptr) + it.step)
+        if uintptr(it.ptr) > it.end {
+            if !_iter_sub_next_variant(it) {
+                return
+            }
+            continue
+        }
+        if it.ptr.handle.index != 0 {
+            return cast(^Sub)(uintptr(it.ptr) + it.offset), true
         }
     }
 
-    it.ptr = cast(^Base)(uintptr(it.ptr) + it.step)
-    value = cast(^Sub)(uintptr(it.ptr) + it.offset)
-    return value, true
+    return nil, false
 }
 
 _iter_sub_next_variant :: proc(it: ^Iter_Sub($Val_Union, $Sub_Union, $Sub)) -> (ok: bool) {

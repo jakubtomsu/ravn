@@ -4,13 +4,13 @@ package ravn_entities
 
 import "core:testing"
 
+Foo :: struct { using base: Base, using named: Named, val: u8 }
+Bar :: struct { using base: Base, using named: Named, val: f64 }
+Baz :: struct { using base: Base }
+Named :: struct { name: string, }
+
 @(test)
 _basic_test :: proc(t: ^testing.T) {
-    Foo :: struct { using base: Base, using named: Named, val: u8 }
-    Bar :: struct { using base: Base, using named: Named, val: f64 }
-    Baz :: struct { using base: Base }
-    Named :: struct { name: string, }
-
     sys: System(union{Foo, Bar, Baz}, union{Base, Named})
     init(&sys, default_cap = 64)
     defer shutdown(&sys)
@@ -58,4 +58,64 @@ _basic_test :: proc(t: ^testing.T) {
         counter += 1
     }
     testing.expect(t, counter == 4)
+}
+
+
+@(test)
+_iter_val_test :: proc(t: ^testing.T) {
+    sys: System(union{Foo, Bar, Baz}, union{Base, Named})
+    init(&sys, default_cap = 64)
+    defer shutdown(&sys)
+
+    handles := []Handle{
+        create(&sys, Bar{}),
+        create(&sys, Bar{}),
+        create(&sys, Bar{}),
+        create(&sys, Bar{}),
+        create(&sys, Bar{}),
+    }
+
+    destroy(&sys, handles[0])
+    destroy(&sys, handles[2])
+    destroy(&sys, handles[4])
+
+    counter := 0
+    for it := begin_val(&sys, Bar); _ in next(&it) {
+        counter += 1
+    }
+    testing.expect(t, counter == 2)
+}
+
+
+@(test)
+_iter_sub_test :: proc(t: ^testing.T) {
+    sys: System(union{Foo, Bar, Baz}, union{Base, Named})
+    init(&sys, default_cap = 64)
+    defer shutdown(&sys)
+
+    handles := []Handle{
+        create(&sys, Bar{name = "b"}),
+        create(&sys, Bar{name = "b"}),
+        create(&sys, Foo{name = "f"}),
+        create(&sys, Baz{}),
+        create(&sys, Foo{name = "f"}),
+        create(&sys, Foo{name = "f"}),
+        create(&sys, Bar{name = "b"}),
+        create(&sys, Foo{name = "f"}),
+        create(&sys, Baz{}),
+        create(&sys, Bar{name = "b"}),
+        create(&sys, Baz{}),
+        create(&sys, Baz{}),
+        create(&sys, Foo{name = "f"}),
+    }
+
+    destroy(&sys, handles[0])
+    destroy(&sys, handles[1])
+    destroy(&sys, handles[2])
+
+    counter := 0
+    for it := begin_sub(&sys, Named); _ in next(&it) {
+        counter += 1
+    }
+    testing.expect(t, counter == 6)
 }
