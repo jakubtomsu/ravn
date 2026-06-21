@@ -8,13 +8,17 @@ import "core:strings"
 import "core:time"
 import "base:runtime"
 import "vendor:sdl3"
+import "core:path/filepath"
 import "../base"
+import "../base/ufmt"
 import "core:os"
 import "core:dynlib"
 
 _ :: runtime
 _ :: base
 _ :: sdl3
+_ :: filepath
+_ :: ufmt
 _ :: strings
 _ :: time
 _ :: os
@@ -30,7 +34,11 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     _File_Watcher :: struct { _: u8 }
-    _Directory_Iter :: struct { _: u8 }
+    _Directory_Iter :: struct {
+        index: i32,
+        count: i32,
+        matches: [^]cstring, // allocated by sdl.GlobDirectory
+    }
 
     _Thread :: struct {
         thread: ^sdl3.Thread,
@@ -70,15 +78,15 @@ when BACKEND == BACKEND_SDL3 {
     _run_shell_command :: proc(command: string) -> int {
         state, _, _, err := os.process_exec(
             os.Process_Desc{
-                command = strings.split(command, sep = "", allocator = context.temp_allocator) or_else nil,
+                // We run the command fully without splitting, to keep the `""` and `''` as-is
+                // If we are to split by spaces, we could be splitting inside quotes and run the command wrong
+                command = {"sh", "-c", command},
             },
             allocator = context.temp_allocator,
         )
-
         if err != nil {
             return -1
         }
-
         return state.exit_code
     }
 
@@ -574,7 +582,7 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _delete_file :: proc(path: string) -> bool {
-        unimplemented()
+        return (os.remove_all(path) == nil)
     }
 
     @(require_results)
@@ -591,7 +599,7 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _file_exists :: proc(path: string) -> bool {
-        unimplemented()
+        return os.exists(path)
     }
 
     @(require_results)
@@ -616,7 +624,33 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _iter_directory :: proc(iter: ^Directory_Iter, pattern: string, allocator := context.temp_allocator) -> (result: string, ok: bool) {
-        return "", false
+        dir := filepath.dir(pattern)
+
+        if iter^ == {}{
+            file_pat := filepath.base(pattern)
+
+            cdir := strings.clone_to_cstring(dir, context.temp_allocator)
+            cfile_pat := strings.clone_to_cstring(file_pat, context.temp_allocator)
+
+            count : i32
+            iter.matches = cast([^]cstring)(sdl3.GlobDirectory(cdir, cfile_pat, {}, &count))
+            iter.count = count
+
+            if iter.matches == nil {
+                return {}, false
+            }
+        }
+
+        // If at the end of null-terminated matches
+        if iter.index >= iter.count {
+            sdl3.free(iter.matches)
+            iter^ = {}
+            return {}, false
+        }
+        entry := iter.matches[iter.index]
+        iter.index += 1
+
+        return strings.clone(ufmt.tprintf("%s/%s", dir, entry), allocator), true
     }
 
     @(require_results)

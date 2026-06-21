@@ -39,34 +39,88 @@ exec :: proc(str: string) -> bool {
 
 compile_hot :: proc(pkg: string, pkg_name: string, index: int) {
     path := ufmt.tprintf("%s%i" + DLL_EXT, pkg_name, index)
-    assert(!platform.file_exists(path))
+    assert(!platform.file_exists(path), ufmt.tprintf("!platform.file_exists(\"%s\")", path))
     exec(ufmt.tprintf("%s build %s -out:%s -debug -build-mode:dll", ODIN_EXE, pkg, path))
 }
 
 clean_hot :: proc(pkg: string) {
-    remove_all(ufmt.tprintf("%s*.dll", pkg))
-    remove_all(ufmt.tprintf("%s*.pdb", pkg))
-    remove_all(ufmt.tprintf("%s*.exp", pkg))
-    remove_all(ufmt.tprintf("%s*.lib", pkg))
-    remove_all(ufmt.tprintf("%s*.rdi", pkg))
+    when ODIN_OS == .Windows {
+        remove_all(ufmt.tprintf("%s*.dll", pkg))
+        remove_all(ufmt.tprintf("%s*.pdb", pkg))
+        remove_all(ufmt.tprintf("%s*.exp", pkg))
+        remove_all(ufmt.tprintf("%s*.lib", pkg))
+        remove_all(ufmt.tprintf("%s*.rdi", pkg))
+    } else when ODIN_OS == .Linux {
+        remove_all(ufmt.tprintf("./%s*.so", pkg)) // linux dll
+    }
+}
+
+/// Taken from  Odin/core/os/path_linux.odin
+when ODIN_OS == .Linux || ODIN_OS == .Darwin{
+    _is_path_separator :: proc(c: byte) -> bool {
+        _Path_Separator        :: '/'
+        return c == _Path_Separator
+    }
+
+    @(require_results)
+    split_path :: proc(path: string) -> (dir, filename: string) {
+        i := len(path) - 1
+        for i >= 0 && !_is_path_separator(path[i]) {
+            i -= 1
+        }
+        if i == 0 {
+            return path[:i+1], path[i+1:]
+        } else if i > 0 {
+            return path[:i], path[i+1:]
+        }
+        return "", path
+    }
+
+
+    /// Taken from  Odin/core/os/path.odin
+    /*
+    Gets the file name and extension from a path.
+
+    e.g.
+        'path/to/name.tar.gz' -> 'name.tar.gz'
+        'path/to/name.txt'    -> 'name.txt'
+        'path/to/name'        -> 'name'
+
+    Returns "." if the path is an empty string.
+    */
+    filepath_base :: proc(path: string) -> string {
+        if path == "" {
+            return "."
+        }
+
+        _, file := split_path(path)
+        return file
+    }
 }
 
 hotreload_find_latest_dll :: proc(pkg_name: string) -> (result: Hotreload_File, ok: bool) {
-    pattern := ufmt.tprintf("%s*" + DLL_EXT, pkg_name)
-
+    when ODIN_OS == .Windows {
+        pattern := ufmt.tprintf("%s*" + DLL_EXT, pkg_name)
+        PATH_SEPARATOR :: "\\"
+    } else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
+        pattern := ufmt.tprintf("./%s*" + DLL_EXT, pkg_name)
+        PATH_SEPARATOR :: "/"
+    }
     max_index: int = -1
 
     iter: platform.Directory_Iter
     for path in platform.iter_directory(&iter, pattern, context.temp_allocator) {
-        if !strings.starts_with(path, pkg_name) {
+        path_parts := strings.split(path, PATH_SEPARATOR)
+        base_filename := path_parts[len(path_parts)-1]
+        if !strings.starts_with(base_filename, pkg_name) {
             continue
         }
 
-        if !strings.has_suffix(path, DLL_EXT) {
+        if !strings.has_suffix(base_filename, DLL_EXT) {
             continue
         }
 
-        index_str := path[len(pkg_name) : len(path) - len(DLL_EXT)]
+        index_str := base_filename[len(pkg_name) : len(base_filename) - len(DLL_EXT)]
 
         digits: int
         index, _ := strconv.parse_int(index_str, 10, &digits)

@@ -61,6 +61,11 @@ _update :: proc(_: rawptr) -> rawptr {
 ## Prequisities
 Install [Odin](https://github.com/odin-lang/Odin) and make sure it's in your path. Check the [Official Install docs](https://odin-lang.org/docs/install/) for more info.
 
+### Linux
+You'll need an odin release that includes https://github.com/odin-lang/Odin/commit/213b5e779bf31fe31e889ba973a61aa92fb7d8cd
+So either master, or any release including and following [the upcoming june 2026 release](https://github.com/odin-lang/Odin/releases/tag/dev-2026-06)
+
+
 There are no additional dependencies.
 
 ## Project Setup
