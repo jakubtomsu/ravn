@@ -23,8 +23,8 @@ Shape :: struct #all_or_none #align(64) {
     rot:            quaternion128,
 
     // mass_inv:       f32,
-    // id:             u64,
     // ignored_layers: bit_set[0..<NUM_LAYERS],
+    id:             u64,
     layer:          u8,
     kind:           Shape_Kind,
 }

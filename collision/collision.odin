@@ -430,7 +430,12 @@ destroy_mesh :: proc(handle: Mesh_Handle) -> bool {
 //
 
 
-add_sphere_shape :: proc(pos: [3]f32, rad: f32, #any_int layer: u8 = 0) {
+add_sphere_shape :: proc(
+    pos:            [3]f32,
+    rad:            f32,
+    #any_int layer: u8 = 0,
+    #any_int id:    u64 = 0,
+) {
     _add_shape({
         kind = .Sphere,
         pos = pos,
@@ -439,10 +444,16 @@ add_sphere_shape :: proc(pos: [3]f32, rad: f32, #any_int layer: u8 = 0) {
         rot = 1,
         handle = {},
         layer = layer,
+        id = id,
     })
 }
 
-add_capsule_shape :: proc(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0) {
+add_capsule_shape :: proc(
+    p0, p1:         [3]f32,
+    rad:            f32,
+    #any_int layer: u8 = 0,
+    #any_int id:    u64 = 0,
+) {
     _add_shape({
         kind = .Capsule,
         pos = p0,
@@ -451,10 +462,17 @@ add_capsule_shape :: proc(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0) {
         rot = 1,
         handle = {},
         layer = layer,
+        id = id,
     })
 }
 
-add_box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer: u8 = 0) {
+add_box_shape :: proc(
+    pos:            [3]f32,
+    scale:          [3]f32,
+    rad:            f32 = 0.0,
+    #any_int layer: u8 = 0,
+    #any_int id:    u64 = 0,
+) {
     _add_shape({
         kind = .Aligned_Box,
         pos = pos,
@@ -463,10 +481,18 @@ add_box_shape :: proc(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer
         rot = 1,
         handle = {},
         layer = layer,
+        id = id,
     })
 }
 
-add_oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: f32 = 0.0, #any_int layer: u8 = 0) {
+add_oriented_box_shape :: proc(
+    pos:            [3]f32,
+    scale:          [3]f32,
+    rot:            quaternion128,
+    rad:            f32 = 0.0,
+    #any_int layer: u8 = 0,
+    #any_int id:    u64 = 0,
+) {
     _add_shape({
         kind = .Oriented_Box,
         pos = pos,
@@ -475,16 +501,19 @@ add_oriented_box_shape :: proc(pos: [3]f32, scale: [3]f32, rot: quaternion128, r
         rot = rot,
         handle = {},
         layer = layer,
+        id = id,
     })
 }
 
 add_mesh_shape :: proc(
-    handle: Mesh_Handle,
-    pos:    [3]f32 = 0,
-    scale:  [3]f32 = 1,
-    rot:    quaternion128 = 1,
-    rad:    f32 = 0.0,
-    #any_int layer: u8 = 0
+    handle:         Mesh_Handle,
+    pos:            [3]f32 = 0,
+    scale:          [3]f32 = 1,
+    rot:            quaternion128 = 1,
+    rad:            f32 = 0.0,
+    #any_int layer: u8 = 0,
+    #any_int id:    u64 = 0,
+
 ) {
     mesh, ok := get_mesh(handle)
     if !ok {
@@ -499,6 +528,7 @@ add_mesh_shape :: proc(
         rad = rad,
         handle = handle,
         layer = layer,
+        id = id,
     })
 }
 
@@ -1098,6 +1128,15 @@ _insertion_sort :: proc "contextless" (data: $T/[]$E) #no_bounds_check {
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Util
 //
+
+@(require_results)
+get_shape :: proc(shape: i32) -> (Shape, bool) #optional_ok {
+    step := get_step_state()
+    if shape < 0 || shape >= step.shape_used {
+        return {}, false
+    }
+    return step.shape_data[shape], true
+}
 
 get_mesh_triangle :: proc(handle: Mesh_Handle, #any_int tri_index: int) -> (verts: [3][3]f32, ok: bool) #optional_ok {
     mesh := get_mesh(handle) or_return
