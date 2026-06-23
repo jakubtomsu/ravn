@@ -193,7 +193,7 @@ end_step :: proc() {
     prims := make([][2][3]f32, step.shape_used, context.temp_allocator)
     for shape, i in step.shape_data[:step.shape_used] {
         bb_min, bb_max := get_shape_aabb(shape)
-        prims[i] = {bb_min, bb_max}
+        prims[i] = {bb_min - BVH_EPS, bb_max + BVH_EPS}
     }
 
     bvh.init_prims(&step.tlas, prims)
@@ -587,14 +587,14 @@ collide_sphere_swept :: proc(
     range := linalg.length(vel * step.delta)
 
     for i in 0..<max_sweeps {
-        pos, vel, _ = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
+        _, vel, _ = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
 
         dir := linalg.normalize0(vel)
 
-        if dir == 0 || range < rad {
-            pos += dir * range
-            return pos, vel
-        }
+        // if dir == 0 || range < rad*0.0 {
+        //     pos += dir * range
+        //     return pos, vel
+        // }
 
         sweep, sweep_hit := sweep_sphere(pos, move = dir, rad = rad, range = range, ignore_layers = ignore_layers)
 
@@ -613,7 +613,7 @@ collide_sphere_swept :: proc(
         }
     }
 
-    pos, vel, _ = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
+    _, vel, _ = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
 
     return pos, vel
 }

@@ -576,7 +576,8 @@ sweep_sphere_vs_triangle :: proc "contextless" (
         return tri_t, tri_ok
     }
 
-    if uv.x >= 0 && uv.y >= 0 && uv.x + uv.y <= 1.0 {
+    INNER_EPS :: 0.0001
+    if uv.x > INNER_EPS && uv.y > INNER_EPS && uv.x + uv.y < 1.0-INNER_EPS {
         return range, false
     }
 
