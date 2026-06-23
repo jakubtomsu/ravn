@@ -251,7 +251,7 @@ oklerp :: proc "contextless" (a, b: [4]f32, t: f32) -> (result: [4]f32) {
 
 // 0 -> Red, 0.5 -> Blue, 1 -> Green
 @(require_results)
-heatmap_color :: proc(val: f32) -> (result: [4]f32) {
+heatmap_color :: proc "contextless" (val: f32) -> (result: [4]f32) {
     result.g = smoothstep(0.5, 0.8, val)
     if (val > 0.5) {
         result.b = smoothstep(1, 0.5, val)
@@ -265,10 +265,19 @@ heatmap_color :: proc(val: f32) -> (result: [4]f32) {
 
 // ZXY order for first-person view.
 @(require_results)
-euler_rot :: proc(angles: [3]f32) -> quaternion128 {
+euler_rot :: proc "contextless" (angles: [3]f32) -> quaternion128 {
     return linalg.quaternion_from_euler_angle_y_f32(angles.y) *
            linalg.quaternion_from_euler_angle_x_f32(angles.x) *
            linalg.quaternion_from_euler_angle_z_f32(angles.z)
+}
+
+@(require_results)
+clamp_length :: proc "contextless" (v: [$N]f32, min: f32 = 0, max: f32 = 1) -> [N]f32 {
+    l := linalg.length(v)
+    if l <= 1e-6 {
+        return 0
+    }
+    return (v / l) * clamp(l, min, max)
 }
 
 
@@ -325,84 +334,101 @@ rcp :: proc "contextless" (denom: f32) -> (result: f32) {
 // MARK: Rect
 //
 
-@(require_results) rect_make :: proc(min: [2]f32, full_size: [2]f32) -> Rect {
+@(require_results)
+rect_make :: proc "contextless" (min: [2]f32, full_size: [2]f32) -> Rect {
     return {
         min = min,
         max = min + full_size,
     }
 }
 
-@(require_results) rect_make_centered :: proc(pos: [2]f32, half_size: [2]f32) -> Rect {
+@(require_results)
+rect_make_centered :: proc "contextless" (pos: [2]f32, half_size: [2]f32) -> Rect {
     return {pos - half_size, pos + half_size}
 }
 
-@(require_results) rect_center :: proc(r: Rect) -> [2]f32 {
+@(require_results)
+rect_center :: proc "contextless" (r: Rect) -> [2]f32 {
     return (r.min + r.max) * 0.5
 }
 
-@(require_results) rect_anchor :: proc(r: Rect, anchor: [2]f32) -> [2]f32 {
+@(require_results)
+rect_anchor :: proc "contextless" (r: Rect, anchor: [2]f32) -> [2]f32 {
     return {lerp(r.min.x, r.max.x, anchor.x), lerp(r.min.y, r.max.y, anchor.y)}
 }
 
-@(require_results) rect_full_size :: #force_inline proc(r: Rect) -> [2]f32 {
+@(require_results)
+rect_full_size :: #force_inline proc "contextless" (r: Rect) -> [2]f32 {
     return r.max - r.min
 }
 
-@(require_results) rect_expand :: proc(r: Rect, a: [2]f32) -> Rect {
+@(require_results)
+rect_expand :: proc "contextless" (r: Rect, a: [2]f32) -> Rect {
     return {r.min - a, r.max + a}
 }
 
-@(require_results) rect_scale :: proc(r: Rect, a: [2]f32) -> Rect {
+@(require_results)
+rect_scale :: proc "contextless" (r: Rect, a: [2]f32) -> Rect {
     size := rect_full_size(r) * 0.5
     center := rect_center(r)
     return {center - size * a, center + size * a}
 }
 
-@(require_results) rect_contains_point :: proc(r: Rect, p: [2]f32) -> bool {
+@(require_results)
+rect_contains_point :: proc "contextless" (r: Rect, p: [2]f32) -> bool {
     return p.x > r.min.x && p.y > r.min.y && p.x < r.max.x && p.y < r.max.y
 }
 
-@(require_results) rect_clamp_point :: proc(r: Rect, p: [2]f32) -> [2]f32 {
+@(require_results)
+rect_clamp_point :: proc "contextless" (r: Rect, p: [2]f32) -> [2]f32 {
     return {clamp(p.x, r.min.x, r.max.x), clamp(p.y, r.min.y, r.max.y)}
 }
 
-@(require_results) rect_cut_left :: proc(r: ^Rect, a: f32) -> Rect {
+@(require_results)
+rect_cut_left :: proc "contextless" (r: ^Rect, a: f32) -> Rect {
     minx := r.min.x
     r.min.x = min(r.max.x, r.min.x + a)
     return {{minx, r.min.y}, {r.min.x, r.max.y}}
 }
 
-@(require_results) rect_cut_right :: proc(r: ^Rect, a: f32) -> Rect {
+@(require_results)
+rect_cut_right :: proc "contextless" (r: ^Rect, a: f32) -> Rect {
     maxx := r.max.x
     r.max.x = max(r.min.x, r.max.x - a)
     return {{r.max.x, r.min.y}, {maxx, r.max.y}}
 }
 
-@(require_results) rect_cut_top :: proc(r: ^Rect, a: f32) -> Rect {
+@(require_results)
+rect_cut_top :: proc "contextless" (r: ^Rect, a: f32) -> Rect {
     miny := r.min.y
     r.min.y = min(r.max.y, r.min.y + a)
     return {{r.min.x, miny}, {r.max.x, r.min.y}}
 }
 
-@(require_results) rect_cut_bottom :: proc(r: ^Rect, a: f32) -> Rect {
+@(require_results)
+rect_cut_bottom :: proc "contextless" (r: ^Rect, a: f32) -> Rect {
     maxy := r.max.y
     r.max.y = max(r.min.y, r.max.y - a)
     return {{r.min.x, r.max.y}, {r.max.x, maxy}}
 }
 
-@(require_results) rect_split_left :: proc(r: ^Rect, t: f32) -> Rect {
+@(require_results)
+rect_split_left :: proc "contextless" (r: ^Rect, t: f32) -> Rect {
     return rect_cut_left(r, (r.max.x - r.min.x) * t)
 }
 
-@(require_results) rect_split_right :: proc(r: ^Rect, t: f32) -> Rect {
+@(require_results)
+rect_split_right :: proc "contextless" (r: ^Rect, t: f32) -> Rect {
     return rect_cut_right(r, (r.max.x - r.min.x) * t)
 }
 
-@(require_results) rect_split_top :: proc(r: ^Rect, t: f32) -> Rect {
+@(require_results)
+rect_split_top :: proc "contextless" (r: ^Rect, t: f32) -> Rect {
     return rect_cut_top(r, (r.max.y - r.min.y) * t)
 }
 
-@(require_results) rect_split_bottom :: proc(r: ^Rect, t: f32) -> Rect {
+@(require_results)
+rect_split_bottom :: proc "contextless" (r: ^Rect, t: f32) -> Rect {
     return rect_cut_bottom(r, (r.max.y - r.min.y) * t)
 }
 
