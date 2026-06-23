@@ -846,6 +846,22 @@ set_draw_state :: proc(binds: Draw_State) {
     _state.draw_state = binds
 }
 
+@(require_results)
+get_default_draw_state :: proc() -> (result: Draw_State) {
+    result = {
+        draw_layer = 0,
+        ps = int_cast(u8, _state.builtin_shader[.Default_PS].index),
+        vs = int_cast(u8, _state.builtin_shader[.Default_VS].index),
+        blend_mode = .Opaque,
+        fill_mode = .All,
+        depth_mode = .None,
+    }
+    
+    _set_draw_texture(&result, _state.builtin_texture[.Default])
+
+    return result
+}
+
 set_draw_layer :: proc(#any_int layer: i32) {
     assert(layer >= 0 && layer <= MAX_DRAW_LAYERS)
     _state.draw_state.draw_layer = u8(layer)
@@ -887,29 +903,29 @@ set_draw_shader :: proc(handle: Shader_Handle) {
 }
 
 set_draw_texture :: proc(handle: Texture_Handle) {
-    if !_set_draw_texture(handle) {
-        _set_draw_texture(_state.builtin_texture[.Error])
+    if !_set_draw_texture(&_state.draw_state, handle) {
+        _set_draw_texture(&_state.draw_state, _state.builtin_texture[.Error])
     }
 }
 
-_set_draw_texture :: proc(handle: Texture_Handle) -> bool {
+_set_draw_texture :: proc(state: ^Draw_State, handle: Texture_Handle) -> bool {
     tex := _get_texture(handle) or_return
     if tex.resource != {} {
         // Standalone tex
-        _state.draw_state.texture_kind = .Non_Pooled
-        _state.draw_state.texture = u8(handle.index)
-        _state.draw_state.texture_slice = 0
-        _state.draw_state.texture_size = tex.size
+        state.texture_kind = .Non_Pooled
+        state.texture = u8(handle.index)
+        state.texture_slice = 0
+        state.texture_size = tex.size
     } else {
         // Pool slice index
         pool := _state.texture_pools[tex.pool_index]
         assert(int(tex.slice) < int(pool.slices))
         assert(int(tex.slice) in pool.slices_used)
 
-        _state.draw_state.texture_kind = .Pooled
-        _state.draw_state.texture = u8(tex.pool_index)
-        _state.draw_state.texture_slice = u8(tex.slice)
-        _state.draw_state.texture_size = {
+        state.texture_kind = .Pooled
+        state.texture = u8(tex.pool_index)
+        state.texture_slice = u8(tex.slice)
+        state.texture_size = {
             u16(pool.size.x),
             u16(pool.size.y),
         }
@@ -923,7 +939,7 @@ set_draw_render_texture :: proc(handle: Render_Texture_Handle) {
     assert(handle != DEFAULT_RENDER_TEXTURE)
     tex, tex_ok := _get_render_texture(handle)
     if !tex_ok {
-        _set_draw_texture(_state.builtin_texture[.Error])
+        _set_draw_texture(&_state.draw_state, _state.builtin_texture[.Error])
         return
     }
     assert(tex.color != {})

@@ -1024,14 +1024,7 @@ begin_frame :: proc() -> (keep_running: bool) {
     }
 
     _state.draw_states_len = 0
-    _state.draw_state = {
-        ps = int_cast(u8, _state.builtin_shader[.Default_PS].index),
-        vs = int_cast(u8, _state.builtin_shader[.Default_VS].index),
-        blend_mode = .Opaque,
-    }
-
-    set_draw_shader({})
-    _set_draw_texture(_state.builtin_texture[.Default])
+    _state.draw_state = get_default_draw_state()
 
     if _state.shutdown_requested {
         keep_running = false
