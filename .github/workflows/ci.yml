@@ -58,4 +58,4 @@ jobs:
           run: |
             # Why "$GITHUB_WORKSPACE"? To be able to call odin from anywhere in the container's file system
             export PATH="$GITHUB_WORKSPACE/Odin/:$PATH"
-            bash examples\check_all.sh
+            bash examples/check_all.sh
