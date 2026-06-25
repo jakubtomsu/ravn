@@ -37,7 +37,7 @@ when ODIN_OS == .Windows {
 SINGLE_THREAD :: #config(AUDIO_SINGLE_THREAD, false)
 
 MAX_SOUNDS :: #config(AUDIO_MAX_SOUNDS, 512)
-MAX_RESOURCES :: #config(AUDIO_MAX_RESOURCE, 256)
+MAX_RESOURCES :: #config(AUDIO_MAX_RESOURCE, 512)
 NUM_GROUPS :: 8
 SCRATCH_FRAMES :: 1024 * 2
 SPEED_OF_SOUND :: 343 // m/s, dry air at around 20C
@@ -130,11 +130,31 @@ Resource_Format :: enum u8 {
     WAV,
 }
 
+Wave :: struct #all_or_none {
+    kind:   Wave_Kind,
+    dur:    f32, // Seconds
+}
+
+Wave_Kind :: enum u8 {
+    Sine,
+    Square,
+    Pulse,
+    Triangle,
+    Saw,
+    Noise,
+    Rand, // Like noise but reacts to pitch a pitch
+}
+
+Sound_Source :: union {
+    Resource_Handle,
+    Wave,
+}
+
 Sound :: struct {
     frame:              f64,
     delay:              f32,
     frame_range:        [2]u32,
-    resource:           Resource_Handle,
+    source:             Sound_Source,
     flags:              bit_set[Sound_Flag],
     group_index:        u8,
 
@@ -417,7 +437,7 @@ destroy_resource :: proc(handle: Resource_Handle) -> bool {
 }
 
 create_sound :: proc(
-    resource_handle:        Resource_Handle,
+    source:                 Sound_Source,
     flags:                  bit_set[Sound_Flag] = {},
     pitch:                  f32 = 1.0,
     pan:                    f32 = 0,
@@ -433,6 +453,9 @@ create_sound :: proc(
     vel:                    [3]f32 = 0,
     #any_int group_index:   int = 0,
 ) -> (result: Sound_Handle, ok: bool) #optional_ok {
+    pitch := pitch
+    source := source
+
     assert(group_index >= 0)
     assert(group_index < NUM_GROUPS)
 
@@ -442,15 +465,32 @@ create_sound :: proc(
         return {}, false
     }
 
-    res, res_ok := _get_resource(resource_handle)
-    if !res_ok {
-        base.log_err("Attempting to play sound with invalid resource handle %v", resource_handle)
-        return {}, false
+    frame_rate: u32
+    frame_num: u32
+    switch &s in source {
+    case Resource_Handle:
+        res, res_ok := _get_resource(s)
+        if !res_ok {
+            base.log_err("Attempting to play sound with invalid resource handle %v", s)
+            return {}, false
+        }
+
+        frame_rate = res.frame_rate
+        frame_num = res.frame_num
+
+    case Wave:
+        s.dur *= pitch
+        frame_rate = _state.frame_rate
+        frame_num = u32(f32(frame_rate) * s.dur)
+        pitch /= f32(frame_rate)
+
+    case:
+        assert(false, "Invalid sound source")
     }
 
     assert(intrinsics.atomic_load(&_state.sounds_state[index]) == .Free)
-    assert(res.frame_rate > 0)
-    assert(res.frame_num > 0)
+    assert(frame_rate > 0)
+    assert(frame_num > 0)
 
     result = {
         index = index,
@@ -460,13 +500,13 @@ create_sound :: proc(
     sound := &_state.sounds[index]
     sound^ = {
         group_index = u8(group_index),
-        resource = resource_handle,
+        source = source,
         flags = flags,
         playing = b32(playing),
-        frame = -f64(start_delay) * f64(res.frame_rate),
+        frame = -f64(start_delay) * f64(frame_rate),
         frame_range = {
-            u32(chop[0] * f32(res.frame_num)),
-            u32(chop[1] * f32(res.frame_num)),
+            u32(chop[0] * f32(frame_num)),
+            u32(chop[1] * f32(frame_num)),
         },
         params = {
             .Pitch             = _param(pitch),
@@ -483,6 +523,8 @@ create_sound :: proc(
         vel_curr = vel,
         vel_prev = vel,
     }
+
+    base.log_dump(sound.frame)
 
     intrinsics.atomic_store(&_state.sounds_state[index], .Used)
 
@@ -515,17 +557,29 @@ get_sound_time :: proc(handle: Sound_Handle, unit: Unit = .Seconds) -> f32 {
 
     switch unit {
     case .Seconds:
-        res, res_ok := _get_resource(sound.resource)
-        if !res_ok {
-            return 0
-        }
-        return f32(sound.frame) * f32(res.frame_rate)
+        return f32(sound.frame) * f32(_get_sound_frame_rate(sound))
 
     case .Frames:
         return f32(sound.frame) + f32(sound.frame_range[0])
 
     case .Percentage:
         return f32(sound.frame) / f32(frame_num)
+    }
+
+    return 0
+}
+
+_get_sound_frame_rate :: proc(sound: ^Sound) -> u32 {
+    switch source in sound.source {
+    case Wave:
+        return _state.frame_rate
+
+    case Resource_Handle:
+        res, res_ok := _get_resource(source)
+        if !res_ok {
+            return 0
+        }
+        return res.frame_rate
     }
 
     return 0
@@ -684,14 +738,13 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
             continue
         }
 
-        resource, resource_ok := _get_resource(sound.resource)
-        assert(resource_ok)
+        sound_frame_rate := _get_sound_frame_rate(sound)
 
         destroy := false
 
         // Wait before starting
-        if sound.frame <= 0 {
-            sound.frame += f64(global_delta_seconds) * f64(resource.frame_rate)
+        if sound.frame < 0 {
+            sound.frame += f64(global_delta_seconds) * f64(sound_frame_rate)
             continue
         }
 
@@ -821,24 +874,48 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
             pan = clamp(pan, -1, 1)
         }
 
-        delta_rate := f32(resource.frame_rate) / f32(frame_rate)
+        delta_rate := f32(sound_frame_rate) / f32(frame_rate)
 
-        end_time := sample_base_signal(
-            out_buf = scratch,
-            frame_bytes = resource.data,
-            frame_num = resource.frame_num,
-            format = resource.format,
-            mono = .Mono in resource.flags,
-            time = sound.frame,
-            delta_range = pitch_range * delta_rate,
-            loop = .Loop in sound.flags,
-            frame_range = sound.frame_range,
-        )
+        switch source in sound.source {
+        case Resource_Handle:
 
-        sound.frame = end_time
+            resource, resource_ok := _get_resource(source)
+            assert(resource_ok)
 
-        if .Loop not_in sound.flags && int(sound.frame) > int(sound.frame_range[1] - sound.frame_range[0]) {
-            destroy = true
+            sound.frame = sample_base_signal(
+                out_buf = scratch,
+                frame_bytes = resource.data,
+                frame_num = resource.frame_num,
+                format = resource.format,
+                mono = .Mono in resource.flags,
+                time = sound.frame,
+                delta_range = pitch_range * delta_rate,
+                loop = .Loop in sound.flags,
+                frame_range = sound.frame_range,
+            )
+
+            if .Loop not_in sound.flags && int(sound.frame) > int(sound.frame_range[1] - sound.frame_range[0]) {
+                destroy = true
+            }
+
+        case Wave:
+
+            end_time := f64(source.dur)
+
+            base.log_dump(sound.frame)
+
+            sound.frame = sample_wave_signal(
+                out_buf = scratch,
+                wave_kind = source.kind,
+                time = sound.frame,
+                end_time = end_time,
+                delta_range = pitch_range,
+                frame_range = sound.frame_range,
+            )
+
+            if .Loop not_in sound.flags && sound.frame > end_time {
+                destroy = true
+            }
         }
 
         // Recursive filters
@@ -1201,6 +1278,108 @@ unpack_frame_stereo_i16 :: proc(v: [2]i16) -> [2]f32 {
 unpack_frame_stereo_f32 :: proc(v: [2]f32) -> [2]f32 {
     return v
 }
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Wave
+//
+// Implements primitive waves like square, triangle, ...
+// Useful especially for prototyping
+//
+
+@(require_results)
+sample_wave_signal :: proc(
+    out_buf:        [][2]f32,
+    wave_kind:      Wave_Kind,
+    time:           f64,
+    end_time:       f64,
+    delta_range:    [2]f32,
+    frame_range:    [2]u32,
+) -> f64 {
+    time := time
+
+    inv_frames := 1.0 / f32(len(out_buf))
+
+    for i in 0..<len(out_buf) {
+        block_t := f32(i) * inv_frames
+
+        val := #force_inline sample_wave(wave_kind, f32(time))
+
+        out_buf[i] = val
+
+        delta := lerp(delta_range[0], delta_range[1], block_t)
+        time += f64(delta)
+    }
+
+    return time
+}
+
+@(require_results)
+sample_wave :: proc "contextless" (kind: Wave_Kind, t: f32) -> f32 {
+    switch kind {
+    case .Sine:     return sample_sine_wave(t)
+    case .Square:   return sample_square_wave(t)
+    case .Pulse:    return sample_pulse_wave(t)
+    case .Triangle: return sample_triangle_wave(t)
+    case .Saw:      return sample_saw_wave(t)
+    case .Noise:    return sample_noise_wave(t)
+    case .Rand:     return sample_rand_wave(t)
+    }
+    return 0
+}
+
+
+@(require_results)
+sample_sine_wave :: proc "contextless" (t: f32) -> f32 {
+    t := t
+    t *= math.PI * 2
+    return math.sin_f32(t - math.floor_f32(t))
+}
+
+@(require_results)
+sample_square_wave :: proc "contextless" (t: f32) -> f32 {
+    f := t - math.floor_f32(t)
+    return f < 0.5 ? 1 : -1
+}
+
+@(require_results)
+sample_pulse_wave :: proc "contextless" (t: f32) -> f32 {
+    f := t - math.floor_f32(t)
+    return f < 0.2 ? 1 : -1
+}
+
+@(require_results)
+sample_triangle_wave :: proc "contextless" (t: f32) -> f32 {
+    return 4 * abs(t + 0.25 - math.floor_f32(t + 0.75)) - 1
+}
+
+@(require_results)
+sample_saw_wave :: proc "contextless" (t: f32) -> f32 {
+    return (t - math.floor_f32(t)) * 2 - 1
+}
+
+@(require_results)
+sample_noise_wave :: proc "contextless" (t: f32) -> f32 {
+    return #force_inline _noise_hash(transmute(u32)t)
+}
+
+@(require_results)
+sample_rand_wave :: proc "contextless" (t: f32) -> f32 {
+    return #force_inline _noise_hash(u32(t))
+}
+
+@(require_results)
+_noise_hash :: proc "contextless" (x: u32) -> f32 {
+    x := x
+    x ~= x >> 16
+    x *= 0x85ebca6b
+    x ~= x >> 13
+    x *= 0xc2b2ae35
+    x ~= x >> 16
+    return f32(x) * (2.0 / f32(max(u32))) - 1
+}
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
