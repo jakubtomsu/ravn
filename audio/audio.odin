@@ -439,12 +439,12 @@ destroy_resource :: proc(handle: Resource_Handle) -> bool {
 create_sound :: proc(
     source:                 Sound_Source,
     flags:                  bit_set[Sound_Flag] = {},
-    pitch:                  f32 = 1.0,
-    pan:                    f32 = 0,
-    volume:                 f32 = 1,
+    pitch:                  [2]f32 = 1.0,
+    pan:                    [2]f32 = 0,
+    volume:                 [2]f32 = 1,
     attenuation_range:      [2]f32 = {0.1, 100},
-    lowpass:                f32 = 0.0,
-    highpass:               f32 = 0.0,
+    lowpass:                [2]f32 = 0.0,
+    highpass:               [2]f32 = 0.0,
     doppler_factor:         f32 = 1.0,
     playing                 := true,
     chop:                   [2]f32 = {0, 1},
@@ -467,6 +467,8 @@ create_sound :: proc(
 
     frame_rate: u32
     frame_num: u32
+    expected_dur: f32 = 1
+
     switch &s in source {
     case Resource_Handle:
         res, res_ok := _get_resource(s)
@@ -478,8 +480,11 @@ create_sound :: proc(
         frame_rate = res.frame_rate
         frame_num = res.frame_num
 
+        expected_dur = f32(frame_num) * f32(frame_rate)
+
     case Wave:
-        s.dur *= pitch
+        expected_dur = s.dur
+        s.dur *= pitch[0]
         frame_rate = _state.frame_rate
         frame_num = u32(f32(frame_rate) * s.dur)
         pitch /= f32(frame_rate)
@@ -491,11 +496,14 @@ create_sound :: proc(
     assert(intrinsics.atomic_load(&_state.sounds_state[index]) == .Free)
     assert(frame_rate > 0)
     assert(frame_num > 0)
+    assert(expected_dur > 0)
 
     result = {
         index = index,
         gen = _state.sounds_gen[index],
     }
+
+    inv_expected_dur := 1.0 / expected_dur
 
     sound := &_state.sounds[index]
     sound^ = {
@@ -509,14 +517,14 @@ create_sound :: proc(
             u32(chop[1] * f32(frame_num)),
         },
         params = {
-            .Pitch             = _param(pitch),
-            .Volume            = _param(volume),
-            .Pan               = _param(pan),
-            .Attenuation_Min   = _param(attenuation_range[0]),
-            .Attenuation_Max   = _param(attenuation_range[1]),
-            .Doppler_Factor    = _param(doppler_factor),
-            .Lowpass           = _param(lowpass),
-            .Highpass          = _param(highpass),
+            .Pitch             = _param_lerp(pitch, inv_expected_dur),
+            .Volume            = _param_lerp(volume, inv_expected_dur),
+            .Pan               = _param_lerp(pan, inv_expected_dur),
+            .Attenuation_Min   = _param_lerp(attenuation_range[0], inv_expected_dur),
+            .Attenuation_Max   = _param_lerp(attenuation_range[1], inv_expected_dur),
+            .Doppler_Factor    = _param_single(doppler_factor),
+            .Lowpass           = _param_lerp(lowpass, inv_expected_dur),
+            .Highpass          = _param_lerp(highpass, inv_expected_dur),
         },
         pos_curr = pos,
         pos_prev = pos,
@@ -524,17 +532,23 @@ create_sound :: proc(
         vel_prev = vel,
     }
 
-    base.log_dump(sound.frame)
-
     intrinsics.atomic_store(&_state.sounds_state[index], .Used)
 
     return result, true
 
-    _param :: proc(p: f32) -> Param {
+    _param_single :: proc(p: f32) -> Param {
         return {
             target = p,
             curr = p,
             delta = 1,
+        }
+    }
+
+    _param_lerp :: proc(p: [2]f32, inv_dur: f32) -> Param {
+        return {
+            target = p[1],
+            curr = p[0],
+            delta = inv_dur,
         }
     }
 }
@@ -901,8 +915,6 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
         case Wave:
 
             end_time := f64(source.dur)
-
-            base.log_dump(sound.frame)
 
             sound.frame = sample_wave_signal(
                 out_buf = scratch,
