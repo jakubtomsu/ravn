@@ -600,8 +600,6 @@ collide_sphere :: proc(
     return new_pos, new_vel, contacts
 }
 
-
-
 // Immediate-mode continous shape-swept collision
 collide_sphere_swept :: proc(
     pos:            [3]f32,
@@ -616,8 +614,16 @@ collide_sphere_swept :: proc(
     step := get_step_state()
     range := linalg.length(vel * step.delta)
 
+    overlap_pos: [3]f32
+    contacts: []Contact
+
     for i in 0..<max_sweeps {
-        _, vel, _ = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
+        // overlap_pos, vel, contacts = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
+        // if len(contacts) > 0 {
+        //     pos = overlap_pos
+        // }
+
+        pos, vel = _solve_sphere_contacts_position_based(pos, vel, rad = rad, allocator = context.temp_allocator)
 
         dir := linalg.normalize0(vel)
 
@@ -643,9 +649,34 @@ collide_sphere_swept :: proc(
         }
     }
 
-    _, vel, _ = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
-
     return pos, vel
+
+    // Hacky
+    _solve_sphere_contacts_position_based :: proc(
+        pos:            [3]f32,
+        vel:            [3]f32,
+        rad:            f32,
+        max_contacts    := 8,
+        max_triangles   := 32,
+        allocator       := context.temp_allocator,
+    ) -> (new_pos: [3]f32, new_vel: [3]f32) {
+        contacts := find_contacts_sphere(
+            pos = pos,
+            rad = rad,
+            max_contacts = max_contacts,
+            max_triangles = max_triangles,
+            allocator = allocator,
+        )
+
+        new_pos = pos
+        for contact in contacts {
+            new_pos += contact.normal * max(0.0, -contact.separation * 0.5)
+        }
+
+        new_vel = vel + (new_pos - pos)
+
+        return new_pos, new_vel
+    }
 }
 
 @(require_results)
