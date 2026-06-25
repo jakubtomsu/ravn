@@ -19,6 +19,7 @@ Read https://jakubtomsu.github.io/posts/odin_comp_speed/ for more info.
 #+no-instrumentation
 package ufmt
 
+import "base:intrinsics"
 import "base:runtime"
 
 INDENT :: "  "
@@ -177,7 +178,7 @@ _append_rune :: proc(buf: ^[dynamic]byte, val: rune) {
     append_elem(buf, '\'')
 }
 
-_append_int :: proc(buf: ^[dynamic]byte, value: int) {
+_append_int :: proc(buf: ^[dynamic]byte, #any_int value: int) {
     val := value
     if val < 0 {
         append_elem(buf, '-')
@@ -565,7 +566,33 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
             append_elem_string(buf, "typeid")
         }
 
-    case runtime.Type_Info_Union: unimplemented()
+    case runtime.Type_Info_Union:
+        tag_ptr := uintptr(value.data) + uintptr(v.tag_offset)
+
+        tag: u64
+        switch v.tag_type.size {
+        case 1: tag = u64((cast(^u8 )tag_ptr)^)
+        case 2: tag = u64((cast(^u16)tag_ptr)^)
+        case 4: tag = u64((cast(^u32)tag_ptr)^)
+        case 8: tag = u64((cast(^u64)tag_ptr)^)
+        }
+
+        variant_index := int(tag)
+        if !v.no_nil {
+            variant_index -= 1
+        }
+
+        if variant_index > len(v.variants) {
+            _append_string(buf, "INVALID UNION TAG")
+            return
+        }
+
+        if named, named_ok := v.variants[variant_index].variant.(runtime.Type_Info_Named); named_ok {
+            _append_string(buf, named.name)
+        }
+        _append_any(buf, any{value.data, v.variants[variant_index].id}, pretty = pretty, depth = depth + 1)
+
+
     case runtime.Type_Info_Map: unimplemented()
     case runtime.Type_Info_Matrix:
         append_elem(buf, '{')
