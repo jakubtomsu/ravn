@@ -484,9 +484,9 @@ create_sound :: proc(
 
     case Wave:
         expected_dur = s.dur
-        s.dur *= pitch[0]
         frame_rate = _state.frame_rate
-        frame_num = u32(f32(frame_rate) * s.dur)
+        frame_num = u32(f32(frame_rate) * s.dur * (pitch[0] + pitch[1]) * 0.5)
+        s.dur = s.dur * (pitch[0] + pitch[1]) * 0.5
         pitch /= f32(frame_rate)
 
     case:
@@ -546,9 +546,9 @@ create_sound :: proc(
 
     _param_lerp :: proc(p: [2]f32, inv_dur: f32) -> Param {
         return {
-            target = p[1],
             curr = p[0],
-            delta = inv_dur,
+            target = p[1],
+            delta = abs(p[1] - p[0]) * inv_dur,
         }
     }
 }
@@ -925,7 +925,11 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
                 frame_range = sound.frame_range,
             )
 
+            base.log_dump(sound.frame)
+            base.log_dump(end_time)
+
             if .Loop not_in sound.flags && sound.frame > end_time {
+                base.log_info("destroying sound")
                 destroy = true
             }
         }
@@ -1507,7 +1511,8 @@ volume_db_to_linear :: proc(gain: f32) -> f32 {
 }
 
 // Returns frequency in Hz for a given midi note.
-note_freq :: proc(#any_int midi_n: i32) -> f32 {
+// Zero is A0
+note :: proc(#any_int midi_n: i32) -> f32 {
     return 440 * math.pow_f32(2, f32(midi_n - 69) * (1.0 / 12.0))
 }
 
