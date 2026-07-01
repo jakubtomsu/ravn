@@ -481,7 +481,15 @@ _append_any :: proc(buf: ^[dynamic]byte, value: any, pretty := false, depth := 0
             #partial switch ve in elem.variant {
             case runtime.Type_Info_Enum:
                 append_elem(buf, '.')
-                append_elem_string(buf, ve.names[i - int(v.lower)])
+                index := 0
+                val := i - int(v.lower)
+                for i in 0..<len(ve.values) {
+                    if val == int(ve.values[i]) {
+                        index = i
+                        break
+                    }
+                }
+                append_elem_string(buf, ve.names[index])
 
             case runtime.Type_Info_Integer:
                 _append_int(buf, int(v.lower) + i)

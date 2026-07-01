@@ -918,9 +918,10 @@ begin_frame :: proc() -> (keep_running: bool) {
         if !inp_ok {
             _state.input.gamepads[i] = {}
             _state.input.gamepads_connected -= {i}
+            continue
+        } else {
+            _state.input.gamepads_connected += {i}
         }
-
-        _state.input.gamepads_connected += {i}
 
         gpad := &_state.input.gamepads[i]
 
@@ -932,19 +933,17 @@ begin_frame :: proc() -> (keep_running: bool) {
             }
         }
 
-        gpad.buttons.released = {}
-
         gpad.axes[.Left_Trigger] = inp.axes[.Left_Trigger] > 0.1 ? clamp(gpad.axes[.Left_Trigger], 0, 1) : 0
         gpad.axes[.Right_Trigger] = inp.axes[.Right_Trigger] > 0.1 ? clamp(gpad.axes[.Right_Trigger], 0, 1) : 0
 
         l_thumb := [2]f32{
-            gpad.axes[.Left_Thumb_X],
-            gpad.axes[.Left_Thumb_Y],
+            inp.axes[.Left_Thumb_X],
+            inp.axes[.Left_Thumb_Y],
         }
 
         r_thumb := [2]f32{
-            gpad.axes[.Right_Thumb_X],
-            gpad.axes[.Right_Thumb_Y],
+            inp.axes[.Right_Thumb_X],
+            inp.axes[.Right_Thumb_Y],
         }
 
         l_len := linalg.length(l_thumb)
@@ -1773,8 +1772,10 @@ _input_digital_press :: proc(buf: ^Input_Digital_Buffer($T), elem: T) {
 }
 
 _input_digital_release :: proc(buf: ^Input_Digital_Buffer($T), elem: T) {
+    if elem in buf.down {
+        buf.released += {elem}
+    }
     buf.down -= {elem}
-    buf.released += {elem}
 }
 
 
