@@ -2431,6 +2431,7 @@ render_layer :: proc(
     ren_tex_handle:         Render_Texture_Handle = DEFAULT_RENDER_TEXTURE,
     clear_color:            Maybe([3]f32) = nil,
     clear_depth:            bool = true,
+    sampler:                gpu.Sampler_Desc = DEFAULT_SAMPLER,
     // User configurable GPU parameters.
     // Only first few slots are consumed by built-in ravn resources,
     // so the rest is free to use.
@@ -2493,7 +2494,7 @@ render_layer :: proc(
             2 = _state.draw_batch_consts,
         },
         samplers = {
-            0 = DEFAULT_SAMPLER,
+            0 = sampler,
         },
     }
 
