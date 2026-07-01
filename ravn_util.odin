@@ -47,6 +47,8 @@ LIGHT_ORANGE    :: [4]f32{1, 0.75, 0.5, 1}
 PURPLE          :: [4]f32{0.5, 0, 1, 1}
 DARK_PURPLE     :: [4]f32{0.25, 0, 0.5, 1}
 LIGHT_PURPLE    :: [4]f32{0.75, 0.5, 1, 1}
+BROWN           :: [4]f32{0.5, 0.25, 0, 1}
+DARK_ORANGE     :: BROWN
 
 quat_angle_axis :: linalg.quaternion_angle_axis_f32
 
