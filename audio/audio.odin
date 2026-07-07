@@ -925,9 +925,6 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
                 frame_range = sound.frame_range,
             )
 
-            base.log_dump(sound.frame)
-            base.log_dump(end_time)
-
             if .Loop not_in sound.flags && sound.frame > end_time {
                 base.log_info("destroying sound")
                 destroy = true
@@ -1349,8 +1346,8 @@ sample_wave :: proc "contextless" (kind: Wave_Kind, t: f32) -> f32 {
 @(require_results)
 sample_sine_wave :: proc "contextless" (t: f32) -> f32 {
     t := t
-    t *= math.PI * 2
-    return math.sin_f32(t - math.floor_f32(t))
+    t -= math.floor_f32(t)
+    return math.sin_f32(t * math.PI * 2)
 }
 
 @(require_results)

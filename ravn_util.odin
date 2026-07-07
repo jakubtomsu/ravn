@@ -68,8 +68,13 @@ lerp :: proc "contextless" (a, b: $T, t: f32) -> T where !intrinsics.type_is_qua
 
 // Exponential lerp. Multiply rate by delta to get frame rate independent interpolation
 @(require_results)
-lexp :: proc "contextless" (a, b: $T, rate: f32) -> T {
+lexp :: proc "contextless" (a, b: $T, rate: f32) -> T where !intrinsics.type_is_quaternion(T) {
     return lerp(b, a, approx_nexp(rate))
+}
+
+@(require_results)
+slexp :: proc "contextless" (a, b: $T, rate: f32) -> T where intrinsics.type_is_quaternion(T) {
+    return linalg.quaternion_slerp(b, a, approx_nexp(rate))
 }
 
 @(require_results)
