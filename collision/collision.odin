@@ -571,6 +571,7 @@ collide_sphere :: proc(
         rad = rad,
         max_contacts = max_contacts,
         max_triangles = max_triangles,
+        ignore_layers = ignore_layers,
         allocator = allocator,
     )
 
@@ -951,6 +952,8 @@ find_contacts_sphere :: proc(
         ignore_layers = ignore_layers,
     )
 
+    base.log_dump(num_contacts)
+
     num_tri_contacts := generate_filtered_sphere_vs_triangle_contacts(
         pos = pos,
         rad = rad,
@@ -969,7 +972,7 @@ find_contacts_sphere_buf :: proc(
     rad:            f32,
     out_contacts:   []Contact,
     out_triangles:  []Triangle_Contact,
-    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    ignore_layers:  bit_set[0..<NUM_LAYERS],
 ) -> (num_contacts: i32, num_triangles: i32) #no_bounds_check {
     assert(len(out_contacts) > 0)
 
@@ -992,6 +995,10 @@ find_contacts_sphere_buf :: proc(
                     out_contacts = out_contacts[num_contacts:],
                     out_triangles = out_triangles[num_triangles:],
                 )
+
+                if shape.kind == .Mesh {
+                    base.log_dump(num_new_triangles)
+                }
 
                 contacts := out_contacts[num_contacts:][:num_new_contacts]
                 tris := out_triangles[:num_triangles][:num_new_triangles]

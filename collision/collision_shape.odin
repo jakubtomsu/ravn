@@ -79,17 +79,17 @@ sweep_point_vs_shape :: proc(
         local_pos := linalg.quaternion128_mul_vector3(inv, pos - shape.pos)
         local_move := linalg.quaternion128_mul_vector3(inv, move)
         if shape.rad < NO_RAD_EPS {
+            inv_scale := 1.0 / shape.ext
             t, prim, ok = sweep_point_vs_mesh_local(
-                pos = local_pos,
-                move = local_move,
+                pos = local_pos * inv_scale,
+                move = local_move * inv_scale,
                 handle = shape.handle,
                 range = range,
             )
         } else {
-            inv_scale := 1.0 / shape.ext
             t, prim, ok = sweep_sphere_vs_mesh_local(
-                pos = local_pos * inv_scale,
-                move = local_move * inv_scale,
+                pos = local_pos,
+                move = local_move,
                 rad = shape.rad,
                 handle = shape.handle,
                 scale = shape.ext,
@@ -248,8 +248,7 @@ find_contacts_sphere_vs_shape :: proc(
         )
 
         offset := shape.pos
-        mat := linalg.matrix3_from_quaternion_f32(shape.rot) *
-            linalg.matrix3_scale_f32(shape.ext)
+        mat := linalg.matrix3_from_quaternion_f32(shape.rot)
 
         tris := out_triangles[num_triangles:][:num_new_triangles]
         for &tri in tris {
@@ -297,6 +296,7 @@ sweep_sphere_vs_mesh_local :: proc(
     inv_move := 1.0 / move
     inv_move_simd := transmute(#simd[4]f32)inv_move.xyzz
     pos_simd := transmute(#simd[4]f32)pos.xyzz
+    scale_simd := transmute(#simd[4]f32)scale.xyzz
 
     for iter := bvh.iter(&mesh.blas); iter.node != nil; {
         if iter.len != 0 {
@@ -320,8 +320,8 @@ sweep_sphere_vs_mesh_local :: proc(
 
             child0 := transmute(bvh.Node_SIMD4)mesh.blas.nodes[iter.first + 0]
             child1 := transmute(bvh.Node_SIMD4)mesh.blas.nodes[iter.first + 1]
-            t0 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child0.min - rad, child0.max + rad, t) or_else max(f32)
-            t1 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child1.min - rad, child1.max + rad, t) or_else max(f32)
+            t0 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child0.min * scale_simd - rad, child0.max * scale_simd + rad, t) or_else max(f32)
+            t1 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child1.min * scale_simd - rad, child1.max * scale_simd + rad, t) or_else max(f32)
 
             bvh.iter_next(&iter, t0, t1) or_break
         }
@@ -344,6 +344,7 @@ test_sphere_vs_mesh_local :: proc(
     }
 
     pos_simd := transmute(#simd[4]f32)pos.xyzz
+    scale_simd := transmute(#simd[4]f32)scale.xyzz
 
     for iter := bvh.iter(&mesh.blas); iter.node != nil; {
         if iter.len != 0 {
@@ -367,8 +368,8 @@ test_sphere_vs_mesh_local :: proc(
 
             child0 := transmute(bvh.Node_SIMD4)mesh.blas.nodes[iter.first + 0]
             child1 := transmute(bvh.Node_SIMD4)mesh.blas.nodes[iter.first + 1]
-            hit0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
-            hit1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+            hit0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min * scale_simd - rad, child0.max * scale_simd + rad)
+            hit1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min * scale_simd - rad, child1.max * scale_simd + rad)
 
             bvh.iter_unordered_next(&iter, hit0, hit1) or_break
         }
@@ -393,6 +394,7 @@ find_potential_contact_triangles_sphere_vs_mesh_local :: proc(
     }
 
     pos_simd := transmute(#simd[4]f32)pos.xyzz
+    scale_simd := transmute(#simd[4]f32)scale.xyzz
 
     for iter := bvh.iter(&mesh.blas); iter.node != nil; {
         if iter.len != 0 {
@@ -400,9 +402,9 @@ find_potential_contact_triangles_sphere_vs_mesh_local :: proc(
                 index := mesh.blas.indices[int(iter.first) + offs]
                 tri := mesh.triangles[index]
                 verts := [3][3]f32{
-                    mesh.verts[tri[0]],
-                    mesh.verts[tri[1]],
-                    mesh.verts[tri[2]],
+                    scale * mesh.verts[tri[0]],
+                    scale * mesh.verts[tri[1]],
+                    scale * mesh.verts[tri[2]],
                 }
 
                 out_triangles[num_triangles].verts = verts
@@ -419,8 +421,8 @@ find_potential_contact_triangles_sphere_vs_mesh_local :: proc(
 
             child0 := transmute(bvh.Node_SIMD4)mesh.blas.nodes[iter.first + 0]
             child1 := transmute(bvh.Node_SIMD4)mesh.blas.nodes[iter.first + 1]
-            hit0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
-            hit1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+            hit0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min * scale_simd - rad, child0.max * scale_simd + rad)
+            hit1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min * scale_simd - rad, child1.max * scale_simd + rad)
 
             bvh.iter_unordered_next(&iter, hit0, hit1) or_break
         }
@@ -515,7 +517,7 @@ get_shape_aabb :: proc(shape: Shape) -> (bb_min, bb_max: [3]f32) {
 }
 
 @(require_results)
-get_shape_gradient :: proc(shape: Shape, origin_pos: [3]f32, hit: [3]f32, prim: i32) -> (result: [3]f32) {
+get_shape_gradient :: proc(shape: Shape, query_origin_pos: [3]f32, hit: [3]f32, prim: i32) -> (result: [3]f32) {
     switch shape.kind {
     case .Sphere:
         return linalg.normalize(hit - shape.pos)
@@ -554,7 +556,7 @@ get_shape_gradient :: proc(shape: Shape, origin_pos: [3]f32, hit: [3]f32, prim: 
         _, result = geometry.get_triangle_dist_grad(local_pos, verts)
 
         result = linalg.quaternion128_mul_vector3(shape.rot, result)
-        if linalg.dot(result, origin_pos - hit) < 0 {
+        if linalg.dot(result, query_origin_pos - hit) < 0 {
             result = -result
         }
 
