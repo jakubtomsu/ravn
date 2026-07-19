@@ -11,35 +11,35 @@ _basic_test :: proc(t: ^testing.T) {
     Baz :: struct { using base: Base }
     Named :: struct { name: string, }
 
-    sys: System(union{Foo, Bar, Baz}, union{Base, Named})
-    init(&sys, default_cap = 64)
-    defer shutdown(&sys)
+    ents: Entities(union{Foo, Bar, Baz}, union{Base, Named})
+    init(&ents, default_cap = 64)
+    defer shutdown(&ents)
 
-    testing.expect(t, len(get_buffer(&sys, Foo)) == 0)
-    testing.expect(t, len(get_buffer(&sys, Bar)) == 0)
+    testing.expect(t, len(get_buffer(&ents, Foo)) == 0)
+    testing.expect(t, len(get_buffer(&ents, Bar)) == 0)
 
-    a := create_sub(&sys, Foo{name = "First", val = 1})
+    a := create_sub(&ents, Foo{name = "First", val = 1})
     testing.expect(t, a != {})
     testing.expect(t, a.variant == 0)
 
-    testing.expect(t, len(get_buffer(&sys, Foo)) == 1)
+    testing.expect(t, len(get_buffer(&ents, Foo)) == 1)
 
-    testing.expect(t, destroy(&sys, a))
+    testing.expect(t, destroy(&ents, a))
 
-    a_ptr, a_ok := get(&sys, a)
+    a_ptr, a_ok := get(&ents, a)
     testing.expect(t, !a_ok)
-    testing.expect(t, a_ptr == nil)
+    testing.expect(t, a_ptr.base == nil)
 
     b_val := Foo{name = "Second", val = 2}
-    b := create_val(&sys, b_val)
+    b := create_val(&ents, b_val)
 
     testing.expect(t, b != {})
     testing.expect(t, b.index == a.index) // Slot reuse
 
-    b_ptr, b_ok := get(&sys, b)
+    b_ptr, b_ok := get(&ents, b)
     testing.expect(t, b_ok)
-    testing.expect(t, b_ptr != nil)
-    testing.expect(t, b_ptr.(^Foo).name == "Second")
+    testing.expect(t, b_ptr.base != nil)
+    testing.expect(t, b_ptr.variant.(^Foo).name == "Second")
 
     testing.expect(t, a != b)
 }
@@ -49,24 +49,24 @@ _basic_test :: proc(t: ^testing.T) {
 _iter_val_test :: proc(t: ^testing.T) {
     Foo :: struct { using base: Base, val: u8 }
 
-    sys: System(union{Foo}, union{})
-    init(&sys, default_cap = 64)
-    defer shutdown(&sys)
+    ents: Entities(union{Foo}, union{})
+    init(&ents, default_cap = 64)
+    defer shutdown(&ents)
 
     handles := []Handle{
-        create(&sys, Foo{}),
-        create(&sys, Foo{}),
-        create(&sys, Foo{}),
-        create(&sys, Foo{}),
-        create(&sys, Foo{}),
+        create(&ents, Foo{}),
+        create(&ents, Foo{}),
+        create(&ents, Foo{}),
+        create(&ents, Foo{}),
+        create(&ents, Foo{}),
     }
 
-    destroy(&sys, handles[0])
-    destroy(&sys, handles[2])
-    destroy(&sys, handles[4])
+    destroy(&ents, handles[0])
+    destroy(&ents, handles[2])
+    destroy(&ents, handles[4])
 
     counter := 0
-    for it := begin_val(&sys, Foo); _ in next(&it) {
+    for it := begin_val(&ents, Foo); _ in next(&it) {
         counter += 1
     }
     testing.expect(t, counter == 2)
@@ -80,32 +80,32 @@ _iter_sub_test :: proc(t: ^testing.T) {
     Baz :: struct { using base: Base }
     Named :: struct { name: string, }
     
-    sys: System(union{Foo, Bar, Baz}, union{Base, Named})
-    init(&sys, default_cap = 64)
-    defer shutdown(&sys)
+    ents: Entities(union{Foo, Bar, Baz}, union{Base, Named})
+    init(&ents, default_cap = 64)
+    defer shutdown(&ents)
 
     handles := []Handle{
-        create(&sys, Bar{name = "b"}),
-        create(&sys, Bar{name = "b"}),
-        create(&sys, Foo{name = "f"}),
-        create(&sys, Baz{}),
-        create(&sys, Foo{name = "f"}),
-        create(&sys, Foo{name = "f"}),
-        create(&sys, Bar{name = "b"}),
-        create(&sys, Foo{name = "f"}),
-        create(&sys, Baz{}),
-        create(&sys, Bar{name = "b"}),
-        create(&sys, Baz{}),
-        create(&sys, Baz{}),
-        create(&sys, Foo{name = "f"}),
+        create(&ents, Bar{name = "b"}),
+        create(&ents, Bar{name = "b"}),
+        create(&ents, Foo{name = "f"}),
+        create(&ents, Baz{}),
+        create(&ents, Foo{name = "f"}),
+        create(&ents, Foo{name = "f"}),
+        create(&ents, Bar{name = "b"}),
+        create(&ents, Foo{name = "f"}),
+        create(&ents, Baz{}),
+        create(&ents, Bar{name = "b"}),
+        create(&ents, Baz{}),
+        create(&ents, Baz{}),
+        create(&ents, Foo{name = "f"}),
     }
 
-    destroy(&sys, handles[0])
-    destroy(&sys, handles[1])
-    destroy(&sys, handles[2])
+    destroy(&ents, handles[0])
+    destroy(&ents, handles[1])
+    destroy(&ents, handles[2])
 
     counter := 0
-    for it := begin_sub(&sys, Named); _ in next(&it) {
+    for it := begin_sub(&ents, Named); _ in next(&it) {
         counter += 1
     }
     testing.expect(t, counter == 6)
