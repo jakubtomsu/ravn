@@ -104,7 +104,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
         state.cam_vel += force * delta * 10
 
         contacts: []coll.Contact
-        state.cam_pos, state.cam_vel = coll.collide_sphere_swept(state.cam_pos, state.cam_vel, 0.2)
+        state.cam_pos, state.cam_vel, _ = coll.collide_sphere(state.cam_pos, state.cam_vel, 0.2)
         // state.cam_pos += state.cam_vel * delta
 
         rv.update_draw_layer(0, rv.make_perspective_3d_camera(rv.get_screen_size(), state.cam_pos, cam_rot))
@@ -113,7 +113,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.set_draw_depth(.Depth)
 
-    N :: 64
+    N :: 32
     SCALE :: 8
     HEIGHT :: 20
 
@@ -122,7 +122,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     state.radius = rv.nsin(rv.get_time() * 0.25)
 
-    coll.add_mesh_shape(state.mesh, 5)
+    coll.add_mesh_shape(state.mesh, 5, scale = 1.1)
     coll.add_mesh_shape(state.mesh, 7, rad = 0.5, rot = linalg.quaternion_angle_axis_f32(rv.get_time(), {1, 0, 0}))
     coll.add_mesh_shape(state.mesh, {-1, 1, 0}, rot = linalg.quaternion_angle_axis_f32(rv.get_time() * 0.1, {1, 0, 0}))
     coll.add_sphere_shape({0, 2, 5}, 2)
@@ -185,8 +185,8 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     sweep, sweep_ok := coll.sweep_point(state.cam_pos, mat[2], range = 100)
     hit := state.cam_pos + mat[2] * sweep.t
+    // rv.draw_capsule_line(sweep.end, sweep.end + sweep.normal*0.1, 0.05)
 
-    rv.draw_capsule_line(1, 2, 0.5, rv.RED)
 
     // {
 

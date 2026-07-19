@@ -70,6 +70,39 @@ Arena :: struct {
     backing:    runtime.Allocator,
 }
 
+#assert(size_of(Shape) == 64)
+Shape :: struct #all_or_none #align(64) {
+    using _: struct #raw_union {
+        using _:    struct {
+            pos:    [3]f32,
+            handle: Mesh_Handle,
+        },
+        pos_simd:   #simd[4]f32,
+    },
+    using _: struct #raw_union {
+        using _: struct {
+            ext:    [3]f32,
+            rad:    f32,
+        },
+        ext_simd:   #simd[4]f32,
+    },
+    rot:            quaternion128,
+
+    // mass_inv:       f32,
+    // ignored_layers: bit_set[0..<NUM_LAYERS],
+    id:             u64,
+    layer:          u8,
+    kind:           Shape_Kind,
+}
+
+Shape_Kind :: enum u8 {
+    Sphere,
+    Aligned_Box,
+    Oriented_Box,
+    Capsule,
+    Mesh,
+}
+
 Mesh :: struct {
     arena:          Arena_Handle,
     bounds_min:     [3]f32,
@@ -628,10 +661,10 @@ collide_sphere_swept :: proc(
 
         dir := linalg.normalize0(vel)
 
-        // if dir == 0 || range < rad*0.0 {
-        //     pos += dir * range
-        //     return pos, vel
-        // }
+        if dir == 0 || range < rad*0.1 {
+            pos += dir * range
+            return pos, vel
+        }
 
         sweep, sweep_hit := sweep_sphere(pos, move = dir, rad = rad, range = range, ignore_layers = ignore_layers)
 
@@ -952,8 +985,6 @@ find_contacts_sphere :: proc(
         ignore_layers = ignore_layers,
     )
 
-    base.log_dump(num_contacts)
-
     num_tri_contacts := generate_filtered_sphere_vs_triangle_contacts(
         pos = pos,
         rad = rad,
@@ -996,10 +1027,6 @@ find_contacts_sphere_buf :: proc(
                     out_triangles = out_triangles[num_triangles:],
                 )
 
-                if shape.kind == .Mesh {
-                    base.log_dump(num_new_triangles)
-                }
-
                 contacts := out_contacts[num_contacts:][:num_new_contacts]
                 tris := out_triangles[:num_triangles][:num_new_triangles]
 
@@ -1015,7 +1042,7 @@ find_contacts_sphere_buf :: proc(
                 num_triangles += num_new_triangles
 
                 if
-                    int(num_contacts) >= len(out_contacts) &&
+                    int(num_contacts) >= len(out_contacts) ||
                     int(num_triangles) >= len(out_triangles)
                 {
                     break node_loop

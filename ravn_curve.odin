@@ -41,16 +41,14 @@ curve_bezier :: proc(points: [4]$T, t: f32) -> (result: T) {
 }
 
 // Animation, physics sim, interpolation.
-// Based on two points with velocities.
 // C0/C1 continuity.
-// Explicit tangents.
 curve_hermite_points :: proc(points: [4]$T, t: f32) -> T {
     values := [4]T{points[0], points[1] - points[0], points[3], points[3] - points[2]}
-    // TODo
-    // values := [4]T{points[0], points[1] - points[0], points[2], points[3] - points[2]}
     return curve_hermite_tangents(values, t)
 }
 
+// Based on two points with velocities.
+// Explicit tangents.
 // Values are [p0, v0, p1, v1]
 curve_hermite_tangents :: proc(values: [4]$T, t: f32) -> T {
     M :: matrix[4, 4]f32{
@@ -117,4 +115,14 @@ curve_sample :: proc(curve: Curve_Kind, points: [4]$T, t: f32) -> T {
         return curve_b_spline(points, t)
     }
     return points[0]
+}
+
+spline_sample_linear :: proc(points: []$T, t: f32) -> T {
+    t_segment := fract(t)
+    i_base := max(0, int(floor(t)))
+    i0 := min(i_base + 0, len(points))
+    i1 := min(i_base + 1, len(points))
+    v0 := points[i0]
+    v1 := points[i1]
+    return lerp(v0, v1, t_segment)
 }

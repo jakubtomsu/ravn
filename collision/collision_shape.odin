@@ -4,39 +4,6 @@ import "../geometry"
 import "../bvh"
 import "core:math/linalg"
 
-#assert(size_of(Shape) == 64)
-Shape :: struct #all_or_none #align(64) {
-    using _: struct #raw_union {
-        using _:    struct {
-            pos:    [3]f32,
-            handle: Mesh_Handle,
-        },
-        pos_simd:   #simd[4]f32,
-    },
-    using _: struct #raw_union {
-        using _: struct {
-            ext:    [3]f32,
-            rad:    f32,
-        },
-        ext_simd:   #simd[4]f32,
-    },
-    rot:            quaternion128,
-
-    // mass_inv:       f32,
-    // ignored_layers: bit_set[0..<NUM_LAYERS],
-    id:             u64,
-    layer:          u8,
-    kind:           Shape_Kind,
-}
-
-Shape_Kind :: enum u8 {
-    Sphere,
-    Aligned_Box,
-    Oriented_Box,
-    Capsule,
-    Mesh,
-}
-
 @(require_results)
 sweep_point_vs_shape :: proc(
     pos:    [3]f32,
@@ -112,6 +79,12 @@ sweep_sphere_vs_shape :: proc(
 ) -> (t: f32, prim: i32, ok: bool) {
     t = range
     r := shape.rad + rad
+
+    if range <= 1e-5 {
+        return 0, 0, false
+    }
+
+    assert(r > 0)
 
     switch shape.kind {
     case .Sphere:

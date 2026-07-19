@@ -312,6 +312,18 @@ create_mesh_from_data :: proc(
     return handle, true
 }
 
+destroy_mesh :: proc(handle: Mesh_Handle) -> bool {
+    mesh, mesh_ok := _get_mesh(handle)
+    if !mesh_ok {
+        return false
+    }
+
+    mesh^ = {}
+
+    _state.meshes_gen[handle.index] += 1
+    _state.meshes_hash[handle.index] = 0
+    return true
+}
 
 
 
@@ -359,7 +371,7 @@ _get_texture :: proc(handle: Texture_Handle) -> (result: ^Texture, ok: bool) #op
 
 load_texture :: proc(path: string) -> (result: Texture_Handle, ok: bool) #optional_ok {
     npath := normalize_path(path, context.temp_allocator)
-    name := strip_path_name(npath)
+    name := asset_name_from_path(npath)
     base.log_info("Loading texture '%s' from path '%s'", name, npath)
     data, data_ok := get_file_data(npath)
     if !data_ok {
@@ -559,7 +571,7 @@ load_shader :: proc(path: string) -> (result: Shader_Handle, ok: bool) #optional
         source, source_ok := get_file_data(npath)
 
         if source_ok {
-            name := strip_path_name(npath)
+            name := asset_name_from_path(npath)
             return create_shader_from_source(name, cast(string)source)
         }
     }
@@ -567,7 +579,7 @@ load_shader :: proc(path: string) -> (result: Shader_Handle, ok: bool) #optional
     bin, bin_ok := get_file_data(strings_join(npath, ".bin", allocator = context.temp_allocator))
     
     if bin_ok {
-        name := strip_path_name(npath)
+        name := asset_name_from_path(npath)
         return create_shader_from_bin(name, bin)
     }
     
@@ -1764,10 +1776,10 @@ draw_line_sphere :: proc(
     draw_lines(..verts)
 }
 
-draw_line_cylinder :: proc(pos: [2][3]f32, rad: f32 = 1.0, col := WHITE, segments := 12) {
+draw_line_cylinder :: proc(pos_a, pos_b: [3]f32, rad: f32 = 1.0, col := WHITE, segments := 12) {
     if col.a < 0.01 do return
 
-    axis := linalg.normalize0(pos[1] - pos[0])
+    axis := linalg.normalize0(pos_b - pos_a)
 
     u := rad * linalg.normalize0(linalg.cross(axis, abs(axis.y) > 0.9 ? [3]f32{1, 0, 0} : [3]f32{0, 1, 0}))
     v := rad * linalg.normalize0(linalg.cross(u, axis))
@@ -1775,18 +1787,18 @@ draw_line_cylinder :: proc(pos: [2][3]f32, rad: f32 = 1.0, col := WHITE, segment
     circle := _calc_circle_points(segments)
 
     verts := make([]Vertex, 4 * 2 + segments * 2 * 2, context.temp_allocator)
-    verts[0] = pack_vertex(pos[0] + u, col = col); verts[1] = pack_vertex(pos[1] + u, col = col)
-    verts[2] = pack_vertex(pos[0] - u, col = col); verts[3] = pack_vertex(pos[1] - u, col = col)
-    verts[4] = pack_vertex(pos[0] + v, col = col); verts[5] = pack_vertex(pos[1] + v, col = col)
-    verts[6] = pack_vertex(pos[0] - v, col = col); verts[7] = pack_vertex(pos[1] - v, col = col)
+    verts[0] = pack_vertex(pos_a + u, col = col); verts[1] = pack_vertex(pos_b + u, col = col)
+    verts[2] = pack_vertex(pos_a - u, col = col); verts[3] = pack_vertex(pos_b - u, col = col)
+    verts[4] = pack_vertex(pos_a + v, col = col); verts[5] = pack_vertex(pos_b + v, col = col)
+    verts[6] = pack_vertex(pos_a - v, col = col); verts[7] = pack_vertex(pos_b - v, col = col)
 
     offs := 8
     p0 := circle[len(circle) - 1]
     for p1 in circle {
-        verts[offs + 0] = pack_vertex(pos[0] + u * p0.x + v * p0.y, col = col)
-        verts[offs + 1] = pack_vertex(pos[0] + u * p1.x + v * p1.y, col = col)
-        verts[offs + 2] = pack_vertex(pos[1] + u * p0.x + v * p0.y, col = col)
-        verts[offs + 3] = pack_vertex(pos[1] + u * p1.x + v * p1.y, col = col)
+        verts[offs + 0] = pack_vertex(pos_a + u * p0.x + v * p0.y, col = col)
+        verts[offs + 1] = pack_vertex(pos_a + u * p1.x + v * p1.y, col = col)
+        verts[offs + 2] = pack_vertex(pos_b + u * p0.x + v * p0.y, col = col)
+        verts[offs + 3] = pack_vertex(pos_b + u * p1.x + v * p1.y, col = col)
         p0 = p1
         offs += 4
     }

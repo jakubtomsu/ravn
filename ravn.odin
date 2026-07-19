@@ -694,7 +694,8 @@ shutdown_state :: proc() {
         }
 
         if .Dynamically_Allocated in file.flags {
-            delete(file.data, _state.allocator)
+            // FIXME
+            // delete(file.data, _state.allocator)
         }
     }
 
@@ -1148,6 +1149,8 @@ _load_builtin_assets :: proc() {
     for &handle, id in _state.builtin_mesh {
         handle = get_mesh_by_name(enum_to_string(id)) or_else panic("Failed to get builtin mesh")
     }
+
+    
 }
 
 
@@ -1337,6 +1340,8 @@ clear_arena :: proc(handle: Arena_Handle) {
         return
     }
 
+    free_all(collision.arena_allocator(arena.collision_arena))
+
     arena.spline_vert_num = 0
     arena.object_child_num = 0
     arena.vert_upload_offs = 0
@@ -1492,6 +1497,16 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
     index_buf := slice.reinterpret([]u16, bin[header.mesh_index_offs:])[:header.mesh_index_num]
     spline_vert_buf := slice.reinterpret([]rscn.Spline_Vertex, bin[header.spline_vert_offs:])[:header.spline_vert_num]
 
+    if arena_handle == {} {
+        arena_handle = create_arena(
+            usage = .Static,
+            max_mesh_verts = len(vert_buf),
+            max_mesh_indices = len(index_buf),
+            max_spline_verts = len(spline_vert_buf),
+            max_total_children = header.object_num,
+        )
+    }
+
     vertices := make([]Vertex, len(vert_buf), _state.allocator)
     for i in 0..<len(vertices) {
         v := vert_buf[i]
@@ -1505,16 +1520,6 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
             uv = v.uv,
             normal = unpack_unorm8(v.normal.xyzz).xyz * 2.0 - 1.0,
             col = col,
-        )
-    }
-
-    if arena_handle == {} {
-        arena_handle = create_arena(
-            usage = .Static,
-            max_mesh_verts = len(vert_buf),
-            max_mesh_indices = len(index_buf),
-            max_spline_verts = len(spline_vert_buf),
-            max_total_children = header.object_num,
         )
     }
 
@@ -2378,6 +2383,15 @@ _get_file_by_hash :: proc(hash: Hash) -> (file: ^File, ok: bool) {
 // MARK: Collision
 //
 
+invalidate_collision_mesh :: proc(mesh_handle: Mesh_Handle) {
+    mesh, mesh_ok := _get_mesh(mesh_handle)
+    if !mesh_ok {
+        base.log_err("Failed to create collision mesh, invalid mesh handle")
+        return
+    }
+    mesh.collision_mesh = {}
+}
+
 get_or_create_collision_mesh :: proc(mesh_handle: Mesh_Handle) -> (result: collision.Mesh_Handle, ok: bool) #optional_ok {
     #assert(size_of(Vertex_Index) == size_of(u16))
 
@@ -2408,8 +2422,6 @@ get_or_create_collision_mesh :: proc(mesh_handle: Mesh_Handle) -> (result: colli
 
     mesh.collision_mesh = result
 
-    base.log_info("Created collision mesh for %v", mesh_handle)
-
     return result, true
 }
 
@@ -2426,7 +2438,7 @@ create_sound :: audio.create_sound
 destroy_sound :: audio.destroy_sound
 
 load_sound_resource :: proc(path: string) -> (result: Sound_Resource_Handle, ok: bool) #optional_ok {
-    name := strip_path_name(path)
+    name := asset_name_from_path(path)
     // TODO: register the resource internally for hot-reload
     data, data_ok := get_file_data(path)
     if !data_ok {
@@ -2515,15 +2527,21 @@ normalize_path :: proc(path: string, allocator := context.temp_allocator) -> (re
     return string(buf[:write_offs])
 }
 
-// Convert VFS path to an asset name, for example:
+// Convert VFS path to an asset name by stripping the directory and the last extension, for example:
 // foo/bar/something.bin -> something
-// foo.data.txt -> foo
-strip_path_name :: proc "contextless" (str: string) -> (result: string) {
+// foo.ps.hlsl -> foo.ps
+@(require_results)
+asset_name_from_path :: proc "contextless" (str: string) -> (result: string) {
+    file_name := file_name_from_path(str)
+    dot_index := bytes.last_index_byte(transmute([]byte)file_name, '.')
+    return file_name[:dot_index]
+}
+
+@(require_results)
+file_name_from_path :: proc "contextless" (str: string) -> string {
     back_index := bytes.last_index_byte(transmute([]byte)str,'\\')
     forw_index := bytes.last_index_byte(transmute([]byte)str,'/')
-    result = str[max(back_index, forw_index) + 1:]
-    dot_index := bytes.index_byte(transmute([]byte)result, '.')
-    return result[:dot_index]
+    return str[max(back_index, forw_index) + 1:]
 }
 
 @(require_results)

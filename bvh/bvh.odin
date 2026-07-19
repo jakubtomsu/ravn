@@ -58,6 +58,7 @@ init :: proc(
 // Re-initialize the primitive buffer only and clears the existing nodes.
 init_prims :: proc(bvh: ^BVH, prims: [][2][3]f32) {
     assert(len(prims) < int(max(u16)))
+    assert(len(bvh.nodes) >= len(prims))
     assert(len(bvh.indices) >= len(prims))
 
     bvh.prims = prims

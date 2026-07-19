@@ -926,7 +926,6 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
             )
 
             if .Loop not_in sound.flags && sound.frame > end_time {
-                base.log_info("destroying sound")
                 destroy = true
             }
         }
