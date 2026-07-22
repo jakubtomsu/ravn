@@ -120,21 +120,21 @@ _logger_prefix := [?]string{
 // MARK: Module
 
 // NOTE: This structure is passed between DLLs when hot-reloading.
-Module_Desc :: struct {
+App_Desc :: struct {
     state_size: i64,
-    init:       Module_Init_Proc,
-    shutdown:   Module_Shutdown_Proc,
-    update:     Module_Update_Proc,
+    init:       App_Init_Proc,
+    shutdown:   App_Shutdown_Proc,
+    update:     App_Update_Proc,
 }
 
 // Called after internal init is done to let the app initialize.
-Module_Init_Proc ::       #type proc()
+App_Init_Proc ::       #type proc()
 // Called after request_shutdown() but before the engine cleans up.
-Module_Shutdown_Proc ::   #type proc()
+App_Shutdown_Proc ::   #type proc()
 // Called every frame.
 // Usually, hot_ptr is nil. But after a hotreload, hot_ptr is the last returned data_ptr.
 // This way you can
-Module_Update_Proc ::     #type proc(hot_ptr: rawptr) -> (data_ptr: rawptr)
+App_Update_Proc ::     #type proc(hot_ptr: rawptr) -> (data_ptr: rawptr)
 
 
 

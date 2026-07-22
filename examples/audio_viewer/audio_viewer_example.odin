@@ -22,14 +22,14 @@ State :: struct {
     samples: []f32,
 }
 
-@export _module_desc := rv.Module_Desc{
+@export _app_desc := rv.App_Desc{
     update = _update,
     init = _init,
     shutdown = _shutdown,
 }
 
 main :: proc() {
-    rv.run_main_loop(_module_desc)
+    rv.run_main_loop(_app_desc)
 }
 
 _init :: proc() {

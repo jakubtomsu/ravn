@@ -6,7 +6,7 @@ import "core:math/linalg"
 
 SIZE :: [2]i32{100, 100}
 
-@export _module_desc := rv.Module_Desc{
+@export _app_desc := rv.App_Desc{
     state_size = size_of(State),
     update = _update,
     init = _init,
@@ -14,7 +14,7 @@ SIZE :: [2]i32{100, 100}
 }
 
 main :: proc() {
-    rv.run_main_loop(_module_desc)
+    rv.run_main_loop(_app_desc)
 }
 
 _state: ^State

@@ -20,7 +20,7 @@ State :: struct {
     sound_x:    f32,
 }
 
-@export _module_desc := rv.Module_Desc {
+@export _app_desc := rv.App_Desc {
     state_size = size_of(State),
     init = _init,
     shutdown = _shutdown,
@@ -28,7 +28,7 @@ State :: struct {
 }
 
 main :: proc() {
-    rv.run_main_loop(_module_desc)
+    rv.run_main_loop(_app_desc)
 }
 
 ATTENUATION_RANGE :: [2]f32{1, 40}

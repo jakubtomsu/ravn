@@ -3,10 +3,10 @@ package ravn_example_hello
 // This would look like 'import rv "ravn"' in your own projects.
 import rv "../.."
 
-// Module_Desc structure let's Ravn know which procedures to call to init, update frame etc.
+// App_Desc structure let's Ravn know which procedures to call to init, update frame etc.
 // The '@export' qualifier makes sure it's visible when running in hot-reload mode.
 // The state_size is optional for error checking during hotreload.
-@export _module_desc := rv.Module_Desc{
+@export _app_desc := rv.App_Desc{
     update = _update,
 }
 
@@ -15,7 +15,7 @@ import rv "../.."
 main :: proc() {
     // If you really want you can write your own main loop directly,
     // but you have to handle the platform differences manually.
-    rv.run_main_loop(_module_desc)
+    rv.run_main_loop(_app_desc)
 }
 
 // The update procedure executes every frame.

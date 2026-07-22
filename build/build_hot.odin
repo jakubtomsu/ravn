@@ -19,8 +19,8 @@ when ODIN_OS == .Windows {
 
 Hotreload_Module :: struct {
     mod:        platform.Module,
-    desc:       base.Module_Desc,
-    callback:   proc "contextless" (rawptr, base.Module_Desc) -> rawptr,
+    desc:       base.App_Desc,
+    callback:   proc "contextless" (rawptr, base.App_Desc) -> rawptr,
 }
 
 Hotreload_File :: struct {
@@ -247,14 +247,14 @@ load_hotreload_module :: proc(path: string) -> (result: Hotreload_Module, ok: bo
         return {}, false
     }
 
-    module_desc_ptr := cast(^base.Module_Desc)platform.get_module_symbol_address(module, "_module_desc")
+    app_desc_ptr := cast(^base.App_Desc)platform.get_module_symbol_address(module, "_app_desc")
 
-    if module_desc_ptr == nil {
-        base.log_err("Hotreload: Failed to find _module_desc data")
+    if app_desc_ptr == nil {
+        base.log_err("Hotreload: Failed to find _app_desc data")
         return {}, false
     }
 
-    result.desc = module_desc_ptr^
+    result.desc = app_desc_ptr^
 
     result.callback = auto_cast(platform.get_module_symbol_address(module, "_module_hot_step"))
 

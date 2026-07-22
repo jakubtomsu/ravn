@@ -37,10 +37,10 @@ Something *simple* you can prototype in, but also *stable* enough to make polish
 ```odin
 import rv "ravn"
 // Export app info to allow for hot reloading
-@export _module_desc := rv.Module_Desc{update = _update}
+@export _app_desc := rv.App_Desc{update = _update}
 
 main :: proc() {
-    rv.run_main_loop(_module_desc)
+    rv.run_main_loop(_app_desc)
 }
 
 _update :: proc(_: rawptr) -> rawptr {

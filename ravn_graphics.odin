@@ -7,7 +7,6 @@ import "base"
 import "shader_compiler"
 import "rscn"
 import "base:intrinsics"
-import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 import stbi "vendor:stb/image"
@@ -577,12 +576,12 @@ load_shader :: proc(path: string) -> (result: Shader_Handle, ok: bool) #optional
     }
 
     bin, bin_ok := get_file_data(strings_join(npath, ".bin", allocator = context.temp_allocator))
-    
+
     if bin_ok {
         name := asset_name_from_path(npath)
         return create_shader_from_bin(name, bin)
     }
-    
+
     base.log_err("Failed to load vertex shader: couldn't load '%s'", path)
     return {}, false
 }
@@ -672,7 +671,7 @@ float4 ps_main(RV_Varyings vars, uint frontface : SV_IsFrontFace) : SV_Target {
 ` // Your code contiunes the shader
 
     QUICK_SHADER_SUFFIX :: `
-    return col;    
+    return col;
 }`
 
     experimental_create_quick_pixel_shader :: proc(name: string, source_body: string) -> Shader_Handle {
@@ -687,7 +686,7 @@ _try_get_equivalent_existing_shader :: proc(name: string, input_hash: Hash) -> (
         existing := _get_shader(existing_handle) or_else panic("Found invalid shader")
         if existing.hash == input_hash {
             return existing_handle, true
-        }        
+        }
     }
     return {}, false
 }
@@ -868,7 +867,7 @@ get_default_draw_state :: proc() -> (result: Draw_State) {
         fill_mode = .All,
         depth_mode = .None,
     }
-    
+
     _set_draw_texture(&result, _state.builtin_texture[.Default])
 
     return result
@@ -1919,55 +1918,6 @@ _draw_batch_table_init :: proc(table: ^$T/Draw_Batch_Table($Inst)) {
     }
 }
 
-_draw_batch_table_copy_batches :: proc(
-    dst_table:  ^$T/Draw_Batch_Table($Inst),
-    src_table:  ^T,
-) {
-    assert(dst_table != src_table)
-    copied_len := min(src_table.len, DRAW_BATCH_TABLE_BATCHES - dst_table.len)
-
-    intrinsics.mem_copy_non_overlapping(
-        &dst_table.keys[dst_table.len],
-        &src_table.keys[0],
-        copied_len * size_of(dst_table.keys[0]),
-    )
-
-    for batch, i in src_table.batches[:src_table.len] {
-        dst_batch := &dst_table.batches[int(dst_table.len) + i]
-
-        dst_batch^ = {
-            consts_offset = 0,
-            last_len = batch.last_len,
-            len = batch.len,
-            cap = batch.cap,
-            inst_data = _clone(batch.inst_data, batch.len),
-            cull_data = nil,
-        }
-
-        intrinsics.mem_copy_non_overlapping(
-            &dst_table.batches[dst_table.len],
-            &src_table.batches[0],
-            copied_len * size_of(dst_table.batches[0]),
-        )
-
-    }
-
-    dst_table.len += copied_len
-
-    return
-
-    _clone :: proc(ptr: [^]$T, #any_int len: int) -> [^]T {
-        data, err := runtime.mem_alloc_non_zeroed(size_of(T) * len, align_of(T), context.temp_allocator)
-        if err != nil {
-            return nil
-        }
-
-        intrinsics.mem_copy_non_overlapping(raw_data(data), ptr, size_of(T) * len)
-
-        return cast([^]T)raw_data(data)
-    }
-}
-
 _draw_batch_table_push :: proc(table: ^$T/Draw_Batch_Table($Inst), key: Draw_Batch_Key, inst: Inst) #no_bounds_check {
     index, index_ok := _draw_batch_table_find_or_create(table, key)
     if !index_ok {
@@ -2022,11 +1972,9 @@ _draw_batch_push :: proc(batch: ^Draw_Batch($Inst), inst: Inst) #no_bounds_check
     if batch.len >= batch.cap {
         batch.cap = max(256 + batch.last_len, batch.cap * 2)
         new_inst := make([^]Inst, batch.cap, context.temp_allocator)
-
         if batch.len > 0 {
             intrinsics.mem_copy_non_overlapping(rawptr(new_inst), batch.inst_data, size_of(Inst) * batch.len)
         }
-
         batch.inst_data = new_inst
     }
 
@@ -2036,6 +1984,7 @@ _draw_batch_push :: proc(batch: ^Draw_Batch($Inst), inst: Inst) #no_bounds_check
 
 _prepare_mesh_draw_batch_cull :: proc(batch: ^Draw_Batch(Mesh_Inst), key: Draw_Batch_Key) #no_bounds_check {
     batch_num := (int(batch.len) + LANES) / LANES
+    // Cull data is actually per frame unlike instance data, which may be kept for inspector
     batch.cull_data = make([^]Draw_Cull_Group, batch_num, context.temp_allocator)
 
     mesh := &_state.meshes[key.asset_index]
@@ -2124,25 +2073,6 @@ _cull_draw_batch :: proc(
     batch.cap = 0
     batch.len = u32(culled_len)
 }
-
-copy_layer_batches :: proc(
-    #any_int dst_layer_index:   i32,
-    #any_int src_layer_index:   i32,
-) {
-    if dst_layer_index == src_layer_index {
-        assert(false, "Copy must be between two distinc layers, got same src/dst index")
-        return
-    }
-
-    dst_layer := &_state.draw_layers[dst_layer_index]
-    src_layer := &_state.draw_layers[src_layer_index]
-
-    _draw_batch_table_copy_batches(&dst_layer.meshes, &src_layer.meshes)
-    _draw_batch_table_copy_batches(&dst_layer.sprites, &src_layer.sprites)
-    _draw_batch_table_copy_batches(&dst_layer.triangles, &src_layer.triangles)
-    _draw_batch_table_copy_batches(&dst_layer.lines, &src_layer.lines)
-}
-
 
 
 
@@ -2490,7 +2420,7 @@ render_layer :: proc(
 
     gpu.scope_pass("ravn-layer", pass_desc)
 
-    // BIG WARNING:
+    // WARNING:
     // On certain GPU backends, the pipeline state has to be baked and a new pipeline has to be created,
     // when it's not already in pipeline cache.
     // For this reason a lot of care should be taken to minimize possible states.

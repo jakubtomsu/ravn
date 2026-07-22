@@ -22,7 +22,7 @@ Ball :: struct {
     radius: f32,
 }
 
-@export _module_desc := rv.Module_Desc {
+@export _app_desc := rv.App_Desc {
     state_size = size_of(State),
     init = _init,
     shutdown = _shutdown,
@@ -30,7 +30,7 @@ Ball :: struct {
 }
 
 main :: proc() {
-    rv.run_main_loop(_module_desc)
+    rv.run_main_loop(_app_desc)
 }
 
 _init :: proc() {

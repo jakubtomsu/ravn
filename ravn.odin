@@ -18,22 +18,18 @@ import "core:math"
 import "base:runtime"
 import debug_trace "core:debug/trace"
 
-// TODO: actual 3d transform structure
 // TODO: objects in scene data
 // TODO: asset_load and reload
 // TODO: consistent get_* and no get API!
 // TODO: font state
 // TODO: try core:image?
 // TODO: separate hash table size from backing array size?
-// TODO: abstract log_error and log_warn etc to comptime disable logging?
-// TODO: More "summary" info when app exist - min/max/avg cpu/gpu frame time, num draws, temp allocs, ..?
 // TODO: default module init/shutdown procs
 // TODO: load_* vs create_*, insert_* naming convention, and resource management naming in general
 // TODO: DXT texture compression
 // TODO: figure out file flushing and custom file data loop
 // TODO: all resources should return a handle if an identifier exists already
 // TODO: fix scene mesh normals
-// TODO: draw_2D variants
 
 RELEASE :: #config(RAVN_RELEASE, base.RELEASE)
 VALIDATION :: #config(RAVN_VALIDATION, !RELEASE)
@@ -79,6 +75,8 @@ LANES :: 8
 
 Hash :: u64
 
+HANDLE_INDEX_INVALID :: ~Handle_Index(0)
+
 Handle_Index :: u16
 Handle_Gen :: u8
 
@@ -87,7 +85,6 @@ Handle :: struct {
     gen:    Handle_Gen,
 }
 
-HANDLE_INDEX_INVALID :: ~Handle_Index(0)
 
 Arena_Handle :: distinct Handle
 Object_Handle :: distinct Handle
@@ -100,10 +97,10 @@ Shader_Handle :: distinct Handle
 Sound_Resource_Handle :: audio.Resource_Handle
 Sound_Handle :: audio.Sound_Handle
 
-Module_Desc :: base.Module_Desc
-Module_Init_Proc :: base.Module_Init_Proc
-Module_Shutdown_Proc :: base.Module_Shutdown_Proc
-Module_Update_Proc :: base.Module_Update_Proc
+App_Desc :: base.App_Desc
+App_Init_Proc :: base.App_Init_Proc
+App_Shutdown_Proc :: base.App_Shutdown_Proc
+App_Update_Proc :: base.App_Update_Proc
 
 Rect :: struct {
     min:    [2]f32,
@@ -128,8 +125,8 @@ State :: struct #align(64) {
     allocator:                  runtime.Allocator,
     window:                     platform.Window,
     dpi_scale:                  f32,
-    module_desc:                Module_Desc,
-    module_data:                rawptr,
+    app_desc:                   App_Desc,
+    app_data:                   rawptr,
     shutdown_requested:         bool,
     submitted_layers:           bool,
 
@@ -360,18 +357,17 @@ when ODIN_OS == .JS {
     }
 
 } else when ODIN_BUILD_MODE == .Dynamic {
-    @(export) _module_hot_step :: proc "contextless" (prev_state: ^State, desc: Module_Desc) -> ^State {
-        return __module_hot_step(prev_state, desc)
+    @(export) _app_hot_step :: proc "contextless" (prev_state: ^State, desc: App_Desc) -> ^State {
+        return __app_hot_step(prev_state, desc)
     }
 }
-
 
 // Default runner for a ravn app.
 //
 // Calling this does nothing when compiling as a DLL, it's the responsibility
 // of whoever loaded the DLL (e.g. hotreload runner) to call the app.
 // NOTE: Things like reload never get called in this mode.
-run_main_loop :: proc(desc: Module_Desc) {
+run_main_loop :: proc(desc: App_Desc) {
     ensure(desc.update != nil)
 
     when ODIN_BUILD_MODE == .Dynamic {
@@ -381,7 +377,7 @@ run_main_loop :: proc(desc: Module_Desc) {
     } else when ODIN_OS == .JS {
 
         init_state(context.allocator)
-        _state.module_desc = desc
+        _state.app_desc = desc
 
     } else when ODIN_OS == .Windows || ODIN_OS == .Linux || ODIN_OS == .Darwin {
 
@@ -395,14 +391,8 @@ run_main_loop :: proc(desc: Module_Desc) {
         }
 
         for {
-            if !begin_frame() {
+            if !_app_update_frame(desc) {
                 break
-            }
-
-            _state.module_data = desc.update(nil)
-
-            if !_state.ended_frame {
-                end_frame()
             }
         }
 
@@ -417,31 +407,12 @@ run_main_loop :: proc(desc: Module_Desc) {
     }
 }
 
-__js_step :: proc(dt: f32) -> (keep_running: bool) {
-    assert(_state != nil)
-    assert(_state.module_desc.update != nil)
-
-    context = get_context()
-
-    if !_state.initialized {
-        if gpu.is_init_done() {
-            _post_gpu_init()
-            if _state.module_desc.init != nil {
-                _state.module_desc.init()
-            }
-        } else {
-            return true
-        }
-    }
-
+_app_update_frame :: proc(desc: App_Desc, hot_ptr: rawptr = nil) -> bool {
     if !begin_frame() {
-        if _state.module_desc.shutdown != nil {
-            _state.module_desc.shutdown()
-        }
         return false
     }
 
-    _state.module_data = _state.module_desc.update(nil)
+    _state.app_data = desc.update(hot_ptr)
 
     if !_state.ended_frame {
         end_frame()
@@ -450,7 +421,34 @@ __js_step :: proc(dt: f32) -> (keep_running: bool) {
     return true
 }
 
-__module_hot_step :: proc "contextless" (prev_state: ^State, desc: Module_Desc) -> ^State {
+__js_step :: proc(dt: f32) -> (keep_running: bool) {
+    assert(_state != nil)
+    assert(_state.app_desc.update != nil)
+
+    context = get_context()
+
+    if !_state.initialized {
+        if gpu.is_init_done() {
+            _post_gpu_init()
+            if _state.app_desc.init != nil {
+                _state.app_desc.init()
+            }
+        } else {
+            return true
+        }
+    }
+
+    if !_app_update_frame(_state.app_desc) {
+        if _state.app_desc.shutdown != nil {
+            _state.app_desc.shutdown()
+        }
+        return false
+    }
+
+    return true
+}
+
+__app_hot_step :: proc "contextless" (prev_state: ^State, desc: App_Desc) -> ^State {
     hotreloaded := false
 
     if prev_state == nil {
@@ -477,20 +475,13 @@ __module_hot_step :: proc "contextless" (prev_state: ^State, desc: Module_Desc) 
     }
 
     context = get_context()
-
     assert(desc.update != nil)
 
-    if !begin_frame() {
+    if !_app_update_frame(desc, hot_ptr = hotreloaded ? _state.app_data : nil) {
         if desc.shutdown != nil {
             desc.shutdown()
         }
         return nil
-    }
-
-    _state.module_data = desc.update(hotreloaded ? _state.module_data : nil)
-
-    if !_state.ended_frame {
-        end_frame()
     }
 
     return _state
@@ -546,15 +537,12 @@ init_state :: proc(allocator: runtime.Allocator) {
     base.log_info("Ravn context initialized")
 
     base.log_info("Initializing platform...")
-
     platform.init(&_state.platform_state)
-
     platform.register_default_exception_handler()
 
     _state.start_time = platform.get_time_ns()
 
     base.log_info("Initializing audio...")
-
     if !audio.init(&_state.audio_state) {
         panic("Failed to initialize audio")
     }
@@ -569,7 +557,6 @@ init_state :: proc(allocator: runtime.Allocator) {
     _state.window = platform.create_window("Ravn App", style = .Regular, high_dpi = true)
 
     base.log_info("Initializing GPU...")
-
     if !gpu.init(&_state.gpu_state, platform.get_native_window_ptr(_state.window)) {
         panic("Failed to initialize GPU")
     }
@@ -864,113 +851,35 @@ begin_frame :: proc() -> (keep_running: bool) {
 
     _perf_counter_add(.Frame_Time, _state.frame_dur_ns)
 
-    _clear_draw_layers()
-
     _state.dynamic_vert_upload_offs = 0
 
     _state.dpi_scale = platform.get_window_dpi_scale(_state.window)
-    // base.log_info("DPI scale: ", _state.dpi_scale)
 
-    _state.input.mouse_delta = 0
-    _state.input.scroll_delta = 0
-
-    delta := get_delta_time()
-    _begin_input_digital_buffer_frame(&_state.input.keys, delta)
-    _begin_input_digital_buffer_frame(&_state.input.mouse_buttons, delta)
-    for &gp in _state.input.gamepads {
-        _begin_input_digital_buffer_frame(&gp.buttons, delta)
-        gp.axes = {}
-    }
+    _input_clear_temp_state(&_state.input, get_delta_time())
 
     for event in platform.poll_window_events(_state.window) {
         switch v in event {
         case platform.Event_Exit:
             keep_running = false
 
-        case platform.Event_Key:
-            if v.pressed {
-                _input_digital_press(&_state.input.keys, v.key)
-            } else {
-                _input_digital_release(&_state.input.keys, v.key)
-            }
-
-        case platform.Event_Mouse_Button:
-            if v.pressed {
-                _input_digital_press(&_state.input.mouse_buttons, v.button)
-            } else {
-                _input_digital_release(&_state.input.mouse_buttons, v.button)
-            }
-
-        case platform.Event_Mouse:
-            _state.input.mouse_delta.x += f32(v.move.x)
-            _state.input.mouse_delta.y += f32(v.move.y)
-            _state.input.mouse_pos.x = f32(v.pos.x)
-            _state.input.mouse_pos.y = f32(v.pos.y)
-
-        case platform.Event_Scroll:
-            _state.input.scroll_delta += v.delta
-
         case platform.Event_Window_Size:
+
+        case platform.Event_Key, platform.Event_Mouse_Button, platform.Event_Mouse, platform.Event_Scroll:
+            _input_apply_event(&_state.input, event)
         }
     }
 
     for i in 0..<MAX_GAMEPADS {
-        inp, inp_ok := platform.get_gamepad_state(i)
-        if !inp_ok {
-            _state.input.gamepads[i] = {}
-            _state.input.gamepads_connected -= {i}
-            continue
-        } else {
-            _state.input.gamepads_connected += {i}
-        }
-
-        gpad := &_state.input.gamepads[i]
-
-        for btn in Gamepad_Button {
-            if btn in inp.buttons {
-                _input_digital_press(&gpad.buttons, btn)
-            } else {
-                _input_digital_release(&gpad.buttons, btn)
-            }
-        }
-
-        gpad.axes[.Left_Trigger] = inp.axes[.Left_Trigger] > 0.1 ? clamp(gpad.axes[.Left_Trigger], 0, 1) : 0
-        gpad.axes[.Right_Trigger] = inp.axes[.Right_Trigger] > 0.1 ? clamp(gpad.axes[.Right_Trigger], 0, 1) : 0
-
-        l_thumb := [2]f32{
-            inp.axes[.Left_Thumb_X],
-            inp.axes[.Left_Thumb_Y],
-        }
-
-        r_thumb := [2]f32{
-            inp.axes[.Right_Thumb_X],
-            inp.axes[.Right_Thumb_Y],
-        }
-
-        l_len := linalg.length(l_thumb)
-        r_len := linalg.length(r_thumb)
-
-        if l_len < 0.1 {
-            l_thumb = 0
-        } else if l_len > 1 {
-            l_thumb = l_thumb / l_len
-        }
-
-        if r_len < 0.1 {
-            r_thumb = 0
-        } else if r_len > 1 {
-            r_thumb = r_thumb / r_len
-        }
-
-        gpad.axes[.Left_Thumb_X] = l_thumb.x
-        gpad.axes[.Left_Thumb_Y] = l_thumb.y
-        gpad.axes[.Right_Thumb_X] = r_thumb.x
-        gpad.axes[.Right_Thumb_Y] = r_thumb.y
+        state, state_ok := platform.get_gamepad_state(i)
+        _input_apply_gamepad_state(&_state.input, i, state = state, state_ok = state_ok)
     }
 
+    // HACK
     if _state.frame_index < 5 {
         _state.input.mouse_delta = 0
     }
+
+    _clear_draw_layers()
 
     changed_files := make([dynamic]string, 0, 64, context.temp_allocator)
 
@@ -1149,8 +1058,6 @@ _load_builtin_assets :: proc() {
     for &handle, id in _state.builtin_mesh {
         handle = get_mesh_by_name(enum_to_string(id)) or_else panic("Failed to get builtin mesh")
     }
-
-    
 }
 
 
@@ -1716,210 +1623,6 @@ load_scene_from_data :: proc(txt: string, bin: []byte, arena_handle: Arena_Handl
 
     return arena_handle, true
 }
-
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Input
-//
-
-MAX_GAMEPADS :: platform.MAX_GAMEPADS
-
-Key :: platform.Key
-Mouse_Button :: platform.Mouse_Button
-Gamepad_Button :: platform.Gamepad_Button
-Gamepad_Axis :: platform.Gamepad_Axis
-
-Input :: struct {
-    mouse_delta:        [2]f32,
-    mouse_pos:          [2]f32,
-    scroll_delta:       [2]f32,
-
-    keys:               Input_Digital_Buffer(Key),
-    mouse_buttons:      Input_Digital_Buffer(Mouse_Button),
-
-    gamepads:           [MAX_GAMEPADS]Input_Gamepad,
-    gamepads_connected: bit_set[0..<MAX_GAMEPADS],
-}
-
-Input_Gamepad :: struct {
-    buttons:    Input_Digital_Buffer(Gamepad_Button),
-    axes:       [Gamepad_Axis]f32,
-}
-
-Input_Digital_Buffer :: struct($E: typeid) where intrinsics.type_is_enum(E) {
-    down:       bit_set[E],
-    pressed:    bit_set[E],
-    released:   bit_set[E],
-    repeated:   bit_set[E],
-    buffered:   bit_set[E],
-    timer:      [E]f32,
-}
-
-_begin_input_digital_buffer_frame :: proc(buf: ^Input_Digital_Buffer($T), delta: f32) {
-    buf.pressed = {}
-    buf.repeated = {}
-    buf.released = {}
-    for &t in buf.timer {
-        t += delta
-    }
-}
-
-_input_digital_press :: proc(buf: ^Input_Digital_Buffer($T), elem: T) {
-    if elem not_in buf.down {
-        buf.pressed += {elem}
-        buf.buffered += {elem}
-        buf.timer[elem] = 0
-    } else {
-        buf.repeated += {elem}
-    }
-    buf.down += {elem}
-}
-
-_input_digital_release :: proc(buf: ^Input_Digital_Buffer($T), elem: T) {
-    if elem in buf.down {
-        buf.released += {elem}
-    }
-    buf.down -= {elem}
-}
-
-
-// Keys
-
-get_key_down :: proc(key: Key) -> bool {
-    return key in _state.input.keys.down
-}
-
-// Down time is 0 on pressed.
-get_key_down_time :: proc(key: Key) -> f32 {
-    return _state.input.keys.timer[key]
-}
-
-get_key_repeated :: proc(key: Key) -> bool {
-    return key in _state.input.keys.repeated
-}
-
-get_key_released :: proc(key: Key) -> bool {
-    return key in _state.input.keys.released
-}
-
-// buf: buffering window duration in seconds
-get_key_pressed :: proc(key: Key, buf: f32 = 0) -> bool {
-    if buf > 0.0001 &&
-        key in _state.input.keys.buffered &&
-        _state.input.keys.timer[key] <= buf
-    {
-        _state.input.keys.buffered -= {key}
-        return true
-    }
-
-    if key in _state.input.keys.pressed {
-        return true
-    }
-
-    return false
-}
-
-
-// Mouse
-
-// NOTE: [0, 0] is the bottom left corner.
-get_mouse_pos :: proc() -> [2]f32 {
-    return _state.input.mouse_pos
-}
-
-// Positive Y is up.
-get_mouse_delta :: proc() -> [2]f32 {
-    return _state.input.mouse_delta
-}
-
-get_scroll_delta :: proc() -> [2]f32 {
-    return _state.input.scroll_delta
-}
-
-get_mouse_down :: proc(button: Mouse_Button) -> bool {
-    return button in _state.input.mouse_buttons.down
-}
-
-// Down time is 0 on pressed.
-get_mouse_down_time :: proc(button: Mouse_Button) -> f32 {
-    return _state.input.mouse_buttons.timer[button]
-}
-
-get_mouse_repeated :: proc(button: Mouse_Button) -> bool {
-    return button in _state.input.mouse_buttons.repeated
-}
-
-get_mouse_released :: proc(button: Mouse_Button) -> bool {
-    return button in _state.input.mouse_buttons.released
-}
-
-// buf: buffering window duration in seconds
-get_mouse_pressed :: proc(button: Mouse_Button, buf: f32 = 0) -> bool {
-    if buf > 0.0001 &&
-        button in _state.input.mouse_buttons.buffered &&
-        _state.input.mouse_buttons.timer[button] <= buf
-    {
-        _state.input.mouse_buttons.buffered -= {button}
-        return true
-    }
-
-    if button in _state.input.mouse_buttons.pressed {
-        return true
-    }
-
-    return false
-}
-
-
-// Gamepads
-
-get_gamepad_axis :: proc(gamepad_index: int, axis: Gamepad_Axis, deadzone: f32 = 0.01) -> f32 {
-    gamepad := _state.input.gamepads[gamepad_index]
-    val := gamepad.axes[axis]
-    return abs(val) < deadzone ? 0 : val
-}
-
-get_gamepad_down :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
-    gamepad := _state.input.gamepads[gamepad_index]
-    return button in gamepad.buttons.down
-}
-
-// Down time is 0 on pressed
-get_gamepad_down_time :: proc(gamepad_index: int, button: Gamepad_Button) -> f32 {
-    gamepad := _state.input.gamepads[gamepad_index]
-    return gamepad.buttons.timer[button]
-}
-
-get_gamepad_repeated :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
-    gamepad := _state.input.gamepads[gamepad_index]
-    return button in gamepad.buttons.repeated
-}
-
-get_gamepad_released :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
-    gamepad := _state.input.gamepads[gamepad_index]
-    return button in gamepad.buttons.released
-}
-
-// buf: buffering window duration in seconds
-get_gamepad_pressed :: proc(gamepad_index: int, button: Gamepad_Button, buf: f32 = 0) -> bool {
-    gamepad := _state.input.gamepads[gamepad_index]
-
-    if buf > 0.0001 &&
-        button in gamepad.buttons.buffered &&
-        gamepad.buttons.timer[button] <= buf
-    {
-        gamepad.buttons.buffered -= {button}
-        return true
-    }
-
-    if button in gamepad.buttons.pressed {
-        return true
-    }
-
-    return false
-}
-
 
 
 
