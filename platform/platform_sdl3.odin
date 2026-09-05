@@ -31,6 +31,7 @@ when BACKEND == BACKEND_SDL3 {
     _State :: struct { _: u8 }
 
     _File_Handle :: struct {
+        path: string, // SDL3 dosnt have a way to get state from the handle so we have to store the path
     }
 
     _Directory_Iter :: struct {
@@ -565,23 +566,36 @@ when BACKEND == BACKEND_SDL3 {
     // MARK: File IO
     //
 
+    @(private="file", require_results)
+    _path_info :: proc (path: string) -> (info: sdl3.PathInfo, ok: bool) {
+      cpath := strings.clone_to_cstring(path, context.temp_allocator)
+      ok = sdl3.GetPathInfo(cpath, &info)
+      return
+    }
+
+    // INFO: This allocats memory unlike the win32 version
     @(require_results)
     _open_file :: proc(path: string) -> (File_Handle, bool) {
-        unimplemented()
+      if !_file_exists(path) { return {}, false }
+      return {path = strings.clone(path, context.allocator)}, true
     }
 
     _close_file :: proc(handle: File_Handle) {
-        unimplemented()
+      delete(handle.path, context.allocator)
     }
 
     @(require_results)
     _get_last_write_time :: proc(handle: File_Handle) -> (u64, bool) {
-        unimplemented()
+      info, ok := _path_info(handle.path)
+      if !ok { return 0, false }
+      return u64(info.modify_time), true // NOTE: SDL_Time is ns since the Unix epoch, unlike the win32 FILETIME
     }
 
     @(require_results)
     _delete_file :: proc(path: string) -> bool {
-        return (os.remove_all(path) == nil)
+      // I dont see a _delete_directory function so I assume this function is allow to do both jobs
+      cpath := strings.clone_to_cstring(path, context.temp_allocator)
+      return sdl3.RemovePath(cpath)
     }
 
     @(require_results)
@@ -593,32 +607,44 @@ when BACKEND == BACKEND_SDL3 {
 
     @(require_results)
     _write_file_by_path :: proc(path: string, data: []u8) -> bool {
-        unimplemented()
+      cpath := strings.clone_to_cstring(path, context.temp_allocator)
+      return sdl3.SaveFile(cpath, raw_data(data), len(data))
     }
 
     @(require_results)
     _file_exists :: proc(path: string) -> bool {
-        return os.exists(path)
+      info, ok := _path_info(path)
+      if !ok { return false }
+      return info.type != .NONE
     }
 
     @(require_results)
     _clone_file :: proc(path: string, new_path: string, fail_if_exists := true) -> bool {
-        unimplemented()
+      if (fail_if_exists && _file_exists(new_path)) { return false }
+
+      cpath := strings.clone_to_cstring(path, context.temp_allocator)
+      cnew_path := strings.clone_to_cstring(new_path, context.temp_allocator)
+      return sdl3.CopyFile(cpath, cnew_path)
     }
 
     @(require_results)
     _create_directory :: proc(path: string) -> bool {
-        return false
+      cpath := strings.clone_to_cstring(path, context.temp_allocator)
+      return sdl3.CreateDirectory(cpath)
     }
 
     @(require_results)
     _is_file :: proc(path: string) -> bool {
-        return false
+      info, ok := _path_info(path)
+      if !ok { return false }
+      return info.type == .FILE
     }
 
     @(require_results)
     _is_directory :: proc(path: string) -> bool {
-        return false
+      info, ok := _path_info(path)
+      if !ok { return false }
+      return info.type == .DIRECTORY
     }
 
     @(require_results)

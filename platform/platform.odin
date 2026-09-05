@@ -566,6 +566,7 @@ get_main_monitor_rect :: proc() -> Rect {
 // MARK: File IO
 //
 
+// WARNING: the returned handle owns resources (heap memory on some backends) always close_file
 @(require_results)
 open_file :: proc(path: string) -> (File_Handle, bool) {
     return _open_file(path)
