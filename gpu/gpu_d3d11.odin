@@ -207,7 +207,7 @@ when BACKEND == BACKEND_D3D11 {
     // MARK: Create
     //
 
-    _create_graphics_pipeline :: proc(name: string, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) {
+    _create_graphics_pipeline :: proc(id: base.Debug_ID, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) {
         result.blend = _get_or_create_blend(desc.blends).bs
         result.depth_stencil = _get_or_create_depth_stencil(_Depth_Stencil_Desc{
             comparison = desc.depth_comparison,
@@ -221,15 +221,15 @@ when BACKEND == BACKEND_D3D11 {
         return result, true
     }
 
-    _create_compute_pipeline :: proc(name: string, desc: Compute_Pipeline_Desc) -> (result: _Compute_Pipeline_State, ok: bool) {
+    _create_compute_pipeline :: proc(id: base.Debug_ID, desc: Compute_Pipeline_Desc) -> (result: _Compute_Pipeline_State, ok: bool) {
         return {}, true
     }
 
-    _create_bindings_layout :: proc(name: string, desc: Bindings_Layout_Desc) -> (result: _Bindings_Layout_State, ok: bool) {
+    _create_bindings_layout :: proc(id: base.Debug_ID, desc: Bindings_Layout_Desc) -> (result: _Bindings_Layout_State, ok: bool) {
         return {}, true
     }
 
-    _create_bindings :: proc(name: string, desc: Bindings_Desc) -> (result: _Bindings_State, ok: bool) {
+    _create_bindings :: proc(id: base.Debug_ID, desc: Bindings_Desc) -> (result: _Bindings_State, ok: bool) {
         layout, layout_ok := _get_bindings_layout(desc.layout)
         assert(layout_ok)
 
@@ -495,7 +495,7 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     // data: DXBC bytecode
-    _create_shader :: proc(name: string, data: []u8, kind: Shader_Kind) -> (result: _Shader_State, ok: bool) {
+    _create_shader :: proc(id: base.Debug_ID, data: []u8, kind: Shader_Kind) -> (result: _Shader_State, ok: bool) {
         switch kind {
         case .Invalid:
             assert(false)
@@ -508,7 +508,7 @@ when BACKEND == BACKEND_D3D11 {
                 ppVertexShader = &result.vs,
             )) or_return
 
-            _d3d11_setlabel(result.vs, name)
+            _d3d11_setlabel(result.vs, base.get_debug_id_name(id))
 
         case .Pixel:
             _d3d11_check(_state.device->CreatePixelShader(
@@ -518,7 +518,7 @@ when BACKEND == BACKEND_D3D11 {
                 ppPixelShader = &result.ps,
             )) or_return
 
-            _d3d11_setlabel(result.ps, name)
+            _d3d11_setlabel(result.ps, base.get_debug_id_name(id))
 
         case .Compute:
             _d3d11_check(_state.device->CreateComputeShader(
@@ -528,7 +528,7 @@ when BACKEND == BACKEND_D3D11 {
                 ppComputeShader = &result.cs,
             )) or_return
 
-            _d3d11_setlabel(result.cs, name)
+            _d3d11_setlabel(result.cs, base.get_debug_id_name(id))
         }
 
         _d3d11_messages()
@@ -537,7 +537,7 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _create_buffer :: proc(
-        name:   string,
+        id:     base.Debug_ID,
         kind:   Buffer_Kind,
         size:   i32,
         stride: i32,
@@ -575,18 +575,18 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(_state.device->CreateBuffer(&desc, initial_data_ptr, &result.buf)) or_return
 
         _d3d11_messages()
-        _d3d11_setlabel(result.buf, name)
+        _d3d11_setlabel(result.buf, base.get_debug_id_name(id))
 
         if kind == .Storage {
             _d3d11_check(_state.device->CreateShaderResourceView(result.buf, nil, &result.srv)) or_return
             _d3d11_messages()
-            _d3d11_setlabel(result.srv, name)
+            _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
         }
 
         return result, true
     }
 
-    _create_constants :: proc(name: string, item_size: i32, item_num: i32) -> (result: _Resource_State, ok: bool) {
+    _create_constants :: proc(id: base.Debug_ID, item_size: i32, item_num: i32) -> (result: _Resource_State, ok: bool) {
         // Create a single buffer and rely on driver buffer renaming.
 
         desc := d3d.BUFFER_DESC{
@@ -599,13 +599,13 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(_state.device->CreateBuffer(&desc, nil, &result.buf)) or_return
 
         _d3d11_messages()
-        _d3d11_setlabel(result.buf, name)
+        _d3d11_setlabel(result.buf, base.get_debug_id_name(id))
 
         return result, true
     }
 
     _create_texture_2d :: proc(
-        name:               string,
+        id:                 base.Debug_ID,
         format:             Texture_Format,
         usage:              Usage,
         size:               [2]i32,
@@ -660,13 +660,13 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(_state.device->CreateTexture2D(&desc, initial_data_ptr, &result.tex2d)) or_return
 
         _d3d11_messages()
-        _d3d11_setlabel(result.tex2d, name)
+        _d3d11_setlabel(result.tex2d, base.get_debug_id_name(id))
 
         // TODO: SRV for depth buf
         if texture_format_is_depth_stencil(format) {
             _d3d11_check(_state.device->CreateDepthStencilView(result.tex2d, nil, &result.dsv)) or_return
 
-            _d3d11_setlabel(result.dsv, name)
+            _d3d11_setlabel(result.dsv, base.get_debug_id_name(id))
 
         } else if render_texture {
             _d3d11_check(_state.device->CreateRenderTargetView(result.tex2d, nil, &result.rtv)) or_return
@@ -681,7 +681,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(_state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
-            _d3d11_setlabel(result.srv, name)
+            _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
 
         } else {
             srv_desc := d3d.SHADER_RESOURCE_VIEW_DESC{
@@ -696,7 +696,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(_state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
-            _d3d11_setlabel(result.srv, name)
+            _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
         }
 
         _d3d11_messages()
@@ -711,7 +711,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(_state.device->CreateUnorderedAccessView(result.tex2d, &uav_desc, &result.uav)) or_return
-            _d3d11_setlabel(result.uav, name)
+            _d3d11_setlabel(result.uav, base.get_debug_id_name(id))
         }
 
         _d3d11_messages()
@@ -855,7 +855,7 @@ when BACKEND == BACKEND_D3D11 {
     // MARK: Actions
     //
 
-    _begin_graphics_pass :: proc(name: string, desc: Graphics_Pass_Desc) {
+    _begin_graphics_pass :: proc(id: base.Debug_ID, desc: Graphics_Pass_Desc) {
         rtvs: [d3d.SIMULTANEOUS_RENDER_TARGET_COUNT]^d3d.IRenderTargetView
         dsv: ^d3d.IDepthStencilView
 
@@ -989,7 +989,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
     }
 
-    _begin_compute_pass :: proc(name: string) {
+    _begin_compute_pass :: proc(id: base.Debug_ID) {
         // no-op
     }
 

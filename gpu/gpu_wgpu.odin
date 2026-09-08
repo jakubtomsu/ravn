@@ -321,7 +321,7 @@ when BACKEND == BACKEND_WGPU {
         base.log_debug("GPU: Creating WebGPU sampler")
 
         result = wgpu.DeviceCreateSampler(_state.device, &wgpu.SamplerDescriptor{
-            label = "<SMP>",
+            label = "Sampler",
             addressModeU = _wgpu_texture_bounds(desc.bounds.x),
             addressModeV = _wgpu_texture_bounds(desc.bounds.y),
             addressModeW = _wgpu_texture_bounds(desc.bounds.z),
@@ -353,11 +353,6 @@ when BACKEND == BACKEND_WGPU {
                 visibility = _wgpu_stage_flags(slot.stages),
             }
 
-            if _is_bindings_layout_slot_rw(slot.kind) {
-                assert(.Vertex not_in slot.stages)
-                assert(slot.format != .Invalid)
-            }
-
             switch slot.kind {
             case .Sampler:
                 entry.sampler = wgpu.SamplerBindingLayout{type = .Filtering}
@@ -387,7 +382,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         result.bgl = wgpu.DeviceCreateBindGroupLayout(_state.device, &wgpu.BindGroupLayoutDescriptor{
-            label = name,
+            label = base.get_debug_id_name(id),
             entryCount = uint(len(layout_entries)),
             entries = &layout_entries[0],
         })
@@ -401,10 +396,10 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_bindings :: proc(id: base.Debug_ID, desc: Bindings_Desc) -> (result: _Bindings_State, ok: bool) {
-        base.log_debug("GPU: Creating WebGPU bindings '%s'", name)
+        base.log_debug("GPU: Creating WebGPU bindings '%s'", base.get_debug_id_name(id))
 
         bindings_layout, bindings_layout_ok := _get_bindings_layout(desc.layout)
-        assert(bindings_layout_ok)
+        base.assert_id(id, bindings_layout_ok)
 
         group_entries: [dynamic; NUM_TOTAL_BIND_SLOTS]wgpu.BindGroupEntry
         for slot, i in desc.slots {
@@ -415,18 +410,18 @@ when BACKEND == BACKEND_WGPU {
             }
 
             if slot.resource != {} {
-                assert(slot.sampler == {})
+                base.assert_id(id, slot.sampler == {})
                 res, res_ok := _get_resource(slot.resource)
-                assert(res_ok)
+                base.assert_id(id, res_ok)
 
                 switch res.kind {
                 case .Invalid:
-                    assert(false)
+                    base.assert_id(id, false)
                 case .Constants:
                     entry.buffer = res.buf
                     entry.size = u64(res.size.x)
                 case .Buffer:
-                    assert(res.size.x % 4 == 0)
+                    base.assert_id(id, res.size.x % 4 == 0)
                     entry.size = u64(res.size.x)
                     entry.buffer = res.buf
                 case .Texture2D:
@@ -436,7 +431,7 @@ when BACKEND == BACKEND_WGPU {
                 }
 
             } else {
-                assert(slot.sampler != {})
+                base.assert_id(id, slot.sampler != {})
                 entry.sampler = _get_or_create_sampler(slot.sampler)
             }
 
@@ -444,7 +439,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         result.bg = wgpu.DeviceCreateBindGroup(_state.device, &wgpu.BindGroupDescriptor{
-            label = name,
+            label = base.get_debug_id_name(id),
             layout = bindings_layout.bgl,
             entryCount = uint(len(group_entries)),
             entries = &group_entries[0],
@@ -459,13 +454,13 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_graphics_pipeline :: proc(id: base.Debug_ID, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) {
-        base.log_debug("GPU: Creating WebGPU pipeline '%s'", name)
+        base.log_debug("GPU: Creating WebGPU pipeline '%s'", base.get_debug_id_name(id))
 
         bindings_layout, bindings_layout_ok := _get_bindings_layout(desc.bindings_layout)
-        assert(bindings_layout_ok)
+        base.assert_id(id, bindings_layout_ok)
 
         pip_layout := wgpu.DeviceCreatePipelineLayout(_state.device, &wgpu.PipelineLayoutDescriptor{
-            label = name,
+            label = base.get_debug_id_name(id),
             bindGroupLayoutCount = 1,
             bindGroupLayouts = &bindings_layout.bgl,
         })
@@ -482,10 +477,10 @@ when BACKEND == BACKEND_WGPU {
         ps, ps_ok := _get_shader(desc.ps)
         vs, vs_ok := _get_shader(desc.vs)
 
-        assert(ps_ok)
-        assert(vs_ok)
-        assert(ps.kind == .Pixel)
-        assert(vs.kind == .Vertex)
+        base.assert_id(id, ps_ok)
+        base.assert_id(id, vs_ok)
+        base.assert_id(id, ps.kind == .Pixel)
+        base.assert_id(id, vs.kind == .Vertex)
 
         color_targets_num := 0
         color_targets: [RENDER_TEXTURE_BIND_SLOTS]wgpu.ColorTargetState
@@ -570,7 +565,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         result.pip = wgpu.DeviceCreateRenderPipeline(_state.device, &{
-            label = name,
+            label = base.get_debug_id_name(id),
             layout = pip_layout,
             primitive = wgpu.PrimitiveState{
                 topology = _wgpu_topology(desc.topo),
@@ -613,10 +608,10 @@ when BACKEND == BACKEND_WGPU {
 
     _create_compute_pipeline :: proc(id: base.Debug_ID, desc: Compute_Pipeline_Desc) -> (result: _Compute_Pipeline_State, ok: bool) {
         bindings_layout, bindings_layout_ok := _get_bindings_layout(desc.bindings_layout)
-        assert(bindings_layout_ok)
+        base.assert_id(id, bindings_layout_ok)
 
         pip_layout := wgpu.DeviceCreatePipelineLayout(_state.device, &wgpu.PipelineLayoutDescriptor{
-            label = name,
+            label = base.get_debug_id_name(id),
             bindGroupLayoutCount = 1,
             bindGroupLayouts = &bindings_layout.bgl,
         })
@@ -629,12 +624,12 @@ when BACKEND == BACKEND_WGPU {
         defer wgpu.PipelineLayoutRelease(pip_layout)
 
         cs, cs_ok := _get_shader(desc.cs)
-        assert(cs_ok)
+        base.assert_id(id, cs_ok)
 
         result.pip = wgpu.DeviceCreateComputePipeline(
             _state.device,
             &wgpu.ComputePipelineDescriptor{
-                label = name,
+                label = base.get_debug_id_name(id),
                 layout = pip_layout,
                 compute = wgpu.ComputeState{
                     module = cs.module,
@@ -672,12 +667,7 @@ when BACKEND == BACKEND_WGPU {
         return true
     }
 
-    _create_constants :: proc(
-        name:       string,
-        item_size:  i32,
-        item_num:   i32,
-    ) -> (result: _Resource_State, ok: bool) {
-
+    _create_constants :: proc(id: base.Debug_ID, item_size: i32, item_num: i32) -> (result: _Resource_State, ok: bool) {
         size: u64
         if item_num > 1 {
             size = u64(runtime.align_forward_int(int(item_size), int(_state.uniform_offset_align))) * u64(item_num)
@@ -686,7 +676,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         result.buf = wgpu.DeviceCreateBuffer(_state.device, &wgpu.BufferDescriptor{
-            label = name,
+            label = base.get_debug_id_name(id),
             usage = {.Uniform, .CopyDst},
             size = size,
             mappedAtCreation = false,
@@ -705,7 +695,7 @@ when BACKEND == BACKEND_WGPU {
                 sType = .ShaderSourceWGSL,
                 code  = string(data),
             },
-            label = name,
+            label = base.get_debug_id_name(id),
         })
 
         if result.module == nil {
@@ -743,7 +733,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         tex_desc := wgpu.TextureDescriptor{
-            label = name,
+            label = base.get_debug_id_name(id),
             usage = usage,
             dimension = ._2D,
             size = {
@@ -792,7 +782,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         result.tex_view = wgpu.TextureCreateView(result.tex, &wgpu.TextureViewDescriptor{
-	        label = name,
+	        label = base.get_debug_id_name(id),
 	        format = formats[0],
 	        dimension = ._2DArray,
 	        baseMipLevel = 0,
@@ -811,7 +801,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_buffer :: proc(
-        name:   string,
+        id:     base.Debug_ID,
         kind:   Buffer_Kind,
         stride: i32,
         size:   i32,
@@ -819,7 +809,7 @@ when BACKEND == BACKEND_WGPU {
         data:   []u8,
     ) -> (result: _Resource_State, ok: bool) {
         result.buf = wgpu.DeviceCreateBuffer(_state.device, &{
-            label            = name,
+            label            = base.get_debug_id_name(id),
             usage            = _wgpu_buffer_usage(usage) + _wgpu_buffer_kind(kind),
             size             = u64(size),
             mappedAtCreation = data != nil,
@@ -849,16 +839,16 @@ when BACKEND == BACKEND_WGPU {
         wgpu.ShaderModuleRelease(shader.module)
     }
 
-    _destroy_resource :: proc(resource: Resource_State) {
-        switch resource.kind {
+    _destroy_resource :: proc(res: Resource_State) {
+        switch res.kind {
         case .Invalid:
-            assert(false)
+            base.assert_id(res.id, false)
 
         case .Buffer, .Constants:
-            wgpu.BufferDestroy(resource.buf)
+            wgpu.BufferDestroy(res.buf)
 
         case .Texture2D, .Texture3D:
-            wgpu.TextureDestroy(resource.tex)
+            wgpu.TextureDestroy(res.tex)
         }
     }
 
@@ -927,7 +917,7 @@ when BACKEND == BACKEND_WGPU {
         _state.render_pass_encoder = wgpu.CommandEncoderBeginRenderPass(
             _state.command_encoder,
             &wgpu.RenderPassDescriptor{
-                label = name,
+                label = base.get_debug_id_name(id),
                 colorAttachmentCount = uint(num_color_atts),
                 colorAttachments = num_color_atts == 0 ? nil : &color_atts[0],
                 depthStencilAttachment = depth_stencil,
@@ -962,11 +952,11 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _begin_compute_pass :: proc(id: base.Debug_ID) {
-        assert(_state.compute_pass_encoder == nil)
+        base.assert_id(id, _state.compute_pass_encoder == nil)
         _state.compute_pass_encoder = wgpu.CommandEncoderBeginComputePass(
             _state.command_encoder,
             &wgpu.ComputePassDescriptor{
-                label = name,
+                label = base.get_debug_id_name(id),
             },
         )
     }
@@ -1005,7 +995,7 @@ when BACKEND == BACKEND_WGPU {
             // Must respect alignment for dynamic offsets.
             // NOTE: is many QueueWriteBuffer calls better than a single big with our own preallocated buffer?
 
-            assert(len(data) % int(res.size.x) == 0)
+            base.assert_id(res.id, len(data) % int(res.size.x) == 0)
 
             num_items := len(data) / int(res.size.x)
 
@@ -1023,7 +1013,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _update_texture_2d :: proc(res: ^Resource_State, data: []byte, slice: i32) {
-        assert(res.tex_format != .Invalid)
+        base.assert_id(res.id, res.tex_format != .Invalid)
 
         row_bytes := u32(texture_pixel_size(res.tex_format) * res.size.x)
         wgpu.QueueWriteTexture(_state.queue,
@@ -1051,7 +1041,7 @@ when BACKEND == BACKEND_WGPU {
     _set_bindings :: proc(bindings: ^Bindings_State, offsets: []u32) {
         switch _state.encoder.mode {
         case .None:
-            assert(false)
+            base.assert_id(bindings.id, false)
         case .Graphics:
             wgpu.RenderPassEncoderSetBindGroup(
                 _state.render_pass_encoder,
@@ -1070,7 +1060,6 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _draw_non_indexed :: proc(vertex_num: u32, instance_num: u32) {
-        assert(_state.encoder.mode == .Graphics)
         wgpu.RenderPassEncoderDraw(
             _state.render_pass_encoder,
             vertexCount = vertex_num,
@@ -1081,7 +1070,6 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _draw_indexed :: proc(index_num: u32, instance_num: u32, index_offset: u32) {
-        assert(_state.encoder.mode == .Graphics)
         wgpu.RenderPassEncoderDrawIndexed(
             _state.render_pass_encoder,
             indexCount = index_num,
@@ -1093,7 +1081,6 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _dispatch_compute :: proc(size: [3]i32) {
-        assert(_state.encoder.mode == .Compute)
         wgpu.ComputePassEncoderDispatchWorkgroups(
             _state.compute_pass_encoder,
             workgroupCountX = u32(size.x),
@@ -1110,12 +1097,7 @@ when BACKEND == BACKEND_WGPU {
 
     _wgpu_log_callback :: proc "c" (level: wgpu.LogLevel, msg: wgpu.StringView, userdata: rawptr) {
         context = _state.init_context
-
-        base.log(
-            wgpu.ConvertWGPUToOdinLogLevel(level),
-            "WGPU: %s",
-            msg,
-        )
+        base.log(wgpu.ConvertWGPUToOdinLogLevel(level), "WGPU: %s", msg)
     }
 
     _wgpu_wait :: proc(future: wgpu.Future) {

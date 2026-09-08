@@ -592,7 +592,7 @@ create_bindings_layout :: proc(
         id = id,
     }
 
-    state.native, ok = _create_bindings_layout(name, desc)
+    state.native, ok = _create_bindings_layout(id, desc)
     if !ok {
         base.log_err("Failed to create native bindings layout: '%s'", name)
         return {}, false
@@ -625,7 +625,7 @@ create_bindings :: proc(
         id = id,
     }
 
-    state.native, ok = _create_bindings(name, desc)
+    state.native, ok = _create_bindings(id, desc)
     if !ok {
         base.log_err("Failed to create native bindings: '%s'", name)
         return {}, false
@@ -665,7 +665,7 @@ create_graphics_pipeline :: proc(
         id = id,
     }
 
-    state.native, ok = _create_graphics_pipeline(name, desc)
+    state.native, ok = _create_graphics_pipeline(id, desc)
     if !ok {
         base.log_err("Failed to create native graphics pipeline: '%s'", name)
         return {}, false
@@ -698,7 +698,7 @@ create_compute_pipeline :: proc(
         desc = desc,
     }
 
-    state.native, ok = _create_compute_pipeline(name, desc)
+    state.native, ok = _create_compute_pipeline(id, desc)
     if !ok {
         base.log_err("Failed to create native compute pipeline: '%s'", name)
         return {}, false
@@ -735,7 +735,7 @@ create_constants :: proc(name: string, item_size: i32, item_num: i32 = 1, loc :=
         native = {},
     }
 
-    state.native, ok = _create_constants(name, item_size = item_size, item_num = item_num)
+    state.native, ok = _create_constants(id, item_size = item_size, item_num = item_num)
     if !ok {
         base.log_err("GPU: Failed to create native constants")
         return {}, false
@@ -771,7 +771,7 @@ create_shader :: proc(
         native = {},
     }
 
-    state.native, ok = _create_shader(name, data = data, kind = kind)
+    state.native, ok = _create_shader(id, data = data, kind = kind)
     if !ok {
         base.log_err("GPU: failed to create a native shader")
         return {}, false
@@ -849,8 +849,7 @@ create_texture_2d :: proc(
         native = {},
     }
 
-    state.native, ok = _create_texture_2d(
-        name = name,
+    state.native, ok = _create_texture_2d(id,
         format = format,
         usage = usage,
         size = size,
@@ -910,8 +909,7 @@ create_buffer :: proc(
         native = {},
     }
 
-    state.native, ok = _create_buffer(
-        name = name,
+    state.native, ok = _create_buffer(id,
         kind = kind,
         size = state.size.x,
         stride = stride,
@@ -984,7 +982,7 @@ begin_graphics_pass :: proc(name: string, desc: Graphics_Pass_Desc, loc := #call
     base.assert_id(_state.encoder.id, _state.encoder.mode == .None, "begin_pass/end_pass mismatch")
     id := base.create_debug_id(name, loc, context.temp_allocator)
     validate_pass_desc(id, desc)
-    _begin_graphics_pass(name, desc)
+    _begin_graphics_pass(id, desc)
     _state.encoder = {
         mode = .Graphics,
         id = id,
@@ -1055,7 +1053,7 @@ scope_compute_pass :: proc(name: string) -> bool {
 begin_compute_pass :: proc(name: string, loc := #caller_location) {
     assert(_state.encoder.mode == .None, "begin_compute_pass/end_compute_pass mismatch")
     id := base.create_debug_id(name, loc, context.temp_allocator)
-    _begin_compute_pass(name)
+    _begin_compute_pass(id)
     _state.encoder = {
         mode = .Compute,
         id = id,
