@@ -45,22 +45,32 @@ main :: proc() {
     ps_blob := shader_compiler.compile(&shc, "triangle.hlsl", _shader_code, {stage = .Pixel}) or_else panic("ps_blob")
     vs_blob := shader_compiler.compile(&shc, "triangle.hlsl", _shader_code, {stage = .Vertex}) or_else panic("vs_blob")
 
-    vbuf := gpu.create_buffer("verts", .Storage, size_of(Vertex), data = base.slice_bytes(verts)) or_else panic("buf")
+    vbuf: gpu.Resource_Handle
+    layout: gpu.Bindings_Layout_Handle
+    binds: gpu.Bindings_Handle
+    pip: gpu.Graphics_Pipeline_Handle
+    ps: gpu.Shader_Handle
+    vs: gpu.Shader_Handle
 
-    layout := gpu.create_bindings_layout("tri-lay", {slots = {
+    gpu.create_buffer(&vbuf, .Storage, size_of(Vertex), data = base.slice_bytes(verts)) or_else panic("buf")
+
+    gpu.create_bindings_layout(&layout, {slots = {
         {index=0, kind=.Resource_Buffer, stages={.Vertex, .Pixel}},
     }}) or_else panic("layout")
 
-    binds := gpu.create_bindings("tri-binds", {
+    gpu.create_bindings(&binds, {
         layout = layout,
         slots = {
             {index = 0, resource = vbuf},
         },
     }) or_else panic("binds")
 
-    pip := gpu.create_graphics_pipeline("triangle-pip", gpu.make_graphics_pipeline_desc(
-        ps = gpu.create_shader("triangle-ps", ps_blob, .Pixel) or_else panic("ps"),
-        vs = gpu.create_shader("triangle-vs", vs_blob, .Vertex) or_else panic("vs"),
+    gpu.create_shader(&ps, ps_blob, .Pixel) or_else panic("ps")
+    gpu.create_shader(&vs, vs_blob, .Vertex) or_else panic("vs")
+
+    gpu.create_graphics_pipeline(&pip, gpu.make_graphics_pipeline_desc(
+        ps = ps,
+        vs = vs,
         layout = layout,
         out_colors = {0 = .Swapchain},
     )) or_else panic("pip")
