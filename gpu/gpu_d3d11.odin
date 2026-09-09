@@ -208,12 +208,12 @@ when BACKEND == BACKEND_D3D11 {
     //
 
     _create_graphics_pipeline :: proc(id: base.Debug_ID, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) {
-        result.blend = _get_or_create_blend(desc.blends).bs
-        result.depth_stencil = _get_or_create_depth_stencil(_Depth_Stencil_Desc{
+        result.blend = _getref_or_create_blend(desc.blends).bs
+        result.depth_stencil = _getref_or_create_depth_stencil(_Depth_Stencil_Desc{
             comparison = desc.depth_comparison,
             write = desc.depth_write,
         }).dss
-        result.rasterizer = _get_or_create_rasterizer(_Rasterizer_Desc{
+        result.rasterizer = _getref_or_create_rasterizer(_Rasterizer_Desc{
             cull = desc.cull,
             fill = desc.fill,
             depth_bias = desc.depth_bias,
@@ -291,16 +291,18 @@ when BACKEND == BACKEND_D3D11 {
             } else {
                 assert(slot.sampler != {})
                 resize(&result.smps, slot.index + 1)
-                result.smps[slot.index] = _get_or_create_sampler(slot.sampler).smp
+                result.smps[slot.index] = _getref_or_create_sampler(slot.sampler).smp
             }
         }
 
         return result, true
     }
 
-    _get_or_create_rasterizer :: proc(desc: _Rasterizer_Desc) -> (result: _Rasterizer_State) {
+    _getref_or_create_rasterizer :: proc(desc: _Rasterizer_Desc) -> (result: _Rasterizer_State) {
         for existing in _state.rasterizers {
-            if existing.desc == desc {
+            if existing != {} && existing.desc == desc {
+                assert(existing.rs != nil)
+                existing.rs->AddRef()
                 return existing
             }
         }
@@ -325,9 +327,11 @@ when BACKEND == BACKEND_D3D11 {
         return result
     }
 
-    _get_or_create_depth_stencil :: proc(desc: _Depth_Stencil_Desc) -> (result: _Depth_Stencil_State) {
+    _getref_or_create_depth_stencil :: proc(desc: _Depth_Stencil_Desc) -> (result: _Depth_Stencil_State) {
         for existing in _state.depth_stencils {
-            if existing.desc == desc {
+            if existing != {} && existing.desc == desc {
+                assert(existing.dss != nil)
+                existing.dss->AddRef()
                 return existing
             }
         }
@@ -361,9 +365,11 @@ when BACKEND == BACKEND_D3D11 {
         return result
     }
 
-    _get_or_create_sampler :: proc(desc: Sampler_Desc) -> (result: _Sampler_State) {
+    _getref_or_create_sampler :: proc(desc: Sampler_Desc) -> (result: _Sampler_State) {
         for existing in _state.samplers {
-            if existing.desc == desc {
+            if existing != {} && existing.desc == desc {
+                assert(existing.smp != nil)
+                existing.smp->AddRef()
                 return existing
             }
         }
@@ -388,13 +394,15 @@ when BACKEND == BACKEND_D3D11 {
         return result
     }
 
-    _get_or_create_blend :: proc(descs: [RENDER_TEXTURE_BIND_SLOTS]Blend_Desc) -> (result: _Blend_State) {
+    _getref_or_create_blend :: proc(descs: [RENDER_TEXTURE_BIND_SLOTS]Blend_Desc) -> (result: _Blend_State) {
         if descs == {} {
             return {}
         }
 
         for existing in _state.blends {
             if existing.descs == descs {
+                assert(existing.bs != nil)
+                existing.bs->AddRef()
                 return existing
             }
         }
@@ -722,7 +730,7 @@ when BACKEND == BACKEND_D3D11 {
 
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Destroy
+    // MARK: Destroy
     //
 
     _destroy_shader :: proc(shader: Shader_State) {
@@ -763,6 +771,29 @@ when BACKEND == BACKEND_D3D11 {
         }
 
         _d3d11_messages()
+    }
+
+    _destroy_bindings :: proc(state: Bindings_State) {
+        for it in state.smps  do it->Release()
+        for it in state.cbufs do it->Release()
+        for it in state.srvs  do it->Release()
+        for it in state.uavs  do it->Release()
+        _d3d11_messages()
+    }
+
+    _destroy_bindings_layout :: proc(state: Bindings_Layout_State) {
+        // no-op
+    }
+
+    _destroy_graphics_pipeline :: proc(state: Graphics_Pipeline_State) {
+        state.blend->Release()
+        state.rasterizer->Release()
+        state.depth_stencil->Release()
+        _d3d11_messages()
+    }
+
+    _destroy_compute_pipeline :: proc(state: Compute_Pipeline_State) {
+        // no-op
     }
 
 

@@ -852,6 +852,22 @@ when BACKEND == BACKEND_WGPU {
         }
     }
 
+    _destroy_bindings :: proc(state: Bindings_State) {
+        wgpu.BindGroupRelease(state.bg)
+    }
+
+    _destroy_bindings_layout :: proc(state: Bindings_Layout_State) {
+        wgpu.BindGroupLayoutRelease(state.bgl)
+    }
+
+    _destroy_graphics_pipeline :: proc(state: Graphics_Pipeline_State) {
+        wgpu.RenderPipelineRelease(state.pip)
+    }
+
+    _destroy_compute_pipeline :: proc(state: Compute_Pipeline_State) {
+        wgpu.ComputePipelineRelease(state.pip)
+    }
+
 
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////

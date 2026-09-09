@@ -333,8 +333,7 @@ Topology :: enum u8 {
 Fill_Mode :: enum u8 {
     Invalid = 0,
     Solid,
-    // NOTE: Not supported on WebGPU. The triangles will default to 'Solid'.
-    Wireframe,
+    Wireframe, // NOTE: Not supported on WebGPU. The triangles will default to 'Solid'.
 }
 
 Cull_Mode :: enum u8 {
@@ -558,11 +557,42 @@ make_compute_pipeline_desc :: proc(cs: Shader_Handle) -> (result: Compute_Pipeli
 }
 
 @(require_results)
+_find_free_or_destroy_existing :: proc(
+    id:             base.Debug_ID,
+    pool:           ^$T/base.Pool($N, $D, $H),
+    handle:         ^H,
+    destroy_state:  proc(^D),
+    loc             := #caller_location,
+) -> (ok: bool) {
+    assert(handle != nil)
+
+    if handle^ == {} {
+        handle^, ok = base.pool_find_free(pool^)
+        if !ok {
+            base.log_err("GPU: Failed to find an available %v: %s",
+                typeid_of(H), base.format_debug_id(id, context.temp_allocator), loc = loc)
+            return false
+        }
+        return true
+    }
+
+    old, old_ok := base.pool_get(pool, handle^)
+    if !old_ok {
+        base.log_err("Failed to re-create invalid %v: %s",
+            typeid_of(H), base.format_debug_id(id, context.temp_allocator), loc = loc)
+        return false
+    }
+    destroy_state(old)
+    return true
+}
+
+@(require_results)
 create_bindings_layout :: proc(
-    name:   string,
-    desc:   Bindings_Layout_Desc,
-    loc     := #caller_location,
-) -> (result: Bindings_Layout_Handle, ok: bool) {
+    handle:     ^Bindings_Layout_Handle,
+    desc:       Bindings_Layout_Desc,
+    name        := #caller_expression(handle),
+    loc         := #caller_location,
+) -> (ok: bool) {
     desc := desc
     base.log_debug("Creating bindings layout '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
@@ -580,11 +610,7 @@ create_bindings_layout :: proc(
 
     validate_bindings_layout_desc(id, desc, loc = loc)
 
-    result, ok = base.pool_find_free(_state.bindings_layouts)
-    if !ok {
-        base.log_err("GPU: Failed to find an empty slot for new bindings layout: '%s'", name)
-        return {}, false
-    }
+    _find_free_or_destroy_existing(id, &_state.bindings_layouts, handle, _destroy_bindings_layout_state) or_return
 
     state := Bindings_Layout_State{
         native = {},
@@ -595,29 +621,26 @@ create_bindings_layout :: proc(
     state.native, ok = _create_bindings_layout(id, desc)
     if !ok {
         base.log_err("Failed to create native bindings layout: '%s'", name)
-        return {}, false
+        return false
     }
 
-    base.pool_insert(&_state.bindings_layouts, result, state) or_else base.panic_id(id, "Invalid insertion")
-    return result, true
+    base.pool_set(&_state.bindings_layouts, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
 }
 
 @(require_results)
 create_bindings :: proc(
-    name:   string,
+    handle: ^Bindings_Handle,
     desc:   Bindings_Desc,
+    name    := #caller_expression(handle),
     loc     := #caller_location,
-) -> (result: Bindings_Handle, ok: bool) {
+) -> (ok: bool) {
     base.log_debug("Creating bindings '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id)
 
     validate_bindings_desc(id, desc, loc = loc)
-    result, ok = base.pool_find_free(_state.bindings)
-    if !ok {
-        base.log_err("Failed to find an empty slot for new bindings: '%s'", name)
-        return {}, false
-    }
+    _find_free_or_destroy_existing(id, &_state.bindings, handle, _destroy_bindings_state) or_return
 
     state := Bindings_State{
         native = {},
@@ -628,7 +651,7 @@ create_bindings :: proc(
     state.native, ok = _create_bindings(id, desc)
     if !ok {
         base.log_err("Failed to create native bindings: '%s'", name)
-        return {}, false
+        return false
     }
 
     for slot in desc.slots {
@@ -638,26 +661,23 @@ create_bindings :: proc(
         }
     }
 
-    base.pool_insert(&_state.bindings, result, state) or_else base.panic_id(id, "Invalid insertion")
-    return result, true
+    base.pool_set(&_state.bindings, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
 }
 
 @(require_results)
 create_graphics_pipeline :: proc(
-    name:   string,
+    handle: ^Graphics_Pipeline_Handle,
     desc:   Graphics_Pipeline_Desc,
+    name    := #caller_expression(handle),
     loc     := #caller_location,
-) -> (result: Graphics_Pipeline_Handle, ok: bool) {
+) -> (ok: bool) {
     base.log_debug("Creating graphics pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id)
 
     validate_graphics_pipeline_desc(id, desc)
-    result, ok = base.pool_find_free(_state.graphics_pipelines)
-    if !ok {
-        base.log_err("Failed to find an empty slot for new graphics pipeline: '%s'", name)
-        return {}, false
-    }
+    _find_free_or_destroy_existing(id, &_state.graphics_pipelines, handle, _destroy_graphics_pipeline_state) or_return
 
     state := Graphics_Pipeline_State{
         native = {},
@@ -668,29 +688,26 @@ create_graphics_pipeline :: proc(
     state.native, ok = _create_graphics_pipeline(id, desc)
     if !ok {
         base.log_err("Failed to create native graphics pipeline: '%s'", name)
-        return {}, false
+        return false
     }
 
-    base.pool_insert(&_state.graphics_pipelines, result, state) or_else base.panic_id(id, "Invalid insertion")
-    return result, true
+    base.pool_set(&_state.graphics_pipelines, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
 }
 
 @(require_results)
 create_compute_pipeline :: proc(
-    name:   string,
+    handle: ^Compute_Pipeline_Handle,
     desc:   Compute_Pipeline_Desc,
+    name    := #caller_expression(handle),
     loc     := #caller_location,
-) -> (result: Compute_Pipeline_Handle, ok: bool) {
+) -> (ok: bool) {
     base.log_debug("Creating compute pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id)
 
     validate_compute_pipeline_desc(id, desc, loc = loc)
-    result, ok = base.pool_find_free(_state.compute_pipelines)
-    if !ok {
-        base.log_err("Failed to find an empty slot for new compute pipeline: '%s'", name)
-        return {}, false
-    }
+    _find_free_or_destroy_existing(id, &_state.compute_pipelines, handle, _destroy_compute_pipeline_state) or_return
 
     state := Compute_Pipeline_State{
         native = {},
@@ -701,17 +718,23 @@ create_compute_pipeline :: proc(
     state.native, ok = _create_compute_pipeline(id, desc)
     if !ok {
         base.log_err("Failed to create native compute pipeline: '%s'", name)
-        return {}, false
+        return false
     }
 
-    base.pool_insert(&_state.compute_pipelines, result, state) or_else base.panic_id(id, "Invalid insertion")
-    return result, true
+    base.pool_set(&_state.compute_pipelines, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
 }
 
-
 // Set 'item_num' above 1 or more to enable multi const buffers with dynamic offsets.
+
 @(require_results)
-create_constants :: proc(name: string, item_size: i32, item_num: i32 = 1, loc := #caller_location) -> (result: Resource_Handle, ok: bool) {
+create_constants :: proc(
+    handle:     ^Resource_Handle,
+    item_size:  i32,
+    item_num:   i32 = 1,
+    name        := #caller_expression(handle),
+    loc         := #caller_location,
+) -> (ok: bool) {
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id)
 
@@ -720,11 +743,7 @@ create_constants :: proc(name: string, item_size: i32, item_num: i32 = 1, loc :=
     base.assert_id(id, item_size < MAX_CONSTANT_BUFFER_SIZE)
     base.assert_id(id, item_size % 16 == 0)
 
-    result, ok = base.pool_find_free(_state.resources)
-    if !ok {
-        base.log_err("GPU: Failed to find an empty slot for new constants: '%s'", name)
-        return {}, false
-    }
+    _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
 
     state := Resource_State{
         size = {item_size, item_num, 1},
@@ -738,32 +757,28 @@ create_constants :: proc(name: string, item_size: i32, item_num: i32 = 1, loc :=
     state.native, ok = _create_constants(id, item_size = item_size, item_num = item_num)
     if !ok {
         base.log_err("GPU: Failed to create native constants")
-        return {}, false
+        return false
     }
 
-    base.pool_insert(&_state.resources, result, state) or_else base.panic_id(id, "Invalid insertion")
-    return result, true
+    base.pool_set(&_state.resources, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
 }
 
 @(require_results)
 create_shader :: proc(
-    name: string,
-    data: []byte,
-    kind: Shader_Kind,
-    loc := #caller_location,
-) -> (result: Shader_Handle, ok: bool) {
+    handle: ^Shader_Handle,
+    data:   []byte,
+    kind:   Shader_Kind,
+    name    := #caller_expression(handle),
+    loc     := #caller_location,
+) -> (ok: bool) {
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id)
 
     base.assert_id(id, kind != .Invalid)
     base.assert_id(id, len(data) > 0)
 
-    result, ok = base.pool_find_free(_state.shaders)
-    if !ok {
-        base.log_err("GPU: Failed to find an empty slot for a new shader")
-        return {}, false
-    }
-
+    _find_free_or_destroy_existing(id, &_state.shaders, handle, _destroy_shader_state) or_return
 
     state := Shader_State{
         kind = kind,
@@ -774,11 +789,11 @@ create_shader :: proc(
     state.native, ok = _create_shader(id, data = data, kind = kind)
     if !ok {
         base.log_err("GPU: failed to create a native shader")
-        return {}, false
+        return false
     }
 
-    base.pool_insert(&_state.shaders, result, state) or_else base.panic_id(id, "Invalid insertion")
-    return result, true
+    base.pool_set(&_state.shaders, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
 }
 
 // Resources
@@ -794,9 +809,10 @@ resize_swapchain :: proc(window: rawptr, size: [2]i32) -> (ok: bool) {
 }
 
 // TODO: Mips to zero to gen?
+
 @(require_results)
 create_texture_2d :: proc(
-    name:               string,
+    handle:             ^Resource_Handle,
     format:             Texture_Format,
     size:               [2]i32,
     usage:              Usage = .Default,
@@ -805,8 +821,9 @@ create_texture_2d :: proc(
     render_texture:     bool = false,
     rw_resource:        bool = false,
     data:               []byte = nil,
+    name                := #caller_expression(handle),
     loc                 := #caller_location,
-) -> (result: Resource_Handle, ok: bool) {
+) -> (ok: bool) {
     base.log_debug("Creating texture: %s", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id)
@@ -838,7 +855,7 @@ create_texture_2d :: proc(
         base.assert_id(id, len(data) == (int(size.x * size.y) * int(texture_pixel_size(format))))
     }
 
-    result = base.pool_find_free(_state.resources) or_return
+    _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
 
     state := Resource_State{
         kind = .Texture2D,
@@ -860,21 +877,22 @@ create_texture_2d :: proc(
         data = data,
     )
 
-    base.pool_insert(&_state.resources, result, state) or_else base.panic_id(id, "Invalid insertion")
-    return result, true
+    base.pool_set(&_state.resources, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
 }
 
 // Must set size or data.
 @(require_results)
 create_buffer :: proc(
-    name:               string,
+    handle:             ^Resource_Handle,
     kind:               Buffer_Kind,
     #any_int stride:    i32,
     #any_int size:      i32 = 0,
     usage:              Usage = .Default,
     data:               []u8 = nil,
+    name                := #caller_expression(handle),
     loc                 := #caller_location,
-) -> (result: Resource_Handle, ok: bool) #optional_ok {
+) -> (ok: bool) {
     base.log_debug("Creating buffer: %s", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id)
@@ -898,7 +916,7 @@ create_buffer :: proc(
         base.assert_id(id, len(data) > 0)
     }
 
-    result = base.pool_find_free(_state.resources) or_return
+    _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
 
     state := Resource_State{
         kind = .Buffer,
@@ -917,8 +935,8 @@ create_buffer :: proc(
         data = data,
     )
 
-    base.pool_insert(&_state.resources, result, state) or_else base.panic_id(id, "Invalid insertion")
-    return result, true
+    base.pool_set(&_state.resources, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
 }
 
 
@@ -938,32 +956,68 @@ destroy :: proc {
 
 destroy_shader :: proc(handle: Shader_Handle) -> bool {
     state := base.pool_get(&_state.shaders, handle) or_return
-    _destroy_shader(state^)
-    base.destroy_debug_id(&state.id)
+    _destroy_shader_state(state)
     return base.pool_remove(&_state.shaders, handle)
 }
 
 destroy_resource :: proc(handle: Resource_Handle) -> bool {
     state := base.pool_get(&_state.resources, handle) or_return
-    _destroy_resource(state^)
-    base.destroy_debug_id(&state.id)
+    _destroy_resource_state(state)
     return base.pool_remove(&_state.resources, handle)
 }
 
 destroy_bindings :: proc(handle: Bindings_Handle) -> bool {
-    unimplemented()
+    state := base.pool_get(&_state.bindings, handle) or_return
+    _destroy_bindings_state(state)
+    return base.pool_remove(&_state.bindings, handle)
 }
 
 destroy_bindings_layout :: proc(handle: Bindings_Layout_Handle) -> bool {
-    unimplemented()
+    state := base.pool_get(&_state.bindings_layouts, handle) or_return
+    _destroy_bindings_layout_state(state)
+    return base.pool_remove(&_state.bindings_layouts, handle)
 }
 
 destroy_graphics_pipeline :: proc(handle: Graphics_Pipeline_Handle) -> bool {
-    unimplemented()
+    state := base.pool_get(&_state.graphics_pipelines, handle) or_return
+    _destroy_graphics_pipeline_state(state)
+    return base.pool_remove(&_state.graphics_pipelines, handle)
 }
 
 destroy_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) -> bool {
-    unimplemented()
+    state := base.pool_get(&_state.compute_pipelines, handle) or_return
+    _destroy_compute_pipeline_state(state)
+    return base.pool_remove(&_state.compute_pipelines, handle)
+}
+
+_destroy_shader_state :: proc(state: ^Shader_State) {
+    _destroy_shader(state^)
+    base.destroy_debug_id(&state.id)
+}
+
+_destroy_resource_state :: proc(state: ^Resource_State) {
+    _destroy_resource(state^)
+    base.destroy_debug_id(&state.id)
+}
+
+_destroy_bindings_state :: proc(state: ^Bindings_State) {
+    _destroy_bindings(state^)
+    base.destroy_debug_id(&state.id)
+}
+
+_destroy_bindings_layout_state :: proc(state: ^Bindings_Layout_State) {
+    _destroy_bindings_layout(state^)
+    base.destroy_debug_id(&state.id)
+}
+
+_destroy_graphics_pipeline_state :: proc(state: ^Graphics_Pipeline_State) {
+    _destroy_graphics_pipeline(state^)
+    base.destroy_debug_id(&state.id)
+}
+
+_destroy_compute_pipeline_state :: proc(state: ^Compute_Pipeline_State) {
+    _destroy_compute_pipeline(state^)
+    base.destroy_debug_id(&state.id)
 }
 
 

@@ -35,8 +35,12 @@ when BACKEND == BACKEND_DUMMY {
     @(require_results) _create_texture_2d :: proc(id: base.Debug_ID, format: Texture_Format, size: [2]i32, usage: Usage, mips: i32, array_depth: i32, render_texture: bool, rw_resource: bool, data: []byte) -> (result: _Resource_State, ok: bool) { dummy() }
     @(require_results) _create_buffer :: proc(id: base.Debug_ID, kind: Buffer_Kind, stride: i32, size: i32, usage: Usage, data: []u8) -> (result: _Resource_State, ok: bool) { dummy() }
 
-    _destroy_shader :: proc(shader: Shader_State) { dummy() }
-    _destroy_resource :: proc(resource: Resource_State) { dummy() }
+    _destroy_shader :: proc(state: Shader_State) { dummy() }
+    _destroy_resource :: proc(state: Resource_State) { dummy() }
+    _destroy_bindings :: proc(state: Bindings_State) { dummy() }
+    _destroy_bindings_layout :: proc(state: Bindings_Layout_State) { dummy() }
+    _destroy_graphics_pipeline :: proc(state: Graphics_Pipeline_State) { dummy() }
+    _destroy_compute_pipeline :: proc(state: Compute_Pipeline_State) { dummy() }
 
     _begin_graphics_pass :: proc(id: base.Debug_ID, desc: Graphics_Pass_Desc) { dummy() }
     _end_graphics_pass :: proc() { dummy() }
