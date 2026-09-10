@@ -29,7 +29,7 @@ when gpu.BACKEND == gpu.BACKEND_D3D11 {
 }
 
 DEFAULT_SAMPLER :: gpu.Sampler_Desc{
-    filter = .Unfiltered,
+    filter = {},
     bounds = {.Wrap, .Wrap, .Wrap},
     mip_max = 10,
 }
@@ -435,11 +435,7 @@ create_texture_from_data :: proc(name: string, data: Texture_Data, pool_handle: 
             loc = loc,
         }
 
-        if !gpu.update_texture_2d(
-            pool.resource,
-            gpu.slice_bytes(data.pixels),
-            slice_index,
-        ) {
+        if !gpu.update_texture_2d(pool.resource, base.slice_bytes(data.pixels), slice_index) {
             base.log_err("Failed to update GPU texture pool resource: '%s'", name)
             return {}, false
         }

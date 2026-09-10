@@ -43,6 +43,16 @@ pool_insert :: proc(pool: ^$T/Pool($N, $D, $H), handle: H, data: D) -> bool {
     return true
 }
 
+pool_set :: proc(pool: ^$T/Pool($N, $D, $H), handle: H, data: D) -> bool {
+    assert(handle != {})
+    if !pool_has(pool^, handle) {
+        return false
+    }
+    bit_pool_set_1(&pool.used, handle.index)
+    pool.data[handle.index] = data
+    return true
+}
+
 @(require_results)
 pool_remove :: proc "contextless" (pool: ^$T/Pool($N, $D, $H), handle: H) -> bool {
     if !pool_has(pool^, handle) || !bit_pool_is_1(pool.used, handle.index) {
@@ -50,6 +60,7 @@ pool_remove :: proc "contextless" (pool: ^$T/Pool($N, $D, $H), handle: H) -> boo
     }
     bit_pool_set_0(&pool.used, handle.index)
     pool.gen[handle.index] += 1
+    pool.data[handle.index] = {}
     return true
 }
 

@@ -1,7 +1,6 @@
 #+vet explicit-allocators shadowing style
 package ravn
 
-import "core:strings"
 import "base"
 import "base/ufmt"
 import "gpu"

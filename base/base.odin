@@ -126,6 +126,23 @@ _logger_prefix := [?]string{
     40..<50 = "FATAL: ",
 }
 
+@(require_results)
+ptr_bytes :: proc(ptr: ^$T, len := 1) -> []byte {
+    return transmute([]byte)runtime.Raw_Slice{ptr, len * size_of(T)}
+}
+
+@(require_results)
+slice_bytes :: proc(s: []$T) -> []byte where T != byte {
+    return ([^]byte)(raw_data(s))[:len(s) * size_of(T)]
+}
+
+@(require_results)
+clone_to_cstring :: proc(s: string, allocator := context.allocator, loc := #caller_location) -> (res: cstring, err: runtime.Allocator_Error) #optional_allocator_error {
+    c := make([]byte, len(s)+1, allocator, loc) or_return
+    copy(c, s)
+    c[len(s)] = 0
+    return cstring(&c[0]), nil
+}
 
 @(require_results)
 reinterpret_slice :: proc "contextless" ($T: typeid, data: []$E, loc := #caller_location) -> []T {
@@ -223,14 +240,34 @@ destroy_debug_id :: proc(id: ^Debug_ID) {
     delete(transmute(string)(id.name_ptr[:id.name_len]))
 }
 
-format_debug_id :: proc(id: Debug_ID) -> string {
-    return ufmt.aprintf("%s(%s:%i)", id.name_ptr[:id.name_len], id.file_ptr[:id.file_len], id.line)
+format_debug_id :: proc(id: Debug_ID, allocator := context.temp_allocator) -> string {
+    return ufmt.aprintf("%s(%s:%i)", id.name_ptr[:id.name_len], id.file_ptr[:id.file_len], id.line, allocator = allocator)
 }
 
-get_debug_id_name :: proc(id: Debug_ID) -> string {
-    return transmute(string)(id.name_ptr[:id.name_len])
+get_debug_id_name :: #force_inline proc "contextless" (id: Debug_ID) -> string {
+    return id.name_ptr == nil ? "nil" : transmute(string)(id.name_ptr[:id.name_len])
 }
 
-get_debug_id_file :: proc(id: Debug_ID) -> string {
-    return transmute(string)(id.file_ptr[:id.file_len])
+get_debug_id_file :: #force_inline proc "contextless" (id: Debug_ID) -> string {
+    return id.file_ptr == nil ? "nil" : transmute(string)(id.file_ptr[:id.file_len])
+}
+
+@(disabled = ODIN_DISABLE_ASSERT)
+assert_id :: proc(id: Debug_ID, condition: bool, message: string = "", expr := #caller_expression(condition), loc := #caller_location) {
+    if !condition {
+        @(cold)
+        internal :: proc(id: Debug_ID, message: string, expr: string, loc: runtime.Source_Code_Location) {
+            p := context.assertion_failure_proc
+            if p == nil {
+                p = runtime.default_assertion_failure_proc
+            }
+            msg := ufmt.tprintf("%s\n\tCondition: %s\n\tSource: %s %s:%i\n\t", message, expr, get_debug_id_name(id), get_debug_id_file(id), id.line)
+            p("runtime assertion", msg, loc)
+        }
+        internal(id, message, expr, loc)
+    }
+}
+
+panic_id :: proc(id: Debug_ID, message: string, loc := #caller_location) -> ! {
+    panic(ufmt.tprintf("%s\n\tSource: %s %s:%i\n\t", message, get_debug_id_name(id), get_debug_id_file(id), id.line))
 }

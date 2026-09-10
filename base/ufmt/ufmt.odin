@@ -63,7 +63,6 @@ aprintf :: proc(format: string, args: ..any, allocator := context.allocator) -> 
             return "<INVALID FORMAT>"
         }
 
-
         qual, qual_size := runtime.string_decode_rune(curr)
         curr = curr[qual_size:]
 

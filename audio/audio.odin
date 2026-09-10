@@ -1,8 +1,6 @@
 #+vet explicit-allocators shadowing
 package ravn_audio
 
-// TODO: this package could be completely self contained, no base dependency.
-
 import "../base"
 import "base:intrinsics"
 import "base:runtime"
@@ -10,10 +8,6 @@ import "core:math"
 
 import "wav"
 // import "qoa"
-
-// TODO: sound fading
-// TODO: sound trim range for dynamically chopping big sounds
-// one pole filter
 
 BACKEND :: #config(AUDIO_BACKEND, BACKEND_DEFAULT)
 
