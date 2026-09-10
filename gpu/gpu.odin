@@ -1444,6 +1444,67 @@ _combine_buffer_writes_temp :: proc(buffers: [][]byte) -> (result: []byte) {
 // MARK: Misc
 //
 
+@(require_results)
+_table_find_slot :: proc(table_used: base.Bit_Pool($N)) -> (index: int, ok: bool) {
+    return base.bit_pool_find_0(table_used)
+}
+
+@(require_results)
+_table_insert :: proc(table_used: ^base.Bit_Pool($N), table_gen: [N]Handle_Gen, #any_int index: int) -> (result: Handle) {
+    base.bit_pool_set_1(table_used, index)
+    result = {
+        index = Handle_Index(index),
+        gen = table_gen[index],
+    }
+    return result
+}
+
+_table_destroy :: proc(table_used: ^base.Bit_Pool($N), table_gen: ^[N]Handle_Gen, handle: $H/Handle) {
+    if table_gen[handle.index] != handle.gen {
+        return
+    }
+
+    assert(base.bit_pool_is_1(table_used^, handle.index))
+
+    base.bit_pool_set_0(table_used, handle.index)
+    table_gen[handle.index] += 1
+}
+
+@(require_results)
+_table_find_empty_hash :: proc(table: ^[$N]Hash, hash: u64) -> (result: int, prev: Hash, ok: bool) {
+    start_index := int(hash) %% N
+
+    for offs in 0..<MAX_HASH_PROBE_DIST {
+        index := (start_index + offs) %% N
+        if index == 0 {
+            continue
+        }
+
+        h := table[index]
+
+        if h == 0 || h == hash {
+            return index, h, true
+        }
+    }
+
+    return 0, 0, false
+}
+
+
+@(require_results)
+_table_get :: proc(table: ^[$N]$T, table_gen: [N]Handle_Gen, handle: $H/Handle) -> (^T, bool) #no_bounds_check {
+    if handle.index <= 0 || handle.index >= N {
+        return nil, false
+    }
+
+    if handle.gen != table_gen[handle.index] {
+        return nil, false
+    }
+
+    return &table[handle.index], true
+}
+
+
 _depth_enable :: proc(comp: Comparison_Op, write: bool) -> bool {
     return comp != .Always || write
 }
