@@ -13,8 +13,8 @@ when BACKEND == BACKEND_DUMMY {
     _Compute_Pipeline_State :: struct { _: u8 }
     _Shader_State :: struct { _: u8 }
     _Resource_State :: struct { _: u8 }
-    _Bindings_Layout_State :: struct { _: u8 }
-    _Bindings_State :: struct { _: u8 }
+    _Bind_Layout_State :: struct { _: u8 }
+    _Bind_Group_State :: struct { _: u8 }
 
     dummy :: proc "contextless" () -> ! {
         panic_contextless("Error: dummy GPU backend")
@@ -26,8 +26,8 @@ when BACKEND == BACKEND_DUMMY {
     _end_frame :: proc(sync: bool) { dummy() }
     @(require_results) _resize_swapchain :: proc(window: rawptr, size: [2]i32) -> (ok: bool) { dummy() }
 
-    @(require_results) _create_bindings_layout :: proc(id: base.Debug_ID, desc: Bindings_Layout_Desc) -> (result: _Bindings_Layout_State, ok: bool) { dummy() }
-    @(require_results) _create_bindings :: proc(id: base.Debug_ID, desc: Bindings_Desc) -> (result: _Bindings_State, ok: bool) { dummy() }
+    @(require_results) _create_bind_layout :: proc(id: base.Debug_ID, desc: Bind_Layout_Desc) -> (result: _Bind_Layout_State, ok: bool) { dummy() }
+    @(require_results) _create_bind_group :: proc(id: base.Debug_ID, desc: Bind_Group_Desc) -> (result: _Bind_Group_State, ok: bool) { dummy() }
     @(require_results) _create_graphics_pipeline :: proc(id: base.Debug_ID, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) { dummy() }
     @(require_results) _create_compute_pipeline :: proc(id: base.Debug_ID, desc: Compute_Pipeline_Desc) -> (result: _Compute_Pipeline_State, ok: bool) { dummy() }
     @(require_results) _create_constants :: proc(id: base.Debug_ID, item_size: i32, item_num: i32) -> (result: _Resource_State, ok: bool) { dummy() }
@@ -37,8 +37,8 @@ when BACKEND == BACKEND_DUMMY {
 
     _destroy_shader :: proc(state: Shader_State) { dummy() }
     _destroy_resource :: proc(state: Resource_State) { dummy() }
-    _destroy_bindings :: proc(state: Bindings_State) { dummy() }
-    _destroy_bindings_layout :: proc(state: Bindings_Layout_State) { dummy() }
+    _destroy_bind_group :: proc(state: Bind_Group_State) { dummy() }
+    _destroy_bind_layout :: proc(state: Bind_Layout_State) { dummy() }
     _destroy_graphics_pipeline :: proc(state: Graphics_Pipeline_State) { dummy() }
     _destroy_compute_pipeline :: proc(state: Compute_Pipeline_State) { dummy() }
 
@@ -51,7 +51,7 @@ when BACKEND == BACKEND_DUMMY {
     _set_graphics_pipeline :: proc(curr_pip: ^Graphics_Pipeline_State, curr: Graphics_Pipeline_Desc, prev: Graphics_Pipeline_Desc) { dummy() }
     _set_compute_pipeline :: proc(curr_pip: ^Compute_Pipeline_State, prev: Compute_Pipeline_Desc) { dummy() }
 
-    _set_bindings :: proc(bindings: ^Bindings_State, offsets: []u32) { dummy() }
+    _set_bind_group :: proc(bind_group: ^Bind_Group_State, offsets: []u32) { dummy() }
     _set_index_buffer :: proc(res: ^Resource_State, format: Index_Format, offset: u64) { dummy() }
 
     _update_constants :: proc(res: ^Resource_State, data: []u8) { dummy() }

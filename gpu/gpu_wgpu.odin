@@ -62,11 +62,11 @@ when BACKEND == BACKEND_WGPU {
         desc:   Sampler_Desc,
     }
 
-    _Bindings_Layout_State :: struct #all_or_none {
+    _Bind_Layout_State :: struct #all_or_none {
         bgl:    wgpu.BindGroupLayout,
     }
 
-    _Bindings_State :: struct #all_or_none {
+    _Bind_Group_State :: struct #all_or_none {
         bg: wgpu.BindGroup,
     }
 
@@ -343,13 +343,13 @@ when BACKEND == BACKEND_WGPU {
         return result
     }
 
-    _create_bindings_layout :: proc(id: base.Debug_ID, desc: Bindings_Layout_Desc) -> (result: _Bindings_Layout_State, ok: bool) {
+    _create_bind_layout :: proc(id: base.Debug_ID, desc: Bind_Layout_Desc) -> (result: _Bind_Layout_State, ok: bool) {
         base.log_debug("GPU: Creating WebGPU bind group layout")
 
-        layout_entries: [dynamic; NUM_TOTAL_BIND_SLOTS]wgpu.BindGroupLayoutEntry
+        layout_entries: [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]wgpu.BindGroupLayoutEntry
         for slot in desc.slots {
             entry := wgpu.BindGroupLayoutEntry{
-                binding = u32(slot.index + _bindings_layout_slot_kind_shift(slot.kind)),
+                binding = u32(slot.index + _bind_layout_slot_kind_shift(slot.kind)),
                 visibility = _wgpu_stage_flags(slot.stages),
             }
 
@@ -395,18 +395,18 @@ when BACKEND == BACKEND_WGPU {
         return result, true
     }
 
-    _create_bindings :: proc(id: base.Debug_ID, desc: Bindings_Desc) -> (result: _Bindings_State, ok: bool) {
-        base.log_debug("GPU: Creating WebGPU bindings '%s'", base.get_debug_id_name(id))
+    _create_bind_group :: proc(id: base.Debug_ID, desc: Bind_Group_Desc) -> (result: _Bind_Group_State, ok: bool) {
+        base.log_debug("GPU: Creating WebGPU bind_group '%s'", base.get_debug_id_name(id))
 
-        bindings_layout, bindings_layout_ok := _get_bindings_layout(desc.layout)
-        base.assert_id(id, bindings_layout_ok)
+        bind_layout, bind_layout_ok := _get_bind_layout(desc.layout)
+        base.assert_id(id, bind_layout_ok)
 
-        group_entries: [dynamic; NUM_TOTAL_BIND_SLOTS]wgpu.BindGroupEntry
+        group_entries: [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]wgpu.BindGroupEntry
         for slot, i in desc.slots {
-            layout_slot := bindings_layout.desc.slots[i]
+            layout_slot := bind_layout.desc.slots[i]
 
             entry := wgpu.BindGroupEntry{
-                binding = u32(slot.index + _bindings_layout_slot_kind_shift(layout_slot.kind)),
+                binding = u32(slot.index + _bind_layout_slot_kind_shift(layout_slot.kind)),
             }
 
             if slot.resource != {} {
@@ -440,7 +440,7 @@ when BACKEND == BACKEND_WGPU {
 
         result.bg = wgpu.DeviceCreateBindGroup(_state.device, &wgpu.BindGroupDescriptor{
             label = base.get_debug_id_name(id),
-            layout = bindings_layout.bgl,
+            layout = bind_layout.bgl,
             entryCount = uint(len(group_entries)),
             entries = &group_entries[0],
         })
@@ -454,15 +454,24 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_graphics_pipeline :: proc(id: base.Debug_ID, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) {
-        base.log_debug("GPU: Creating WebGPU pipeline '%s'", base.get_debug_id_name(id))
+        base.log_debug("GPU: Creating WebGPU graphics pipeline '%s'", base.get_debug_id_name(id))
 
-        bindings_layout, bindings_layout_ok := _get_bindings_layout(desc.bindings_layout)
-        base.assert_id(id, bindings_layout_ok)
+        bind_layouts: [dynamic; MAX_PIPELINE_BIND_GROUPS]wgpu.BindGroupLayout
+        for handle in desc.bind_layouts {
+            if handle == {} {
+                break
+            }
+            bind_layout, bind_layout_ok := _get_bind_layout(handle)
+            base.assert_id(id, bind_layout_ok)
+            append(&bind_layouts, bind_layout.bgl)
+        }
+
+        base.assert_id(id, len(bind_layouts) > 0)
 
         pip_layout := wgpu.DeviceCreatePipelineLayout(_state.device, &wgpu.PipelineLayoutDescriptor{
             label = base.get_debug_id_name(id),
-            bindGroupLayoutCount = 1,
-            bindGroupLayouts = &bindings_layout.bgl,
+            bindGroupLayoutCount = uint(len(bind_layouts)),
+            bindGroupLayouts = &bind_layouts[0],
         })
 
         if pip_layout == nil {
@@ -607,13 +616,24 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_compute_pipeline :: proc(id: base.Debug_ID, desc: Compute_Pipeline_Desc) -> (result: _Compute_Pipeline_State, ok: bool) {
-        bindings_layout, bindings_layout_ok := _get_bindings_layout(desc.bindings_layout)
-        base.assert_id(id, bindings_layout_ok)
+        base.log_debug("GPU: Creating WebGPU compute pipeline '%s'", base.get_debug_id_name(id))
+
+        bind_layouts: [dynamic; MAX_PIPELINE_BIND_GROUPS]wgpu.BindGroupLayout
+        for handle in desc.bind_layouts {
+            if handle == {} {
+                break
+            }
+            bind_layout, bind_layout_ok := _get_bind_layout(handle)
+            base.assert_id(id, bind_layout_ok)
+            append(&bind_layouts, bind_layout.bgl)
+        }
+
+        base.assert_id(id, len(bind_layouts) > 0)
 
         pip_layout := wgpu.DeviceCreatePipelineLayout(_state.device, &wgpu.PipelineLayoutDescriptor{
             label = base.get_debug_id_name(id),
-            bindGroupLayoutCount = 1,
-            bindGroupLayouts = &bindings_layout.bgl,
+            bindGroupLayoutCount = uint(len(bind_layouts)),
+            bindGroupLayouts = &bind_layouts[0],
         })
 
         if pip_layout == nil {
@@ -852,11 +872,11 @@ when BACKEND == BACKEND_WGPU {
         }
     }
 
-    _destroy_bindings :: proc(state: Bindings_State) {
+    _destroy_bind_group :: proc(state: Bind_Group_State) {
         wgpu.BindGroupRelease(state.bg)
     }
 
-    _destroy_bindings_layout :: proc(state: Bindings_Layout_State) {
+    _destroy_bind_layout :: proc(state: Bind_Layout_State) {
         wgpu.BindGroupLayoutRelease(state.bgl)
     }
 
@@ -1054,22 +1074,22 @@ when BACKEND == BACKEND_WGPU {
         )
     }
 
-    _set_bindings :: proc(bindings: ^Bindings_State, offsets: []u32) {
+    _set_bind_group :: proc(bind_group: ^Bind_Group_State, slot: int, offsets: []u32) {
         switch _state.encoder.mode {
         case .None:
-            base.assert_id(bindings.id, false)
+            base.assert_id(bind_group.id, false)
         case .Graphics:
             wgpu.RenderPassEncoderSetBindGroup(
                 _state.render_pass_encoder,
-                groupIndex = 0,
-                group = bindings.bg,
+                groupIndex = u32(slot),
+                group = bind_group.bg,
                 dynamicOffsets = offsets[:],
             )
         case .Compute:
             wgpu.ComputePassEncoderSetBindGroup(
                 _state.compute_pass_encoder,
-                groupIndex = 0,
-                group = bindings.bg,
+                groupIndex = u32(slot),
+                group = bind_group.bg,
                 dynamicOffsets = offsets[:],
             )
         }

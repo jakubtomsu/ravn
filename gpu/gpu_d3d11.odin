@@ -1,5 +1,5 @@
 #+vet explicit-allocators shadowing
-#+build !js
+#+build windows
 package ravn_gpu
 
 import "../base"
@@ -24,7 +24,7 @@ when BACKEND == BACKEND_D3D11 {
 
     _State :: struct {
         device:                 ^d3d.IDevice,
-        device_context:         ^d3d.IDeviceContext,
+        device_context:         ^ID3D11DeviceContext1,
         dxgi_factory:           ^dxgi.IFactory2,
         swapchain:              ^dxgi.ISwapChain1,
         swapchain_tex:          ^d3d.ITexture2D,
@@ -111,15 +111,15 @@ when BACKEND == BACKEND_D3D11 {
         cbuf:   ^d3d.IBuffer,
     }
 
-    _Bindings_Layout_State :: struct #all_or_none {
+    _Bind_Layout_State :: struct #all_or_none {
 
     }
 
-    _Bindings_State :: struct #all_or_none {
-        smps:           [dynamic; SAMPLER_BIND_SLOTS]^d3d.ISamplerState,
-        cbufs:          [dynamic; CONSTANTS_BIND_SLOTS]^d3d.IBuffer,
-        srvs:           [dynamic; RESOURCE_BIND_SLOTS]^d3d.IShaderResourceView,
-        uavs:           [dynamic; RW_RESOURCE_BIND_SLOTS]^d3d.IUnorderedAccessView,
+    _Bind_Group_State :: struct #all_or_none {
+        smps:           [dynamic; MAX_BIND_GROUP_SAMPLERS]^d3d.ISamplerState,
+        cbufs:          [dynamic; MAX_BIND_GROUP_CONSTANTS]^d3d.IBuffer,
+        srvs:           [dynamic; MAX_BIND_GROUP_RESOURCES]^d3d.IShaderResourceView,
+        uavs:           [dynamic; MAX_BIND_GROUP_RW_RESOURCES]^d3d.IUnorderedAccessView,
         smp_stages:     bit_set[Shader_Kind],
         cbuf_stages:    bit_set[Shader_Kind],
         srv_stages:     bit_set[Shader_Kind],
@@ -156,7 +156,8 @@ when BACKEND == BACKEND_D3D11 {
         }
 
         _d3d11_check(base_device->QueryInterface(d3d.IDevice_UUID, cast(^rawptr)&_state.device)) or_return
-        _d3d11_check(base_device_context->QueryInterface(d3d.IDeviceContext_UUID, cast(^rawptr)&_state.device_context)) or_return
+        // _d3d11_check(base_device_context->QueryInterface(d3d.IDeviceContext_UUID, cast(^rawptr)&_state.device_context)) or_return
+        _d3d11_check(base_device_context->QueryInterface(ID3D11DeviceContext1_UUID, cast(^rawptr)&_state.device_context)) or_return
 
         dxgi_device: ^dxgi.IDevice1
         _d3d11_check(_state.device->QueryInterface(dxgi.IDevice1_UUID, cast(^rawptr)&dxgi_device)) or_return
@@ -225,12 +226,12 @@ when BACKEND == BACKEND_D3D11 {
         return {}, true
     }
 
-    _create_bindings_layout :: proc(id: base.Debug_ID, desc: Bindings_Layout_Desc) -> (result: _Bindings_Layout_State, ok: bool) {
+    _create_bind_layout :: proc(id: base.Debug_ID, desc: Bind_Layout_Desc) -> (result: _Bind_Layout_State, ok: bool) {
         return {}, true
     }
 
-    _create_bindings :: proc(id: base.Debug_ID, desc: Bindings_Desc) -> (result: _Bindings_State, ok: bool) {
-        layout, layout_ok := _get_bindings_layout(desc.layout)
+    _create_bind_group :: proc(id: base.Debug_ID, desc: Bind_Group_Desc) -> (result: _Bind_Group_State, ok: bool) {
+        layout, layout_ok := _get_bind_layout(desc.layout)
         assert(layout_ok)
 
         for slot in layout.desc.slots {
@@ -277,7 +278,7 @@ when BACKEND == BACKEND_D3D11 {
                     result.srvs[slot.index] = res.srv
 
                 case .Texture2D, .Texture3D:
-                    if _is_bindings_layout_slot_rw(layout.desc.slots[i].kind) {
+                    if _is_bind_layout_slot_rw(layout.desc.slots[i].kind) {
                         assert(res.uav != nil)
                         resize(&result.uavs, slot.index + 1)
                         result.uavs[slot.index] = res.uav
@@ -773,7 +774,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
     }
 
-    _destroy_bindings :: proc(state: Bindings_State) {
+    _destroy_bind_group :: proc(state: Bind_Group_State) {
         for it in state.smps  do it->Release()
         for it in state.cbufs do it->Release()
         for it in state.srvs  do it->Release()
@@ -781,7 +782,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
     }
 
-    _destroy_bindings_layout :: proc(state: Bindings_Layout_State) {
+    _destroy_bind_layout :: proc(state: Bind_Layout_State) {
         // no-op
     }
 
@@ -819,16 +820,43 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
     }
 
-    _set_constants :: proc(shaders: bit_set[Shader_Kind], cbufs: []^d3d.IBuffer, start_slot: i32) {
-        if .Vertex  in shaders do _state.device_context->VSSetConstantBuffers(StartSlot = u32(start_slot), NumBuffers = u32(len(cbufs)), ppConstantBuffers = raw_data(cbufs))
-        if .Pixel   in shaders do _state.device_context->PSSetConstantBuffers(StartSlot = u32(start_slot), NumBuffers = u32(len(cbufs)), ppConstantBuffers = raw_data(cbufs))
-        if .Compute in shaders do _state.device_context->CSSetConstantBuffers(StartSlot = u32(start_slot), NumBuffers = u32(len(cbufs)), ppConstantBuffers = raw_data(cbufs))
-    }
-
     _set_samplers :: proc(shaders: bit_set[Shader_Kind], smps: []^d3d.ISamplerState, start_slot: i32) {
         if .Vertex  in shaders do _state.device_context->VSSetSamplers(StartSlot = u32(start_slot), NumSamplers = u32(len(smps)), ppSamplers = raw_data(smps))
         if .Pixel   in shaders do _state.device_context->PSSetSamplers(StartSlot = u32(start_slot), NumSamplers = u32(len(smps)), ppSamplers = raw_data(smps))
         if .Compute in shaders do _state.device_context->CSSetSamplers(StartSlot = u32(start_slot), NumSamplers = u32(len(smps)), ppSamplers = raw_data(smps))
+    }
+
+    _set_constants :: proc(shaders: bit_set[Shader_Kind], cbufs: []^d3d.IBuffer, start_slot: i32) {
+        if .Vertex  in shaders {
+            _state.device_context->VSSetConstantBuffers1(
+                StartSlot = u32(start_slot),
+                NumBuffers = u32(len(cbufs)),
+                ppConstantBuffers = raw_data(cbufs),
+                pFirstConstant = nil,
+                pNumConstants = nil,
+            )
+        }
+
+        if .Pixel   in shaders {
+            _state.device_context->PSSetConstantBuffers1(
+                StartSlot = u32(start_slot),
+                NumBuffers = u32(len(cbufs)),
+                ppConstantBuffers = raw_data(cbufs),
+                pFirstConstant = nil,
+                pNumConstants = nil,
+            )
+        }
+
+        if .Compute in shaders {
+            _state.device_context->CSSetConstantBuffers1(
+                StartSlot = u32(start_slot),
+                NumBuffers = u32(len(cbufs)),
+                ppConstantBuffers = raw_data(cbufs),
+                pFirstConstant = nil,
+                pNumConstants = nil,
+            )
+        }
+
     }
 
     _set_cs_rw_resources :: proc(uavs: []^d3d.IUnorderedAccessView, start_slot: i32) {
@@ -856,26 +884,26 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _unbind_cs_rw_resources :: proc() {
-        uavs: [RW_RESOURCE_BIND_SLOTS]^d3d.IUnorderedAccessView
+        uavs: [MAX_PIPELINE_BIND_RW_RESOURCES]^d3d.IUnorderedAccessView
         _state.device_context->CSSetUnorderedAccessViews(0, len(uavs), &uavs[0], nil)
     }
 
     _unbind_resources :: proc(shaders: bit_set[Shader_Kind]) {
-        srvs: [RESOURCE_BIND_SLOTS]^d3d.IShaderResourceView
+        srvs: [MAX_PIPELINE_BIND_RESOURCES]^d3d.IShaderResourceView
         if .Vertex in shaders do _state.device_context->VSSetShaderResources(0, len(srvs), &srvs[0])
         if .Pixel in shaders do _state.device_context->PSSetShaderResources(0, len(srvs), &srvs[0])
         if .Compute in shaders do _state.device_context->CSSetShaderResources(0, len(srvs), &srvs[0])
     }
 
     _unbind_constants :: proc(shaders: bit_set[Shader_Kind]) {
-        cbufs: [CONSTANTS_BIND_SLOTS]^d3d.IBuffer
+        cbufs: [MAX_PIPELINE_BIND_CONSTANTS]^d3d.IBuffer
         if .Vertex in shaders do _state.device_context->VSSetConstantBuffers(0, len(cbufs), &cbufs[0])
         if .Pixel in shaders do _state.device_context->PSSetConstantBuffers(0, len(cbufs), &cbufs[0])
         if .Compute in shaders do _state.device_context->CSSetConstantBuffers(0, len(cbufs), &cbufs[0])
     }
 
     _unbind_samplers :: proc(shaders: bit_set[Shader_Kind]) {
-        smps: [SAMPLER_BIND_SLOTS]^d3d.ISamplerState
+        smps: [MAX_PIPELINE_BIND_SAMPLERS]^d3d.ISamplerState
         if .Vertex in shaders do _state.device_context->VSSetSamplers(0, len(smps), &smps[0])
         if .Pixel in shaders do _state.device_context->PSSetSamplers(0, len(smps), &smps[0])
         if .Compute in shaders do _state.device_context->CSSetSamplers(0, len(smps), &smps[0])
@@ -958,35 +986,40 @@ when BACKEND == BACKEND_D3D11 {
         _unbind_samplers({.Vertex, .Pixel, .Compute})
     }
 
-    _set_bindings :: proc(bindings: ^Bindings_State, offsets: []u32) {
-        for offset, i in offsets {
-            res := _get_resource(bindings.dyn_consts[i]) or_continue
-            assert(res.kind == .Constants)
-            assert(res.size.y > 1)
-            assert(res.const_buf_data != nil)
+    _set_bind_group :: proc(bind_group: ^Bind_Group_State, slot: int, offsets: []u32) {
+        // for offset, i in offsets {
+        //     res := _get_resource(bind_group.dyn_consts[i]) or_continue
+        //     assert(res.kind == .Constants)
+        //     assert(res.size.y > 1)
+        //     assert(res.const_buf_data != nil)
+        //     mapped: d3d.MAPPED_SUBRESOURCE
+        //     if !_d3d11_check(_state.device_context->Map(
+        //         res.buf,
+        //         Subresource = 0,
+        //         MapType = .WRITE_DISCARD,
+        //         MapFlags = {},
+        //         pMappedResource = &mapped,
+        //     )) {
+        //         return
+        //     }
+        //     runtime.mem_copy_non_overlapping(mapped.pData, &res.const_buf_data[offset], int(res.size.x))
+        //     _state.device_context->Unmap(res.buf, 0)
+        // }
 
-            mapped: d3d.MAPPED_SUBRESOURCE
-            if !_d3d11_check(_state.device_context->Map(
-                res.buf,
-                Subresource = 0,
-                MapType = .WRITE_DISCARD,
-                MapFlags = {},
-                pMappedResource = &mapped,
-            )) {
-                return
-            }
-
-            runtime.mem_copy_non_overlapping(mapped.pData, &res.const_buf_data[offset], int(res.size.x))
-
-            _state.device_context->Unmap(res.buf, 0)
+        if len(bind_group.smps) > 0 {
+            _set_samplers(bind_group.smp_stages, bind_group.smps[:], start_slot = i32(MAX_BIND_GROUP_SAMPLERS * slot))
         }
 
-        _set_samplers(bindings.smp_stages, bindings.smps[:], start_slot = 0)
-        _set_resources(bindings.srv_stages, bindings.srvs[:], start_slot = 0)
-        _set_constants(bindings.cbuf_stages, bindings.cbufs[:], start_slot = 0)
+        if len(bind_group.srvs) > 0 {
+            _set_resources(bind_group.srv_stages, bind_group.srvs[:], start_slot = i32(MAX_BIND_GROUP_RESOURCES * slot))
+        }
 
-        if _state.encoder.mode == .Compute {
-            _set_cs_rw_resources(bindings.uavs[:], start_slot = 0)
+        if len(bind_group.cbufs) > 0 {
+            _set_constants(bind_group.cbuf_stages, bind_group.cbufs[:], start_slot = i32(MAX_BIND_GROUP_CONSTANTS * slot))
+        }
+
+        if len(bind_group.uavs) > 0 && _state.encoder.mode == .Compute {
+            _set_cs_rw_resources(bind_group.uavs[:], start_slot = i32(MAX_BIND_GROUP_RW_RESOURCES * slot))
         }
     }
 

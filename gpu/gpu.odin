@@ -33,8 +33,8 @@ MAX_COMPUTE_PIPELINES   :: #config(GPU_MAX_COMPUTE_PIPELINES, 64)
 MAX_RESOURCES           :: #config(GPU_MAX_RESOURCES, 1024)
 MAX_SHADERS             :: #config(GPU_MAX_SHADERS, 64)
 MAX_CONSTANTS           :: #config(GPU_MAX_CONSTANTS, 64)
-MAX_BINDINGS            :: #config(GPU_MAX_BINDINGS, 64)
-MAX_BINDINGS_LAYOUTS     :: #config(GPU_MAX_BINDINGS_LAYOUTS, 64)
+MAX_BIND_LAYOUTS        :: #config(GPU_MAX_BIND_LAYOUTS, 64)
+MAX_BIND_GROUPS         :: #config(GPU_MAX_BIND_GROUPS, 64)
 
 // Limits are based on the D3D11 resource limits, sometimes smaller to keep things in a reasonable range.
 // https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-resources-limits
@@ -54,8 +54,8 @@ Graphics_Pipeline_Handle :: distinct base.Handle
 Compute_Pipeline_Handle :: distinct base.Handle
 Shader_Handle :: distinct base.Handle
 Resource_Handle :: distinct base.Handle
-Bindings_Layout_Handle :: distinct base.Handle
-Bindings_Handle :: distinct base.Handle
+Bind_Layout_Handle :: distinct base.Handle
+Bind_Group_Handle :: distinct base.Handle
 
 // Holds all global state.
 _state: ^State
@@ -72,8 +72,8 @@ State :: struct #align(4096) {
     graphics_pipelines:             base.Pool(MAX_GRAPHICS_PIPELINES, Graphics_Pipeline_State, Graphics_Pipeline_Handle),
     compute_pipelines:              base.Pool(MAX_COMPUTE_PIPELINES, Compute_Pipeline_State, Compute_Pipeline_Handle),
     resources:                      base.Pool(MAX_RESOURCES, Resource_State, Resource_Handle),
-    bindings_layouts:               base.Pool(MAX_BINDINGS_LAYOUTS, Bindings_Layout_State, Bindings_Layout_Handle),
-    bindings:                       base.Pool(MAX_BINDINGS, Bindings_State, Bindings_Handle),
+    bind_layouts:                   base.Pool(MAX_BIND_LAYOUTS, Bind_Layout_State, Bind_Layout_Handle),
+    bind_groups:                    base.Pool(MAX_BIND_GROUPS, Bind_Group_State, Bind_Group_Handle),
     shaders:                        base.Pool(MAX_SHADERS, Shader_State, Shader_Handle),
 
     encoder:                        Command_Encoder_State,
@@ -125,15 +125,15 @@ Resource_State :: struct #all_or_none {
     id:             base.Debug_ID,
 }
 
-Bindings_Layout_State :: struct #all_or_none {
-    using native:   _Bindings_Layout_State,
-    desc:           Bindings_Layout_Desc,
+Bind_Layout_State :: struct #all_or_none {
+    using native:   _Bind_Layout_State,
+    desc:           Bind_Layout_Desc,
     id:             base.Debug_ID,
 }
 
-Bindings_State :: struct #all_or_none {
-    using native:   _Bindings_State,
-    dyn_consts:     [dynamic; CONSTANTS_BIND_SLOTS]Resource_Handle,
+Bind_Group_State :: struct #all_or_none {
+    using native:   _Bind_Group_State,
+    dyn_consts:     [dynamic; MAX_BIND_GROUP_CONSTANTS]Resource_Handle,
     id:             base.Debug_ID,
 }
 
@@ -150,19 +150,19 @@ Graphics_Pipeline_Desc :: struct #align(64) {
     blends:             [RENDER_TEXTURE_BIND_SLOTS]Blend_Desc,
     color_format:       [RENDER_TEXTURE_BIND_SLOTS]Texture_Format,
     depth_format:       Texture_Format,
-    bindings_layout:    Bindings_Layout_Handle,
+    bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
 }
 
 Compute_Pipeline_Desc :: struct {
     cs:                 Shader_Handle,
-    bindings_layout:    Bindings_Layout_Handle,
+    bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
 }
 
-Bindings_Layout_Desc :: struct {
-    slots:  [dynamic; NUM_TOTAL_BIND_SLOTS]Bindings_Layout_Slot_Desc,
+Bind_Layout_Desc :: struct {
+    slots:  [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]Bind_Layout_Slot_Desc,
 }
 
-Bindings_Layout_Slot_Kind :: enum u8 {
+Bind_Layout_Slot_Kind :: enum u8 {
     Sampler,
     Constants,
     Constants_Dynamic,
@@ -176,19 +176,20 @@ Bindings_Layout_Slot_Kind :: enum u8 {
     RW_Resource_Texture_3D,
 }
 
-Bindings_Layout_Slot_Desc :: struct {
+Bind_Layout_Slot_Desc :: struct {
     index:  i32,
-    kind:   Bindings_Layout_Slot_Kind,
+    kind:   Bind_Layout_Slot_Kind,
     stages: bit_set[Shader_Kind],
     format: Texture_Format, // only needed for RW resources!
 }
 
-Bindings_Desc :: struct {
-    layout: Bindings_Layout_Handle,
-    slots:  [dynamic; NUM_TOTAL_BIND_SLOTS]Bindings_Slot_Desc,
+// Describes a full set of resources accessible to a pipeline
+Bind_Group_Desc :: struct {
+    layout: Bind_Layout_Handle,
+    slots:  [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]Bind_Group_Slot_Desc,
 }
 
-Bindings_Slot_Desc :: struct {
+Bind_Group_Slot_Desc :: struct {
     index:      i32,
     resource:   Resource_Handle,
     sampler:    Sampler_Desc,
@@ -468,8 +469,8 @@ init :: proc(state: ^State, native_window: rawptr) -> bool {
     base.pool_clear(&_state.graphics_pipelines)
     base.pool_clear(&_state.compute_pipelines)
     base.pool_clear(&_state.resources)
-    base.pool_clear(&_state.bindings_layouts)
-    base.pool_clear(&_state.bindings)
+    base.pool_clear(&_state.bind_layouts)
+    base.pool_clear(&_state.bind_groups)
     base.pool_clear(&_state.shaders)
 
     return _init(native_window)
@@ -511,7 +512,7 @@ end_frame :: proc(sync: bool = true, loc := #caller_location) {
 make_graphics_pipeline_desc :: proc(
     ps:                 Shader_Handle,
     vs:                 Shader_Handle,
-    layout:             Bindings_Layout_Handle,
+    layouts:            [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
     out_colors:         []Texture_Format,
     out_depth:          Texture_Format = .Invalid,
     blends:             []Blend_Desc = {},
@@ -536,8 +537,8 @@ make_graphics_pipeline_desc :: proc(
         depth_comparison = depth_comparison,
         depth_write = depth_write,
         depth_bias = depth_bias,
-        bindings_layout = layout,
         depth_format = out_depth,
+        bind_layouts = layouts,
     }
 
     copy(result.color_format[:], out_colors)
@@ -548,10 +549,14 @@ make_graphics_pipeline_desc :: proc(
 
 
 @(require_results)
-make_compute_pipeline_desc :: proc(cs: Shader_Handle) -> (result: Compute_Pipeline_Desc) {
+make_compute_pipeline_desc :: proc(
+    cs:         Shader_Handle,
+    layouts:    [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
+) -> (result: Compute_Pipeline_Desc) {
     assert(cs != {})
     result = {
         cs = cs,
+        bind_layouts = layouts,
     }
     return result
 }
@@ -587,20 +592,20 @@ _find_free_or_destroy_existing :: proc(
 }
 
 @(require_results)
-create_bindings_layout :: proc(
-    handle:     ^Bindings_Layout_Handle,
-    desc:       Bindings_Layout_Desc,
+create_bind_layout :: proc(
+    handle:     ^Bind_Layout_Handle,
+    desc:       Bind_Layout_Desc,
     name        := #caller_expression(handle),
     loc         := #caller_location,
 ) -> (ok: bool) {
     desc := desc
-    base.log_debug("Creating bindings layout '%s'", name)
+    base.log_debug("Creating bind_group layout '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id)
 
     for &slot in desc.slots {
         if slot.stages == {} {
-            if _is_bindings_layout_slot_rw(slot.kind) {
+            if _is_bind_layout_slot_rw(slot.kind) {
                 slot.stages = {.Compute}
             } else {
                 slot.stages = {.Vertex, .Pixel, .Compute}
@@ -608,49 +613,49 @@ create_bindings_layout :: proc(
         }
     }
 
-    validate_bindings_layout_desc(id, desc, loc = loc)
+    validate_bind_layout_desc(id, desc, loc = loc)
 
-    _find_free_or_destroy_existing(id, &_state.bindings_layouts, handle, _destroy_bindings_layout_state) or_return
+    _find_free_or_destroy_existing(id, &_state.bind_layouts, handle, _destroy_bind_layout_state) or_return
 
-    state := Bindings_Layout_State{
+    state := Bind_Layout_State{
         native = {},
         desc = desc,
         id = id,
     }
 
-    state.native, ok = _create_bindings_layout(id, desc)
+    state.native, ok = _create_bind_layout(id, desc)
     if !ok {
-        base.log_err("Failed to create native bindings layout: '%s'", name)
+        base.log_err("Failed to create native bind_group layout: '%s'", name)
         return false
     }
 
-    base.pool_set(&_state.bindings_layouts, handle^, state) or_else base.panic_id(id, "Invalid state")
+    base.pool_set(&_state.bind_layouts, handle^, state) or_else base.panic_id(id, "Invalid state")
     return true
 }
 
 @(require_results)
-create_bindings :: proc(
-    handle: ^Bindings_Handle,
-    desc:   Bindings_Desc,
+create_bind_group :: proc(
+    handle: ^Bind_Group_Handle,
+    desc:   Bind_Group_Desc,
     name    := #caller_expression(handle),
     loc     := #caller_location,
 ) -> (ok: bool) {
-    base.log_debug("Creating bindings '%s'", name)
+    base.log_debug("Creating bind_group '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id)
 
-    validate_bindings_desc(id, desc, loc = loc)
-    _find_free_or_destroy_existing(id, &_state.bindings, handle, _destroy_bindings_state) or_return
+    validate_bind_group_desc(id, desc, loc = loc)
+    _find_free_or_destroy_existing(id, &_state.bind_groups, handle, _destroy_bind_group_state) or_return
 
-    state := Bindings_State{
+    state := Bind_Group_State{
         native = {},
         dyn_consts = {},
         id = id,
     }
 
-    state.native, ok = _create_bindings(id, desc)
+    state.native, ok = _create_bind_group(id, desc)
     if !ok {
-        base.log_err("Failed to create native bindings: '%s'", name)
+        base.log_err("Failed to create native bind_group: '%s'", name)
         return false
     }
 
@@ -661,7 +666,7 @@ create_bindings :: proc(
         }
     }
 
-    base.pool_set(&_state.bindings, handle^, state) or_else base.panic_id(id, "Invalid state")
+    base.pool_set(&_state.bind_groups, handle^, state) or_else base.panic_id(id, "Invalid state")
     return true
 }
 
@@ -948,8 +953,8 @@ create_buffer :: proc(
 destroy :: proc {
     destroy_shader,
     destroy_resource,
-    destroy_bindings,
-    destroy_bindings_layout,
+    destroy_bind_group,
+    destroy_bind_layout,
     destroy_graphics_pipeline,
     destroy_compute_pipeline,
 }
@@ -966,16 +971,16 @@ destroy_resource :: proc(handle: Resource_Handle) -> bool {
     return base.pool_remove(&_state.resources, handle)
 }
 
-destroy_bindings :: proc(handle: Bindings_Handle) -> bool {
-    state := base.pool_get(&_state.bindings, handle) or_return
-    _destroy_bindings_state(state)
-    return base.pool_remove(&_state.bindings, handle)
+destroy_bind_group :: proc(handle: Bind_Group_Handle) -> bool {
+    state := base.pool_get(&_state.bind_groups, handle) or_return
+    _destroy_bind_group_state(state)
+    return base.pool_remove(&_state.bind_groups, handle)
 }
 
-destroy_bindings_layout :: proc(handle: Bindings_Layout_Handle) -> bool {
-    state := base.pool_get(&_state.bindings_layouts, handle) or_return
-    _destroy_bindings_layout_state(state)
-    return base.pool_remove(&_state.bindings_layouts, handle)
+destroy_bind_layout :: proc(handle: Bind_Layout_Handle) -> bool {
+    state := base.pool_get(&_state.bind_layouts, handle) or_return
+    _destroy_bind_layout_state(state)
+    return base.pool_remove(&_state.bind_layouts, handle)
 }
 
 destroy_graphics_pipeline :: proc(handle: Graphics_Pipeline_Handle) -> bool {
@@ -1000,13 +1005,13 @@ _destroy_resource_state :: proc(state: ^Resource_State) {
     base.destroy_debug_id(&state.id)
 }
 
-_destroy_bindings_state :: proc(state: ^Bindings_State) {
-    _destroy_bindings(state^)
+_destroy_bind_group_state :: proc(state: ^Bind_Group_State) {
+    _destroy_bind_group(state^)
     base.destroy_debug_id(&state.id)
 }
 
-_destroy_bindings_layout_state :: proc(state: ^Bindings_Layout_State) {
-    _destroy_bindings_layout(state^)
+_destroy_bind_layout_state :: proc(state: ^Bind_Layout_State) {
+    _destroy_bind_layout(state^)
     base.destroy_debug_id(&state.id)
 }
 
@@ -1052,12 +1057,14 @@ end_graphics_pass :: proc() {
     _state.encoder = {}
 }
 
-set_bindings :: proc(handle: Bindings_Handle, offsets: []u32 = nil) {
+set_bind_group :: proc(handle: Bind_Group_Handle, #any_int slot: int = 0, offsets: []u32 = nil) {
     assert(_state.encoder.mode != .None)
     assert(handle != {})
-    bindings, bindings_ok := _get_bindings(handle)
-    assert(bindings_ok)
-    _set_bindings(bindings, offsets)
+    assert(slot >= 0)
+    assert(slot < MAX_PIPELINE_BIND_GROUPS)
+    bind_group, bind_group_ok := _get_bind_group(handle)
+    assert(bind_group_ok)
+    _set_bind_group(bind_group, slot, offsets)
 }
 
 set_index_buffer :: proc(handle: Resource_Handle, format: Index_Format, offset: u64 = 0) {
@@ -1281,46 +1288,46 @@ validate_pass_desc :: proc(id: base.Debug_ID, desc: Graphics_Pass_Desc, loc := #
     }
 }
 
-validate_bindings_layout_desc :: proc(id: base.Debug_ID, desc: Bindings_Layout_Desc, loc := #caller_location) {
-    base.assert_id(id, len(desc.slots) > 0, "Bindings layout must have at least one slot", loc = loc)
+validate_bind_layout_desc :: proc(id: base.Debug_ID, desc: Bind_Layout_Desc, loc := #caller_location) {
+    base.assert_id(id, len(desc.slots) > 0, "Bind_Group layout must have at least one slot", loc = loc)
 
-    used: bit_set[0..<NUM_TOTAL_BIND_SLOTS]
+    used: bit_set[0..<NUM_TOTAL_BIND_GROUP_SLOTS]
     for slot in desc.slots {
-        base.assert_id(id, slot.index >= 0 && slot.index < _bindings_layout_slot_kind_num(slot.kind),
-            "Bindings layout slot index out of range for its kind", loc = loc)
+        base.assert_id(id, slot.index >= 0 && slot.index < _bind_layout_slot_kind_num(slot.kind),
+            "Bind_Group layout slot index out of range for its kind", loc = loc)
 
-        base.assert_id(id, int(slot.index) not_in used, "Duplicate bindings layout slot index", loc = loc)
+        base.assert_id(id, int(slot.index) not_in used, "Duplicate bind_group layout slot index", loc = loc)
         used += {int(slot.index)}
 
-        base.assert_id(id, .Invalid not_in slot.stages, "Bindings layout slot has an invalid shader stage", loc = loc)
+        base.assert_id(id, .Invalid not_in slot.stages, "Bind_Group layout slot has an invalid shader stage", loc = loc)
 
-        if _is_bindings_layout_slot_rw(slot.kind) {
-            base.assert_id(id, slot.stages != {}, "RW bindings layout slot must specify its shader stages explicitly", loc = loc)
-            base.assert_id(id, .Vertex not_in slot.stages, "RW bindings layout slot cannot be visible to the vertex stage", loc = loc)
+        if _is_bind_layout_slot_rw(slot.kind) {
+            base.assert_id(id, slot.stages != {}, "RW bind_group layout slot must specify its shader stages explicitly", loc = loc)
+            base.assert_id(id, .Vertex not_in slot.stages, "RW bind_group layout slot cannot be visible to the vertex stage", loc = loc)
         }
 
-        if _bindings_layout_slot_requires_layout(slot.kind) {
-            base.assert_id(id, slot.format != .Invalid, "RW texture bindings layout slot requires a format", loc = loc)
-            base.assert_id(id, !texture_format_is_depth_stencil(slot.format), "RW texture bindings layout slot cannot use a depth format", loc = loc)
+        if _bind_layout_slot_requires_layout(slot.kind) {
+            base.assert_id(id, slot.format != .Invalid, "RW texture bind_group layout slot requires a format", loc = loc)
+            base.assert_id(id, !texture_format_is_depth_stencil(slot.format), "RW texture bind_group layout slot cannot use a depth format", loc = loc)
         } else {
-            base.assert_id(id, slot.format == .Invalid, "Only RW texture bindings layout slots may set a format", loc = loc)
+            base.assert_id(id, slot.format == .Invalid, "Only RW texture bind_group layout slots may set a format", loc = loc)
         }
     }
 }
 
-validate_bindings_desc :: proc(id: base.Debug_ID, desc: Bindings_Desc, loc := #caller_location) {
-    layout, layout_ok := _get_bindings_layout(desc.layout)
-    base.assert_id(id, layout_ok, "Bindings reference an invalid layout", loc = loc)
+validate_bind_group_desc :: proc(id: base.Debug_ID, desc: Bind_Group_Desc, loc := #caller_location) {
+    layout, layout_ok := _get_bind_layout(desc.layout)
+    base.assert_id(id, layout_ok, "Bind_Group reference an invalid layout", loc = loc)
 
     // A bind group must fill exactly the slots declared by its layout, no more, no less.
-    base.assert_id(id, len(desc.slots) == len(layout.desc.slots), "Bindings must fill exactly the layout's slots", loc = loc)
+    base.assert_id(id, len(desc.slots) == len(layout.desc.slots), "Bind_Group must fill exactly the layout's slots", loc = loc)
 
-    used: [NUM_TOTAL_BIND_SLOTS]bool
+    used: [NUM_TOTAL_BIND_GROUP_SLOTS]bool
     for slot in desc.slots {
-        layout_slot, layout_slot_ok := _find_bindings_layout_slot(layout.desc, slot.index)
-        base.assert_id(id, layout_slot_ok, "Bindings slot index not present in the layout", loc = loc)
+        layout_slot, layout_slot_ok := _find_bind_layout_slot(layout.desc, slot.index)
+        base.assert_id(id, layout_slot_ok, "Bind_Group slot index not present in the layout", loc = loc)
 
-        base.assert_id(id, !used[slot.index], "Duplicate bindings slot index", loc = loc)
+        base.assert_id(id, !used[slot.index], "Duplicate bind_group slot index", loc = loc)
         used[slot.index] = true
 
         if layout_slot.kind == .Sampler {
@@ -1331,8 +1338,8 @@ validate_bindings_desc :: proc(id: base.Debug_ID, desc: Bindings_Desc, loc := #c
         base.assert_id(id, slot.resource != {}, "A resource slot must bind a resource", loc = loc)
 
         res, res_ok := _get_resource(slot.resource)
-        base.assert_id(id, res_ok, "Bindings slot references an invalid resource", loc = loc)
-        base.assert_id(id, res.kind == _bindings_layout_slot_resource_kind(layout_slot.kind), "Bound resource kind does not match the layout slot", loc = loc)
+        base.assert_id(id, res_ok, "Bind_Group slot references an invalid resource", loc = loc)
+        base.assert_id(id, res.kind == _bind_layout_slot_resource_kind(layout_slot.kind), "Bound resource kind does not match the layout slot", loc = loc)
 
         if layout_slot.kind == .Constants_Dynamic {
             base.assert_id(id, res.size.y > 1, "A Constants_Dynamic slot expects a multi-item constant buffer", loc = loc)
@@ -1450,13 +1457,13 @@ _get_shader :: proc(handle: Shader_Handle) -> (^Shader_State, bool) {
 }
 
 @(require_results)
-_get_bindings_layout :: proc(handle: Bindings_Layout_Handle) -> (^Bindings_Layout_State, bool) {
-    return base.pool_get(&_state.bindings_layouts, handle)
+_get_bind_layout :: proc(handle: Bind_Layout_Handle) -> (^Bind_Layout_State, bool) {
+    return base.pool_get(&_state.bind_layouts, handle)
 }
 
 @(require_results)
-_get_bindings :: proc(handle: Bindings_Handle) -> (^Bindings_State, bool) {
-    return base.pool_get(&_state.bindings, handle)
+_get_bind_group :: proc(handle: Bind_Group_Handle) -> (^Bind_Group_State, bool) {
+    return base.pool_get(&_state.bind_groups, handle)
 }
 
 @(require_results)
@@ -1492,7 +1499,7 @@ _depth_enable :: proc(comp: Comparison_Op, write: bool) -> bool {
 }
 
 @(require_results)
-_is_bindings_layout_slot_rw :: proc(kind: Bindings_Layout_Slot_Kind) -> bool {
+_is_bind_layout_slot_rw :: proc(kind: Bind_Layout_Slot_Kind) -> bool {
     #partial switch kind {
     case .RW_Resource_Buffer,
         .RW_Resource_Texture_2D,
@@ -1504,7 +1511,7 @@ _is_bindings_layout_slot_rw :: proc(kind: Bindings_Layout_Slot_Kind) -> bool {
 }
 
 @(require_results)
-_bindings_layout_slot_requires_layout :: proc(kind: Bindings_Layout_Slot_Kind) -> bool {
+_bind_layout_slot_requires_layout :: proc(kind: Bind_Layout_Slot_Kind) -> bool {
     #partial switch kind {
     case .RW_Resource_Texture_2D,
         .RW_Resource_Texture_2D_Array,
@@ -1515,55 +1522,55 @@ _bindings_layout_slot_requires_layout :: proc(kind: Bindings_Layout_Slot_Kind) -
 }
 
 @(require_results)
-_bindings_layout_slot_kind_num :: proc(kind: Bindings_Layout_Slot_Kind) -> i32 {
+_bind_layout_slot_kind_num :: proc(kind: Bind_Layout_Slot_Kind) -> i32 {
     switch kind {
     case .Sampler:
-        return  SAMPLER_BIND_SLOTS
+        return MAX_BIND_GROUP_SAMPLERS
 
     case .Constants, .Constants_Dynamic:
-        return  CONSTANTS_BIND_SLOTS
+        return MAX_BIND_GROUP_CONSTANTS
 
     case .Resource_Buffer,
         .Resource_Texture_2D,
         .Resource_Texture_2D_Array,
         .Resource_Texture_3D:
-        return  RESOURCE_BIND_SLOTS
+        return MAX_BIND_GROUP_RESOURCES
 
     case .RW_Resource_Buffer,
         .RW_Resource_Texture_2D,
         .RW_Resource_Texture_2D_Array,
         .RW_Resource_Texture_3D:
-        return  RW_RESOURCE_BIND_SLOTS
+        return MAX_BIND_GROUP_RW_RESOURCES
     }
     return 0
 }
 
 @(require_results)
-_bindings_layout_slot_kind_shift :: proc(kind: Bindings_Layout_Slot_Kind) -> i32 {
+_bind_layout_slot_kind_shift :: proc(kind: Bind_Layout_Slot_Kind) -> i32 {
     switch kind {
     case .Sampler:
-        return SAMPLER_SLOT_SHIFT
+        return BIND_GROUP_SAMPLER_SLOT_SHIFT
 
     case .Constants, .Constants_Dynamic:
-        return CONSTANTS_SLOT_SHIFT
+        return BIND_GROUP_CONSTANTS_SLOT_SHIFT
 
     case .Resource_Buffer,
         .Resource_Texture_2D,
         .Resource_Texture_2D_Array,
         .Resource_Texture_3D:
-        return RESOURCE_SLOT_SHIFT
+        return BIND_GROUP_RESOURCE_SLOT_SHIFT
 
     case .RW_Resource_Buffer,
         .RW_Resource_Texture_2D,
         .RW_Resource_Texture_2D_Array,
         .RW_Resource_Texture_3D:
-        return RW_RESOURCE_SLOT_SHIFT
+        return BIND_GROUP_RW_RESOURCE_SLOT_SHIFT
     }
     return 0
 }
 
 @(require_results)
-_bindings_layout_slot_resource_kind :: proc(kind: Bindings_Layout_Slot_Kind) -> Resource_Kind {
+_bind_layout_slot_resource_kind :: proc(kind: Bind_Layout_Slot_Kind) -> Resource_Kind {
     switch kind {
     case .Sampler:
         return .Invalid
@@ -1587,7 +1594,7 @@ _bindings_layout_slot_resource_kind :: proc(kind: Bindings_Layout_Slot_Kind) -> 
 }
 
 @(require_results)
-_find_bindings_layout_slot :: proc(desc: Bindings_Layout_Desc, index: i32) -> (Bindings_Layout_Slot_Desc, bool) {
+_find_bind_layout_slot :: proc(desc: Bind_Layout_Desc, index: i32) -> (Bind_Layout_Slot_Desc, bool) {
     for slot in desc.slots {
         if slot.index == index {
             return slot, true

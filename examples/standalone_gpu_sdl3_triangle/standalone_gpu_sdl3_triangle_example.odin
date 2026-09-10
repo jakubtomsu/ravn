@@ -46,19 +46,19 @@ main :: proc() {
     vs_blob := shader_compiler.compile(&shc, "triangle.hlsl", _shader_code, {stage = .Vertex}) or_else panic("vs_blob")
 
     vbuf: gpu.Resource_Handle
-    layout: gpu.Bindings_Layout_Handle
-    binds: gpu.Bindings_Handle
+    layout: gpu.Bind_Layout_Handle
+    binds: gpu.Bind_Group_Handle
     pip: gpu.Graphics_Pipeline_Handle
     ps: gpu.Shader_Handle
     vs: gpu.Shader_Handle
 
     gpu.create_buffer(&vbuf, .Storage, size_of(Vertex), data = base.slice_bytes(verts)) or_else panic("buf")
 
-    gpu.create_bindings_layout(&layout, {slots = {
+    gpu.create_bind_layout(&layout, {slots = {
         {index=0, kind=.Resource_Buffer, stages={.Vertex, .Pixel}},
     }}) or_else panic("layout")
 
-    gpu.create_bindings(&binds, {
+    gpu.create_bind_group(&binds, {
         layout = layout,
         slots = {
             {index = 0, resource = vbuf},
@@ -71,7 +71,7 @@ main :: proc() {
     gpu.create_graphics_pipeline(&pip, gpu.make_graphics_pipeline_desc(
         ps = ps,
         vs = vs,
-        layout = layout,
+        layouts = {0 = layout},
         out_colors = {0 = .Swapchain},
     )) or_else panic("pip")
 
@@ -99,10 +99,9 @@ main :: proc() {
             colors = {0 = {resource = gpu.SWAPCHAIN_HANDLE, clear_mode = .Clear, clear_val = {0.01, 0.1, 0.2, 1}}},
         })
 
-        gpu.set_bindings(binds)
+        gpu.set_bind_group(binds)
         gpu.set_graphics_pipeline(pip)
         gpu.draw_non_indexed(3)
-
         gpu.end_graphics_pass()
 
         gpu.end_frame(sync = true)
