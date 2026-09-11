@@ -7,7 +7,7 @@ import "base:runtime"
 import "core:math"
 
 import "wav"
-// import "qoa"
+import "qoa"
 
 BACKEND :: #config(AUDIO_BACKEND, BACKEND_DEFAULT)
 
@@ -32,6 +32,7 @@ SINGLE_THREAD :: #config(AUDIO_SINGLE_THREAD, false)
 
 MAX_SOUNDS :: #config(AUDIO_MAX_SOUNDS, 512)
 MAX_RESOURCES :: #config(AUDIO_MAX_RESOURCE, 512)
+MAX_QOA_STREAMS :: #config(AUDIO_MAX_QOA_STREAMS, 64)
 NUM_GROUPS :: 8
 SCRATCH_FRAMES :: 1024 * 8
 SPEED_OF_SOUND :: 343 // m/s, dry air at around 20C
@@ -43,6 +44,7 @@ Handle :: base.Handle
 
 Resource_Handle :: distinct Handle
 Sound_Handle :: distinct Handle
+QOA_Stream_Handle :: distinct Handle
 
 _state: ^State
 
@@ -67,7 +69,14 @@ State :: struct #align(4096) {
     sounds_gen:         [MAX_SOUNDS]Handle_Gen,
     sounds:             [MAX_SOUNDS]Sound,
 
+    qoa_streams:        base.Pool(MAX_QOA_STREAMS, QOA_Stream, QOA_Stream_Handle),
+
     groups:             [NUM_GROUPS]Group,
+}
+
+QOA_Stream :: struct {
+    frame_index:    i32,
+    samples:        [qoa.FRAME_LEN * 2]i16,
 }
 
 Generator_Proc :: #type proc(frames: [][2]f32, frame_rate: int)
@@ -101,7 +110,7 @@ GROUP_DEFAULT :: Group {
 
 // Represents the sample data.
 Resource :: struct {
-    data:           [^]byte,
+    data:           []byte,
     format:         Resource_Format,
     frame_num:      u32,
     frame_rate:     u32, // hz
@@ -118,6 +127,7 @@ Resource_Format :: enum u8 {
     Raw_I16,
     Raw_U8,
     WAV,
+    QOA, // Compressed and decoded on the fly
 }
 
 Wave :: struct #all_or_none {
@@ -140,13 +150,14 @@ Sound_Source :: union {
     Wave,
 }
 
-Sound :: struct {
+Sound :: struct #all_or_none {
     frame:              f64,
     delay:              f32,
     frame_range:        [2]u32,
     source:             Sound_Source,
     flags:              bit_set[Sound_Flag],
     group_index:        u8,
+    qoa_stream:         QOA_Stream_Handle,
 
     playing:            b32,
     params:             [Sound_Param_Kind]Param,
@@ -253,6 +264,8 @@ init :: proc(state: ^State) -> bool {
         base.spsc_push(&_state.resources_free, Handle_Index(i))
     }
 
+    base.pool_clear(&_state.qoa_streams)
+
     set_master_mixer(default_master_mixer)
 
     _state.groups = GROUP_DEFAULT
@@ -339,7 +352,7 @@ create_resource :: proc(
 
     resource := &_state.resources[index]
     resource^ = {
-        data = raw_data(data),
+        data = data,
         format = format,
         frame_rate = frame_rate,
         flags = flags,
@@ -372,7 +385,7 @@ create_resource :: proc(
             return {}, false
         }
 
-        resource.data = raw_data(sample_bytes)
+        resource.data = sample_bytes
         resource.frame_num = u32(len(sample_bytes)) / u32(header.format.num_channels * (header.format.bits_per_sample / 8))
         resource.frame_rate = header.format.sample_rate
 
@@ -406,6 +419,27 @@ create_resource :: proc(
         case:
             assert(false, "Only WAV files with 1 or 2 channels are supported.")
             return {}, false
+        }
+
+    case .QOA:
+        desc, desc_ok := qoa.decode_info(data)
+        if !desc_ok {
+            return {}, false
+        }
+
+        if desc.num_channels == 0 || desc.num_channels > 2 {
+            assert(false, "Only QOA files with 1 or 2 channels are supported.")
+            return {}, false
+        }
+
+        resource.data = data
+        resource.frame_num = desc.samples
+        resource.frame_rate = desc.sample_rate
+
+        if desc.num_channels == 1 {
+            resource.flags += {.Mono}
+        } else {
+            resource.flags -= {.Mono}
         }
     }
 
@@ -460,6 +494,7 @@ create_sound :: proc(
     frame_num: u32
     expected_dur: f32 = 1
 
+    qoa_stream: QOA_Stream_Handle
     switch &s in source {
     case Resource_Handle:
         res, res_ok := _get_resource(s)
@@ -468,9 +503,18 @@ create_sound :: proc(
             return {}, false
         }
 
+        if res.format == .QOA {
+            qoa_stream, ok = base.pool_find_free(_state.qoa_streams)
+            if !ok {
+                return {}, false
+            }
+        }
+
         frame_rate = res.frame_rate
         frame_num = res.frame_num
         expected_dur = f32(frame_num) / f32(frame_rate)
+        // A QOA sound acquires a decode block from the pool lazily, on its first
+        // mix (audio thread). Here it just starts with an empty handle.
 
     case Wave:
         expected_dur = s.dur
@@ -520,6 +564,10 @@ create_sound :: proc(
         pos_prev = pos,
         vel_curr = vel,
         vel_prev = vel,
+        qoa_stream = qoa_stream,
+        lpf_prev = {},
+        delay = {},
+        hpf_prev = {},
     }
 
     intrinsics.atomic_store(&_state.sounds_state[index], .Used)
@@ -886,17 +934,34 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
             resource, resource_ok := _get_resource(source)
             assert(resource_ok)
 
-            sound.frame = sample_base_signal(
-                out_buf = scratch,
-                frame_bytes = resource.data,
-                frame_num = resource.frame_num,
-                format = resource.format,
-                mono = .Mono in resource.flags,
-                time = sound.frame,
-                delta_range = pitch_range * delta_rate,
-                loop = .Loop in sound.flags,
-                frame_range = sound.frame_range,
-            )
+            if resource.format == .QOA {
+                stream, stream_ok := base.pool_get(&_state.qoa_streams, sound.qoa_stream)
+                assert(stream_ok)
+
+                sound.frame = sample_qoa_signal(
+                    out_buf = scratch,
+                    stream = stream,
+                    data = resource.data,
+                    num_channels = .Mono in resource.flags ? 1 : 2,
+                    sample_rate = resource.frame_rate,
+                    time = sound.frame,
+                    delta_range = pitch_range * delta_rate,
+                    loop = .Loop in sound.flags,
+                    frame_range = sound.frame_range,
+                )
+            } else {
+                sound.frame = sample_base_signal(
+                    out_buf = scratch,
+                    frame_bytes = raw_data(resource.data),
+                    frame_num = resource.frame_num,
+                    format = resource.format,
+                    mono = .Mono in resource.flags,
+                    time = sound.frame,
+                    delta_range = pitch_range * delta_rate,
+                    loop = .Loop in sound.flags,
+                    frame_range = sound.frame_range,
+                )
+            }
 
             if .Loop not_in sound.flags && int(sound.frame) > int(sound.frame_range[1] - sound.frame_range[0]) {
                 destroy = true
@@ -1016,6 +1081,7 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
     return
 
     _free_sound :: proc(sound_index: int) {
+        _ = base.pool_remove(&_state.qoa_streams, _state.sounds[sound_index].qoa_stream)
         _state.sounds_gen[sound_index] += 1
         intrinsics.atomic_store(&_state.sounds_state[sound_index], .Free)
         base.spsc_push(&_state.sounds_free, Handle_Index(sound_index))
@@ -1070,7 +1136,7 @@ sample_base_signal :: proc(
         abs(delta_range[1] - 1.0) < DELTA_EPS
 
     switch format {
-    case .Invalid, .WAV:
+    case .Invalid, .WAV, .QOA:
         assert(false)
 
     case .Raw_F32:
@@ -1246,6 +1312,75 @@ _sample_signal_direct_mono_f32_copy :: proc(
     }
 
     return time + f64(len(out_buf))
+}
+
+sample_qoa_signal :: proc(
+    out_buf:        [][2]f32,
+    stream:         ^QOA_Stream,
+    data:           []byte,
+    num_channels:   u32,
+    sample_rate:    u32,
+    time:           f64,
+    delta_range:    [2]f32,
+    loop:           bool,
+    frame_range:    [2]u32,
+) -> f64 {
+    time := time
+
+    chop_start := int(frame_range[0])
+    chop_len := int(frame_range[1]) - int(frame_range[0])
+    assert(chop_len > 0)
+
+    last_frame := uint(chop_len - 1)
+    inv_frames := 1.0 / f32(len(out_buf))
+
+    for i in 0..<len(out_buf) {
+        block_t := f32(i) * inv_frames
+
+        index0 := uint(time)
+        index1 := index0 + 1
+        frame_t := f32(time - f64(index0))
+
+        if loop {
+            index0 %= uint(chop_len)
+            index1 %= uint(chop_len)
+        } else {
+            index0 = min(index0, last_frame)
+            index1 = min(index1, last_frame)
+        }
+
+        val0 := _qoa_stream_fetch(stream, data, num_channels, sample_rate, chop_start + int(index0))
+        val1 := _qoa_stream_fetch(stream, data, num_channels, sample_rate, chop_start + int(index1))
+
+        out_buf[i] = {
+            lerp(val0[0], val1[0], frame_t),
+            lerp(val0[1], val1[1], frame_t),
+        }
+
+        delta := lerp(delta_range[0], delta_range[1], block_t)
+        time += f64(delta)
+    }
+
+    return time
+}
+
+_qoa_stream_fetch :: proc(stream: ^QOA_Stream, data: []byte, num_channels: u32, sample_rate: u32, index: int) -> [2]f32 {
+    qframe := i32(index / qoa.FRAME_LEN)
+    offset := index % qoa.FRAME_LEN
+
+    if stream.frame_index != qframe {
+        n := qoa.decode_frame_index(data, num_channels, sample_rate, int(qframe), stream.samples[:])
+        if n == 0 {
+            // Corrupt/short data: emit silence for this frame instead of garbage.
+            intrinsics.mem_zero(raw_data(stream.samples[:]), len(stream.samples) * size_of(i16))
+        }
+        stream.frame_index = qframe
+    }
+
+    if num_channels == 1 {
+        return unpack_frame_mono_i16(stream.samples[offset])
+    }
+    return unpack_frame_stereo_i16({stream.samples[offset * 2], stream.samples[offset * 2 + 1]})
 }
 
 
