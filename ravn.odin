@@ -346,7 +346,7 @@ __js_step :: proc(dt: f32) -> (keep_running: bool) {
     context = get_context()
 
     if !_state.initialized {
-        if gpu.is_init_done() {
+        if gpu._state.init_done {
             _post_gpu_init()
             if _state.app_desc.init != nil {
                 _state.app_desc.init()
@@ -1284,6 +1284,14 @@ _delete_arena_buffers :: proc(arena: ^Arena) {
 // MARK: Scene
 //
 
+Scene_State :: struct {
+
+}
+
+Scene_Node :: struct {
+
+}
+
 load_scene :: proc(path: string, arena_handle: Arena_Handle = {}) -> (result_arena: Arena_Handle, ok: bool) {
     bin_path := strings_join(path, ".bin", allocator = context.temp_allocator)
     txt_data, txt_ok := read_file(path)
@@ -1561,7 +1569,12 @@ create_sound_resource_encoded :: proc(name: string, data: []byte) -> (result: So
     handle, exists := base.hash_pool_find_free(_state.sound_resources, hash) or_return
     assert(!exists)
 
-    res := audio.create_resource(.WAV, data) or_return
+    format := audio.Resource_Format.WAV
+    if len(data) >= 4 && data[0] == 'q' && data[1] == 'o' && data[2] == 'a' && data[3] == 'f' {
+        format = .QOA
+    }
+
+    res := audio.create_resource(format, data) or_return
 
     state := Sound_Resource_State {
         resource = res,
