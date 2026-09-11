@@ -774,7 +774,7 @@ when BACKEND == BACKEND_WGPU {
             return {}, false
         }
 
-        row_bytes := u32(texture_pixel_size(format) * size.x)
+        row_bytes := u32(get_texture_format_pixel_size(format) * size.x)
 
         // assert(row_bytes % 256 == 0)
 
@@ -1051,7 +1051,7 @@ when BACKEND == BACKEND_WGPU {
     _update_texture_2d :: proc(res: ^Resource_State, data: []byte, slice: i32) {
         base.assert_id(res.id, res.tex_format != .Invalid)
 
-        row_bytes := u32(texture_pixel_size(res.tex_format) * res.size.x)
+        row_bytes := u32(get_texture_format_pixel_size(res.tex_format) * res.size.x)
         wgpu.QueueWriteTexture(_state.queue,
             data = raw_data(data),
             dataSize = len(data),
@@ -1074,7 +1074,7 @@ when BACKEND == BACKEND_WGPU {
         )
     }
 
-    _set_bind_group :: proc(bind_group: ^Bind_Group_State, slot: int, offsets: []u32) {
+    _set_bind_group :: proc(slot: int, bind_group: ^Bind_Group_State, offsets: []u32) {
         switch _state.encoder.mode {
         case .None:
             base.assert_id(bind_group.id, false)

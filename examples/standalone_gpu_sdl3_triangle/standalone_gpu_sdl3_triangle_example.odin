@@ -52,18 +52,18 @@ main :: proc() {
     ps: gpu.Shader_Handle
     vs: gpu.Shader_Handle
 
-    gpu.create_buffer(&vbuf, .Storage, size_of(Vertex), data = base.slice_bytes(verts)) or_else panic("buf")
+    gpu.create_buffer(&vbuf, .Vertex, size_of(Vertex), data = base.slice_bytes(verts)) or_else panic("buf")
 
-    gpu.create_bind_layout(&layout, {slots = {
-        {index=0, kind=.Resource_Buffer, stages={.Vertex, .Pixel}},
-    }}) or_else panic("layout")
+    // gpu.create_bind_layout(&layout, {slots = {
+    //     {index=0, kind=.Resource_Buffer, stages={.Vertex, .Pixel}},
+    // }}) or_else panic("layout")
 
-    gpu.create_bind_group(&binds, {
-        layout = layout,
-        slots = {
-            {index = 0, resource = vbuf},
-        },
-    }) or_else panic("binds")
+    // gpu.create_bind_group(&binds, {
+    //     layout = layout,
+    //     slots = {
+    //         {index = 0, resource = vbuf},
+    //     },
+    // }) or_else panic("binds")
 
     gpu.create_shader(&ps, ps_blob, .Pixel) or_else panic("ps")
     gpu.create_shader(&vs, vs_blob, .Vertex) or_else panic("vs")
@@ -71,7 +71,9 @@ main :: proc() {
     gpu.create_graphics_pipeline(&pip, gpu.make_graphics_pipeline_desc(
         ps = ps,
         vs = vs,
-        layouts = {0 = layout},
+        cull = .None,
+        // layouts = {0 = layout},
+        vertex_layout = gpu.make_vertex_layout(Vertex),
         out_colors = {0 = .Swapchain},
     )) or_else panic("pip")
 
@@ -99,9 +101,11 @@ main :: proc() {
             colors = {0 = {resource = gpu.SWAPCHAIN_HANDLE, clear_mode = .Clear, clear_val = {0.01, 0.1, 0.2, 1}}},
         })
 
-        gpu.set_bind_group(binds)
+        // gpu.set_bind_group(0, binds)
         gpu.set_graphics_pipeline(pip)
+        gpu.set_vertex_buffer(0, vbuf)
         gpu.draw_non_indexed(3)
+
         gpu.end_graphics_pass()
 
         gpu.end_frame(sync = true)
@@ -116,19 +120,16 @@ Vertex :: struct {
 @(rodata)
 _shader_code := #load("../../data/ravn.hlsli", string) + `
 struct Vertex {
-    float4 pos;
-    float4 col;
+    float4 pos : TEXCOORD0;
+    float4 col : TEXCOORD1;
 };
-
-RV_RESOURCE_SLOT(0, StructuredBuffer<Vertex> verts);
 
 struct Vertex_Out {
     float4 pos : SV_Position;
     float4 col : COL;
 };
 
-Vertex_Out vs_main(uint vid : SV_VertexID) {
-    Vertex vert = verts[vid];
+Vertex_Out vs_main(Vertex vert) {
     Vertex_Out output;
     output.pos = vert.pos;
     output.col = vert.col;

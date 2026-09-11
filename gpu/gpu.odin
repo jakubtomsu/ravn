@@ -1,5 +1,3 @@
-// Rendering Hardware Interface.
-// The goal is to expose a stable API roughly. The target is something like a simplified D3D11 API.
 #+vet explicit-allocators shadowing unused
 package ravn_gpu
 
@@ -45,7 +43,8 @@ MAX_TEXTURE_ARRAY_DEPTH     :: 1024
 MAX_CONSTANT_BUFFER_SIZE    :: 4096
 MAX_DISPATCH_SIZE           :: 1024 * 16 // per dimension
 
-RENDER_TEXTURE_BIND_SLOTS :: 4
+MAX_VERTEX_LAYOUT_SLOTS   :: 16
+MAX_BOUND_RENDER_TEXTURES :: 4
 
 // Special handle to internal swapchain texture. Not an actual resource.
 SWAPCHAIN_HANDLE :: Resource_Handle{index = max(base.Handle_Index), gen = 0}
@@ -114,6 +113,7 @@ Shader_State :: struct #all_or_none {
     using native:   _Shader_State,
     kind:           Shader_Kind,
     id:             base.Debug_ID,
+    data:           []byte, // Must be valid at pipeline creation time.
 }
 
 Resource_State :: struct #all_or_none {
@@ -133,11 +133,12 @@ Bind_Layout_State :: struct #all_or_none {
 
 Bind_Group_State :: struct #all_or_none {
     using native:   _Bind_Group_State,
-    dyn_consts:     [dynamic; MAX_BIND_GROUP_CONSTANTS]Resource_Handle,
+    consts:         [MAX_BIND_GROUP_CONSTANTS]Resource_Handle,
+    consts_dyn:     bit_set[0..<MAX_BIND_GROUP_CONSTANTS],
     id:             base.Debug_ID,
 }
 
-Graphics_Pipeline_Desc :: struct #align(64) {
+Graphics_Pipeline_Desc :: struct #align(64) #all_or_none {
     topo:               Topology,
     cull:               Cull_Mode,
     fill:               Fill_Mode,
@@ -147,10 +148,16 @@ Graphics_Pipeline_Desc :: struct #align(64) {
     ps:                 Shader_Handle,
     vs:                 Shader_Handle,
     index_format:       Index_Format,
-    blends:             [RENDER_TEXTURE_BIND_SLOTS]Blend_Desc,
-    color_format:       [RENDER_TEXTURE_BIND_SLOTS]Texture_Format,
+    blends:             [MAX_BOUND_RENDER_TEXTURES]Blend_Desc,
+    color_format:       [MAX_BOUND_RENDER_TEXTURES]Texture_Format,
     depth_format:       Texture_Format,
     bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
+    vertex_layout:      [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format,
+    instance_layout:    [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format,
+}
+
+Vertex_Layout_Slot_Desc :: struct {
+    format: Vertex_Format,
 }
 
 Compute_Pipeline_Desc :: struct {
@@ -196,7 +203,7 @@ Bind_Group_Slot_Desc :: struct {
 }
 
 Graphics_Pass_Desc :: struct {
-    colors: [RENDER_TEXTURE_BIND_SLOTS]Graphics_Pass_Color_Desc,
+    colors: [MAX_BOUND_RENDER_TEXTURES]Graphics_Pass_Color_Desc,
     depth:  Graphics_Pass_Depth_Desc,
 }
 
@@ -220,6 +227,7 @@ Clear_Mode :: enum u8 {
 Buffer_Kind :: enum u8 {
     Invalid = 0,
     Storage,
+    Vertex,
     Index,
 }
 
@@ -264,7 +272,6 @@ Blend_Factor :: enum u8 {
     One_Minus_Dst_Color,
     Src_Alpha_Sat,
 }
-
 
 BLEND_OPAQUE :: Blend_Desc{}
 
@@ -393,11 +400,9 @@ Texture_Format :: enum u8 {
     RG_S16,
     RG_U16_Norm,
     RG_S16_Norm,
-    D_F32,
     R_F32,
     R_U32,
     R_S32,
-    D_U24_Norm_S_U8,
     RG_U8,
     RG_S8,
     RG_U8_Norm,
@@ -405,15 +410,60 @@ Texture_Format :: enum u8 {
     R_F16,
     R_U16,
     R_S16,
-    D_U16_Norm,
     R_U16_Norm,
     R_S16_Norm,
     R_U8,
     R_S8,
     R_S8_Norm,
     R_U8_Norm,
+    Depth_F32,
+    Depth_U24_Norm_S_U8,
+    Depth_U16_Norm,
 }
 
+Vertex_Format :: enum u8 {
+    Invalid = 0,
+    U8,
+    U8x2,
+    U8x4,
+    I8,
+    I8x2,
+    I8x4,
+    U8_Norm,
+    U8x2_Norm,
+    U8x4_Norm,
+    I8_Norm,
+    I8x2_Norm,
+    I8x4_Norm,
+    U16,
+    U16x2,
+    U16x4,
+    I16,
+    I16x2,
+    I16x4,
+    U16_Norm,
+    U16x2_Norm,
+    U16x4_Norm,
+    I16_Norm,
+    I16x2_Norm,
+    I16x4_Norm,
+    F16,
+    F16x2,
+    F16x4,
+    F32,
+    F32x2,
+    F32x3,
+    F32x4,
+    U32,
+    U32x2,
+    U32x3,
+    U32x4,
+    I32,
+    I32x2,
+    I32x3,
+    I32x4,
+    U10x3_U2_Norm,
+}
 
 
 // Alpha blending is default
@@ -512,7 +562,9 @@ end_frame :: proc(sync: bool = true, loc := #caller_location) {
 make_graphics_pipeline_desc :: proc(
     ps:                 Shader_Handle,
     vs:                 Shader_Handle,
-    layouts:            [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
+    layouts:            [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {},
+    vertex_layout:      [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format = {},
+    instance_layout:    [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format = {},
     out_colors:         []Texture_Format,
     out_depth:          Texture_Format = .Invalid,
     blends:             []Blend_Desc = {},
@@ -539,6 +591,10 @@ make_graphics_pipeline_desc :: proc(
         depth_bias = depth_bias,
         depth_format = out_depth,
         bind_layouts = layouts,
+        vertex_layout = vertex_layout,
+        instance_layout = instance_layout,
+        color_format = {},
+        blends = {},
     }
 
     copy(result.color_format[:], out_colors)
@@ -559,6 +615,147 @@ make_compute_pipeline_desc :: proc(
         bind_layouts = layouts,
     }
     return result
+}
+
+// Make vertex layout from a struct type using RTTI.
+// Every field must be 4-byte aligned.
+// Example:
+//  Vertex :: struct {
+//      pos:   [3]f32,
+//      uv:    [2]f32,
+//      color: [4]u8 `gpu:"U8x4_Norm"`,
+//  }
+make_vertex_layout :: proc($T: typeid, loc := #caller_location) -> (result: [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format) {
+    st, is_struct := runtime.type_info_base(type_info_of(T)).variant.(runtime.Type_Info_Struct)
+    if !is_struct {
+        base.log_err("'%v' is not a struct", typeid_of(T), loc = loc)
+        panic("type must be a struct", loc)
+    }
+
+    if int(st.field_count) > MAX_VERTEX_LAYOUT_SLOTS {
+        base.log_err("'%v' has %i fields, max is %i", typeid_of(T), st.field_count, MAX_VERTEX_LAYOUT_SLOTS, loc = loc)
+        panic("too many vertex fields", loc)
+    }
+
+    for field_index in 0 ..< st.field_count {
+        name := st.names[field_index]
+        offset := st.offsets[field_index]
+
+        if offset % 4 != 0 {
+            base.log_err("field '%v.%s' at offset %i is not 4-byte aligned", typeid_of(T), name, offset, loc = loc)
+            panic("field is not 4-byte aligned", loc)
+        }
+
+        ok: bool
+        if tag_val, has_tag := _struct_tag_lookup(st.tags[field_index], "gpu"); has_tag {
+            result[field_index], ok = _vertex_format_from_name(tag_val, T, name, loc)
+            if !ok {
+                base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, tag_val, loc = loc)
+                panic("no matching Vertex_Format", loc)
+            }
+            continue
+        }
+
+        field_ti := runtime.type_info_core(st.types[field_index])
+        elem_ti := field_ti
+        num_components := 1
+        if arr, is_arr := field_ti.variant.(runtime.Type_Info_Array); is_arr {
+            num_components = arr.count
+            elem_ti = runtime.type_info_core(arr.elem)
+        }
+
+        prefix: string
+        #partial switch v in elem_ti.variant {
+        case runtime.Type_Info_Float:   prefix = "F"
+        case runtime.Type_Info_Integer: prefix = v.signed ? "I" : "U"
+        case:
+            base.log_err("field '%v.%s' has unsupported type '%v'", typeid_of(T), name, st.types[field_index].id, loc = loc)
+            panic("unsupported field type", loc)
+        }
+
+        format_name := base.tprintf("%s%i", prefix, elem_ti.size * 8)
+        if num_components > 1 {
+            format_name = base.tprintf("%sx%i", format_name, num_components)
+        }
+
+        result[field_index], ok = _vertex_format_from_name(format_name, T, name, loc)
+        if !ok {
+            base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, format_name, loc = loc)
+            panic("no matching Vertex_Format", loc)
+        }
+    }
+
+    return result
+}
+
+_vertex_format_from_name :: proc(name: string, $T: typeid, field: string, loc: runtime.Source_Code_Location) -> (Vertex_Format, bool) {
+    enum_ti := runtime.type_info_base(type_info_of(Vertex_Format)).variant.(runtime.Type_Info_Enum)
+    for n, i in enum_ti.names {
+        format := Vertex_Format(i64(enum_ti.values[i]))
+        if n == name && format != .Invalid {
+            return format, true
+        }
+    }
+    return .Invalid, false
+}
+
+// Based on core:reflect.struct_tag_lookup
+@(require_results)
+_struct_tag_lookup :: proc(tag: string, key: string) -> (value: string, ok: bool) {
+    for t := tag; t != ""; /**/ {
+        i := 0
+        for i < len(t) && t[i] == ' ' { // Skip whitespace
+            i += 1
+        }
+        t = t[i:]
+        if len(t) == 0 {
+            break
+        }
+
+        i = 0
+        loop: for i < len(t) {
+            switch t[i] {
+            case ':', '"':
+                break loop
+            case 0x00 ..< ' ', 0x7f ..= 0x9f: // break if control character is found
+                break loop
+            }
+            i += 1
+        }
+
+        if i == 0 {
+            break
+        }
+        if i+1 >= len(t) {
+            break
+        }
+
+        if t[i] != ':' || t[i+1] != '"' {
+            break
+        }
+        name := string(t[:i])
+        t = t[i+1:]
+
+        i = 1
+        for i < len(t) && t[i] != '"' { // find closing quote
+            if t[i] == '\\' {
+                i += 1 // Skip escaped characters
+            }
+            i += 1
+        }
+
+        if i >= len(t) {
+            break
+        }
+
+        val := string(t[:i+1])
+        t = t[i+1:]
+
+        if key == name {
+            return val[1:i], true
+        }
+    }
+    return
 }
 
 @(require_results)
@@ -649,7 +846,8 @@ create_bind_group :: proc(
 
     state := Bind_Group_State{
         native = {},
-        dyn_consts = {},
+        consts = {},
+        consts_dyn = {},
         id = id,
     }
 
@@ -661,8 +859,11 @@ create_bind_group :: proc(
 
     for slot in desc.slots {
         res := _get_resource(slot.resource) or_continue
-        if res.kind == .Constants && res.size.y > 1 {
-            append(&state.dyn_consts, slot.resource)
+        if res.kind == .Constants {
+            state.consts[slot.index] = slot.resource
+            if res.size.y > 1 {
+                state.consts_dyn += {int(slot.index)}
+            }
         }
     }
 
@@ -748,6 +949,10 @@ create_constants :: proc(
     base.assert_id(id, item_size < MAX_CONSTANT_BUFFER_SIZE)
     base.assert_id(id, item_size % 16 == 0)
 
+    if item_num > 1 {
+        base.assert_id(id, item_size % 256 == 0, "Dynamic constant buffers must be aligned to 256 bytes due to hardware")
+    }
+
     _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
 
     state := Resource_State{
@@ -789,6 +994,7 @@ create_shader :: proc(
         kind = kind,
         id = id,
         native = {},
+        data = data, // Warning, keeping user-allocated data
     }
 
     state.native, ok = _create_shader(id, data = data, kind = kind)
@@ -850,14 +1056,14 @@ create_texture_2d :: proc(
         base.assert_id(id, data != nil)
     }
 
-    if texture_format_is_depth_stencil(format) {
+    if is_texture_format_depth_stencil(format) {
         base.assert_id(id, render_texture)
     }
 
     if data != nil {
         base.assert_id(id, mips == 1)
         base.assert_id(id, array_depth == 1)
-        base.assert_id(id, len(data) == (int(size.x * size.y) * int(texture_pixel_size(format))))
+        base.assert_id(id, len(data) == (int(size.x * size.y) * int(get_texture_format_pixel_size(format))))
     }
 
     _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
@@ -925,7 +1131,7 @@ create_buffer :: proc(
 
     state := Resource_State{
         kind = .Buffer,
-        size = {i32(runtime.align_forward_int(int(size), 64)), 1, 1},
+        size = {i32(runtime.align_forward_int(int(size), 64)), stride, 1},
         usage = usage,
         id = id,
         tex_format = {},
@@ -1057,17 +1263,26 @@ end_graphics_pass :: proc() {
     _state.encoder = {}
 }
 
-set_bind_group :: proc(handle: Bind_Group_Handle, #any_int slot: int = 0, offsets: []u32 = nil) {
+set_bind_group :: proc(#any_int slot: int, handle: Bind_Group_Handle, offsets: []u32 = nil) {
     assert(_state.encoder.mode != .None)
     assert(handle != {})
     assert(slot >= 0)
     assert(slot < MAX_PIPELINE_BIND_GROUPS)
     bind_group, bind_group_ok := _get_bind_group(handle)
     assert(bind_group_ok)
-    _set_bind_group(bind_group, slot, offsets)
+    _set_bind_group(slot, bind_group, offsets)
 }
 
-set_index_buffer :: proc(handle: Resource_Handle, format: Index_Format, offset: u64 = 0) {
+set_vertex_buffer :: proc(slot: int, handle: Resource_Handle, #any_int offset: int = 0) {
+    assert(_state.encoder.mode == .Graphics)
+    assert(handle != {})
+    buf, buf_ok := _get_resource(handle)
+    assert(buf_ok)
+    base.assert_id(buf.id, buf.kind == .Buffer)
+    _set_vertex_buffer(slot, buf, offset)
+}
+
+set_index_buffer :: proc(handle: Resource_Handle, format: Index_Format, #any_int offset: int = 0) {
     assert(_state.encoder.mode == .Graphics)
     assert(handle != {})
     assert(format != .Invalid)
@@ -1308,7 +1523,7 @@ validate_bind_layout_desc :: proc(id: base.Debug_ID, desc: Bind_Layout_Desc, loc
 
         if _bind_layout_slot_requires_layout(slot.kind) {
             base.assert_id(id, slot.format != .Invalid, "RW texture bind_group layout slot requires a format", loc = loc)
-            base.assert_id(id, !texture_format_is_depth_stencil(slot.format), "RW texture bind_group layout slot cannot use a depth format", loc = loc)
+            base.assert_id(id, !is_texture_format_depth_stencil(slot.format), "RW texture bind_group layout slot cannot use a depth format", loc = loc)
         } else {
             base.assert_id(id, slot.format == .Invalid, "Only RW texture bind_group layout slots may set a format", loc = loc)
         }
@@ -1390,7 +1605,7 @@ validate_graphics_pipeline_desc :: proc(id: base.Debug_ID, desc: Graphics_Pipeli
         if i >= num_colors {
             base.assert_id(id, col == {}, loc = loc)
         }
-        base.assert_id(id, !texture_format_is_depth_stencil(col), loc = loc)
+        base.assert_id(id, !is_texture_format_depth_stencil(col), loc = loc)
     }
 
     if desc.depth_format == .Invalid {
@@ -1398,7 +1613,7 @@ validate_graphics_pipeline_desc :: proc(id: base.Debug_ID, desc: Graphics_Pipeli
         base.assert_id(id, desc.depth_comparison == {}, loc = loc)
         base.assert_id(id, desc.depth_write == false, loc = loc)
     } else {
-        base.assert_id(id, texture_format_is_depth_stencil(desc.depth_format), loc = loc)
+        base.assert_id(id, is_texture_format_depth_stencil(desc.depth_format), loc = loc)
     }
 }
 
@@ -1418,7 +1633,7 @@ validate_graphics_pipeline_for_pass :: proc(id: base.Debug_ID, pip: Graphics_Pip
 
     _, depth_ok := _get_resource(pass.depth.resource)
     if depth_ok {
-        base.assert_id(id, texture_format_is_depth_stencil(pip.depth_format), loc = loc)
+        base.assert_id(id, is_texture_format_depth_stencil(pip.depth_format), loc = loc)
     } else {
         base.assert_id(id, pip.depth_format == .Invalid, loc = loc)
     }
@@ -1604,116 +1819,165 @@ _find_bind_layout_slot :: proc(desc: Bind_Layout_Desc, index: i32) -> (Bind_Layo
 }
 
 @(require_results)
-texture_format_is_depth_stencil :: proc(format: Texture_Format) -> bool {
+is_texture_format_depth_stencil :: proc(format: Texture_Format) -> bool {
     #partial switch format {
     case
-        .D_F32,
-        .D_U16_Norm,
-        .D_U24_Norm_S_U8:
+        .Depth_F32,
+        .Depth_U16_Norm,
+        .Depth_U24_Norm_S_U8:
         return true
     }
     return false
 }
 
 @(require_results)
-texture_format_channels :: proc(format: Texture_Format) -> i32 {
+get_texture_format_num_channels :: proc(format: Texture_Format) -> int {
     switch format {
-    case .Invalid:          return 0
-    case .Swapchain:        return 4
-    case .RGBA_F32:         return 4
-    case .RGBA_U32:         return 4
-    case .RGBA_S32:         return 4
-    case .RGBA_F16:         return 4
-    case .RGBA_U16:         return 4
-    case .RGBA_S16:         return 4
-    case .RGBA_U16_Norm:    return 4
-    case .RGBA_S16_Norm:    return 4
-    case .RG_F32:           return 2
-    case .RG_U32:           return 2
-    case .RG_S32:           return 2
-    case .RG_U10_A_U2:      return 3
-    case .RG_U10_A_U2_Norm: return 3
-    case .RG_F11_B_F10:     return 3
-    case .RGBA_U8:          return 4
-    case .RGBA_S8:          return 4
-    case .RGBA_U8_Norm:     return 4
-    case .RGBA_S8_Norm:     return 4
-    case .RG_F16:           return 2
-    case .RG_U16:           return 2
-    case .RG_S16:           return 2
-    case .RG_U16_Norm:      return 2
-    case .RG_S16_Norm:      return 2
-    case .D_F32:            return 1
-    case .R_F32:            return 1
-    case .R_U32:            return 1
-    case .R_S32:            return 1
-    case .D_U24_Norm_S_U8:  return 2
-    case .RG_U8:            return 2
-    case .RG_S8:            return 2
-    case .RG_U8_Norm:       return 2
-    case .RG_S8_Norm:       return 2
-    case .R_F16:            return 1
-    case .R_U16:            return 1
-    case .R_S16:            return 1
-    case .D_U16_Norm:       return 1
-    case .R_U16_Norm:       return 1
-    case .R_S16_Norm:       return 1
-    case .R_U8:             return 1
-    case .R_S8:             return 1
-    case .R_S8_Norm:        return 1
-    case .R_U8_Norm:        return 1
+    case .Invalid:              return 0
+    case .Swapchain:            return 4
+    case .RGBA_F32:             return 4
+    case .RGBA_U32:             return 4
+    case .RGBA_S32:             return 4
+    case .RGBA_F16:             return 4
+    case .RGBA_U16:             return 4
+    case .RGBA_S16:             return 4
+    case .RGBA_U16_Norm:        return 4
+    case .RGBA_S16_Norm:        return 4
+    case .RG_F32:               return 2
+    case .RG_U32:               return 2
+    case .RG_S32:               return 2
+    case .RG_U10_A_U2:          return 3
+    case .RG_U10_A_U2_Norm:     return 3
+    case .RG_F11_B_F10:         return 3
+    case .RGBA_U8:              return 4
+    case .RGBA_S8:              return 4
+    case .RGBA_U8_Norm:         return 4
+    case .RGBA_S8_Norm:         return 4
+    case .RG_F16:               return 2
+    case .RG_U16:               return 2
+    case .RG_S16:               return 2
+    case .RG_U16_Norm:          return 2
+    case .RG_S16_Norm:          return 2
+    case .R_F32:                return 1
+    case .R_U32:                return 1
+    case .R_S32:                return 1
+    case .RG_U8:                return 2
+    case .RG_S8:                return 2
+    case .RG_U8_Norm:           return 2
+    case .RG_S8_Norm:           return 2
+    case .R_F16:                return 1
+    case .R_U16:                return 1
+    case .R_S16:                return 1
+    case .R_U16_Norm:           return 1
+    case .R_S16_Norm:           return 1
+    case .R_U8:                 return 1
+    case .R_S8:                 return 1
+    case .R_S8_Norm:            return 1
+    case .R_U8_Norm:            return 1
+    case .Depth_F32:            return 1
+    case .Depth_U24_Norm_S_U8:  return 2
+    case .Depth_U16_Norm:       return 1
     }
     assert(false)
     return 0
 }
 
 @(require_results)
-texture_pixel_size :: proc(format: Texture_Format) -> i32 {
+get_texture_format_pixel_size :: proc(format: Texture_Format) -> int {
     switch format {
-    case .Invalid:          return 0
-    case .Swapchain:        return 0
-    case .RGBA_F32:         return 4 * 4
-    case .RGBA_U32:         return 4 * 4
-    case .RGBA_S32:         return 4 * 4
-    case .RGBA_F16:         return 4 * 2
-    case .RGBA_U16:         return 4 * 2
-    case .RGBA_S16:         return 4 * 2
-    case .RGBA_U16_Norm:    return 4 * 2
-    case .RGBA_S16_Norm:    return 4 * 2
-    case .RG_F32:           return 2 * 4
-    case .RG_U32:           return 2 * 4
-    case .RG_S32:           return 2 * 4
-    case .RG_U10_A_U2:      return 4
-    case .RG_U10_A_U2_Norm: return 4
-    case .RG_F11_B_F10:     return 4
-    case .RGBA_U8:          return 4 * 1
-    case .RGBA_S8:          return 4 * 1
-    case .RGBA_U8_Norm:     return 4 * 1
-    case .RGBA_S8_Norm:     return 4 * 1
-    case .RG_F16:           return 2 * 2
-    case .RG_U16:           return 2 * 2
-    case .RG_S16:           return 2 * 2
-    case .RG_U16_Norm:      return 2 * 2
-    case .RG_S16_Norm:      return 2 * 2
-    case .D_F32:            return 1 * 4
-    case .R_F32:            return 1 * 4
-    case .R_U32:            return 1 * 4
-    case .R_S32:            return 1 * 4
-    case .D_U24_Norm_S_U8:  return 4
-    case .RG_U8:            return 2 * 1
-    case .RG_S8:            return 2 * 1
-    case .RG_U8_Norm:       return 2 * 1
-    case .RG_S8_Norm:       return 2 * 1
-    case .R_F16:            return 1 * 2
-    case .R_U16:            return 1 * 2
-    case .R_S16:            return 1 * 2
-    case .D_U16_Norm:       return 1 * 2
-    case .R_U16_Norm:       return 1 * 2
-    case .R_S16_Norm:       return 1 * 2
-    case .R_U8:             return 1
-    case .R_S8:             return 1
-    case .R_S8_Norm:        return 1
-    case .R_U8_Norm:        return 1
+    case .Invalid:              return 0
+    case .Swapchain:            return 0
+    case .RGBA_F32:             return 4 * 4
+    case .RGBA_U32:             return 4 * 4
+    case .RGBA_S32:             return 4 * 4
+    case .RGBA_F16:             return 4 * 2
+    case .RGBA_U16:             return 4 * 2
+    case .RGBA_S16:             return 4 * 2
+    case .RGBA_U16_Norm:        return 4 * 2
+    case .RGBA_S16_Norm:        return 4 * 2
+    case .RG_F32:               return 2 * 4
+    case .RG_U32:               return 2 * 4
+    case .RG_S32:               return 2 * 4
+    case .RG_U10_A_U2:          return 4
+    case .RG_U10_A_U2_Norm:     return 4
+    case .RG_F11_B_F10:         return 4
+    case .RGBA_U8:              return 4 * 1
+    case .RGBA_S8:              return 4 * 1
+    case .RGBA_U8_Norm:         return 4 * 1
+    case .RGBA_S8_Norm:         return 4 * 1
+    case .RG_F16:               return 2 * 2
+    case .RG_U16:               return 2 * 2
+    case .RG_S16:               return 2 * 2
+    case .RG_U16_Norm:          return 2 * 2
+    case .RG_S16_Norm:          return 2 * 2
+    case .R_F32:                return 1 * 4
+    case .R_U32:                return 1 * 4
+    case .R_S32:                return 1 * 4
+    case .RG_U8:                return 2 * 1
+    case .RG_S8:                return 2 * 1
+    case .RG_U8_Norm:           return 2 * 1
+    case .RG_S8_Norm:           return 2 * 1
+    case .R_F16:                return 1 * 2
+    case .R_U16:                return 1 * 2
+    case .R_S16:                return 1 * 2
+    case .R_U16_Norm:           return 1 * 2
+    case .R_S16_Norm:           return 1 * 2
+    case .R_U8:                 return 1
+    case .R_S8:                 return 1
+    case .R_S8_Norm:            return 1
+    case .R_U8_Norm:            return 1
+    case .Depth_F32:            return 1 * 4
+    case .Depth_U24_Norm_S_U8:  return 4
+    case .Depth_U16_Norm:       return 1 * 2
+    }
+    assert(false)
+    return 0
+}
+
+get_vertex_format_size :: proc(format: Vertex_Format) -> int {
+    switch format {
+    case .Invalid:
+        assert(false)
+    case .U8:            return size_of(u8)
+    case .U8x2:          return size_of(u8) * 2
+    case .U8x4:          return size_of(u8) * 4
+    case .I8:            return size_of(i8)
+    case .I8x2:          return size_of(i8) * 2
+    case .I8x4:          return size_of(i8) * 4
+    case .U8_Norm:       return size_of(u8)
+    case .U8x2_Norm:     return size_of(u8) * 2
+    case .U8x4_Norm:     return size_of(u8) * 4
+    case .I8_Norm:       return size_of(i8)
+    case .I8x2_Norm:     return size_of(i8) * 2
+    case .I8x4_Norm:     return size_of(i8) * 4
+    case .U16:           return size_of(u16)
+    case .U16x2:         return size_of(u16) * 2
+    case .U16x4:         return size_of(u16) * 4
+    case .I16:           return size_of(i16)
+    case .I16x2:         return size_of(i16) * 2
+    case .I16x4:         return size_of(i16) * 4
+    case .U16_Norm:      return size_of(u16)
+    case .U16x2_Norm:    return size_of(u16) * 2
+    case .U16x4_Norm:    return size_of(u16) * 4
+    case .I16_Norm:      return size_of(i16)
+    case .I16x2_Norm:    return size_of(i16) * 2
+    case .I16x4_Norm:    return size_of(i16) * 4
+    case .F16:           return size_of(f16)
+    case .F16x2:         return size_of(f16) * 2
+    case .F16x4:         return size_of(f16) * 4
+    case .F32:           return size_of(f32)
+    case .F32x2:         return size_of(f32) * 2
+    case .F32x3:         return size_of(f32) * 3
+    case .F32x4:         return size_of(f32) * 4
+    case .U32:           return size_of(u32)
+    case .U32x2:         return size_of(u32) * 2
+    case .U32x3:         return size_of(u32) * 3
+    case .U32x4:         return size_of(u32) * 4
+    case .I32:           return size_of(i32)
+    case .I32x2:         return size_of(i32) * 2
+    case .I32x3:         return size_of(i32) * 3
+    case .I32x4:         return size_of(i32) * 4
+    case .U10x3_U2_Norm: return 4
     }
     assert(false)
     return 0
