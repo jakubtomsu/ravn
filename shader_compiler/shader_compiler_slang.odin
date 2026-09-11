@@ -62,7 +62,7 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
     }
 }
 
-_compile_slang_wgsl :: proc(
+_compile_slang :: proc(
     state:          ^State,
     name:           string,
     source:         string,
@@ -73,10 +73,23 @@ _compile_slang_wgsl :: proc(
     // Implements something like the following slangc command:
     // slangc.exe name.hlsl -target wgsl -entry vs_main -stage vertex -o shader.wgsl -fvk-b-shift 0 0 -fvk-t-shift 8 0 -fvk-s-shift 16 0
 
+    format: slang.CompileTarget
+    profile_name: cstring
+    switch state.target {
+    case .Invalid, .DXBC:
+        assert(false)
+    case .WGSL:
+        format = .WGSL
+        profile_name = "wgsl_1_0"
+    case .SPIRV:
+        format = .SPIRV
+        profile_name = "spirv_1_5"
+    }
+
     target_desc := slang.TargetDesc{
         structureSize = size_of(slang.TargetDesc),
-        format = .WGSL,
-        profile = state.slang.global_session->findProfile("wgsl_1_0"),
+        format = format,
+        profile = state.slang.global_session->findProfile(profile_name),
     }
 
     // Hardcoded for now...
@@ -167,13 +180,13 @@ _compile_slang_wgsl :: proc(
         return nil, false
     }
 
-    wgsl_code: ^slang.IBlob
-    _slang_check_diag(composite->getEntryPointCode(0, 0, &wgsl_code, &diag), diag)
-    if wgsl_code == nil {
+    code: ^slang.IBlob
+    _slang_check_diag(composite->getEntryPointCode(0, 0, &code, &diag), diag)
+    if code == nil {
         return nil, false
     }
 
-    return _slang_blob_buf(wgsl_code), true
+    return _slang_blob_buf(code), true
 
     pack_vk_shift :: proc(#any_int kind: u8, set: u32) -> i32 {
         return transmute(i32)((u32(kind) << 24) | (set & 0x00FFFFFF))

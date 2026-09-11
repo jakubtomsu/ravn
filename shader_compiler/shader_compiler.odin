@@ -14,6 +14,7 @@ Target :: enum u8 {
     Invalid = 0,
     DXBC,
     WGSL,
+    SPIRV,
 }
 
 Stage :: enum u8 {
@@ -47,7 +48,7 @@ init :: proc(state: ^State, target: Target) -> bool {
         // Requires d3d11compiler DLL
         return ODIN_OS == .Windows
 
-    case .WGSL:
+    case .WGSL, .SPIRV:
         return _slang_init(&state.slang)
     }
 
@@ -75,8 +76,8 @@ compile :: proc(
             assert(false)
         }
 
-    case .WGSL:
-        result, ok = _compile_slang_wgsl(state, name, source, opts)
+    case .WGSL, .SPIRV:
+        result, ok = _compile_slang(state, name, source, opts)
     }
 
     return result, ok
