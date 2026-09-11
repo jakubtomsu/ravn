@@ -5,6 +5,35 @@ max_frame_size :: proc(desc: ^Desc) -> int {
     return _frame_size(int(desc.num_channels), SLICES_PER_FRAME)
 }
 
+decode_info :: proc(data: []byte) -> (desc: Desc, ok: bool) {
+    buf: Buffer = { data = data }
+    return decode_header(&buf)
+}
+
+decode_frame_index :: proc(data: []byte, num_channels: u32, sample_rate: u32, frame_index: int, sample_data: []i16) -> u32 {
+    if num_channels == 0 || frame_index < 0 {
+        return 0
+    }
+
+    frame_size := _frame_size(int(num_channels), SLICES_PER_FRAME)
+    offs := 8 + frame_index * frame_size
+
+    if offs + 8 > len(data) {
+        return 0
+    }
+
+    desc: Desc = {
+        num_channels = num_channels,
+        sample_rate  = sample_rate,
+    }
+    buf: Buffer = {
+        data = data,
+        offs = u64(offs),
+    }
+
+    return decode_frame(&buf, &desc, sample_data)
+}
+
 decode :: proc(data: []byte, allocator := context.allocator) -> (desc: Desc, result: []i16, ok: bool) {
     buf: Buffer = {
         data = data,
