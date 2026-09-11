@@ -153,7 +153,9 @@ when BACKEND == BACKEND_D3D11 {
             device_flags += {.DEBUG}
         }
 
-        if !_d3d11_check(d3d11.CreateDevice(
+        id := base.create_debug_id("D3D11Init", allocator = context.temp_allocator)
+
+        if !_d3d11_check(id, d3d11.CreateDevice(
             pAdapter = nil,
             DriverType = .HARDWARE,
             Software = nil,
@@ -169,23 +171,23 @@ when BACKEND == BACKEND_D3D11 {
             return false
         }
 
-        _d3d11_check(base_device->QueryInterface(d3d11.IDevice_UUID, cast(^rawptr)&_state.device)) or_return
-        // _d3d11_check(base_device_context->QueryInterface(d3d11.IDeviceContext_UUID, cast(^rawptr)&_state.device_context)) or_return
-        _d3d11_check(base_device_context->QueryInterface(ID3D11DeviceContext1_UUID, cast(^rawptr)&_state.device_context)) or_return
+        _d3d11_check(id, base_device->QueryInterface(d3d11.IDevice_UUID, cast(^rawptr)&_state.device)) or_return
+        // _d3d11_check(id, base_device_context->QueryInterface(d3d11.IDeviceContext_UUID, cast(^rawptr)&_state.device_context)) or_return
+        _d3d11_check(id, base_device_context->QueryInterface(ID3D11DeviceContext1_UUID, cast(^rawptr)&_state.device_context)) or_return
 
         dxgi_device: ^dxgi.IDevice1
-        _d3d11_check(_state.device->QueryInterface(dxgi.IDevice1_UUID, cast(^rawptr)&dxgi_device)) or_return
+        _d3d11_check(id, _state.device->QueryInterface(dxgi.IDevice1_UUID, cast(^rawptr)&dxgi_device)) or_return
 
         dxgi_adapter: ^dxgi.IAdapter
-        _d3d11_check(dxgi_device->GetAdapter(&dxgi_adapter)) or_return
+        _d3d11_check(id, dxgi_device->GetAdapter(&dxgi_adapter)) or_return
 
-        _d3d11_check(dxgi_adapter->GetParent(dxgi.IFactory2_UUID, cast(^rawptr)&_state.dxgi_factory)) or_return
+        _d3d11_check(id, dxgi_adapter->GetParent(dxgi.IFactory2_UUID, cast(^rawptr)&_state.dxgi_factory)) or_return
 
         // TODO: investigate more
-        _d3d11_check(dxgi_device->SetMaximumFrameLatency(1)) or_return
+        _d3d11_check(id, dxgi_device->SetMaximumFrameLatency(1)) or_return
 
         if !RELEASE {
-            _d3d11_check(_state.device->QueryInterface(d3d11.IInfoQueue_UUID, cast(^rawptr)&_state.info_queue)) or_return
+            _d3d11_check(id, _state.device->QueryInterface(d3d11.IInfoQueue_UUID, cast(^rawptr)&_state.info_queue)) or_return
         }
 
         _d3d11_messages()
@@ -223,17 +225,17 @@ when BACKEND == BACKEND_D3D11 {
     //
 
     _create_graphics_pipeline :: proc(id: base.Debug_ID, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) {
-        result.blend = _getref_or_create_blend(desc.blends).bs
-        result.depth_stencil = _getref_or_create_depth_stencil(_Depth_Stencil_Desc{
+        result.blend = _getref_or_create_blend(id, desc.blends).bs
+        result.depth_stencil = _getref_or_create_depth_stencil(id, _Depth_Stencil_Desc{
             comparison = desc.depth_comparison,
             write = desc.depth_write,
         }).dss
-        result.rasterizer = _getref_or_create_rasterizer(_Rasterizer_Desc{
+        result.rasterizer = _getref_or_create_rasterizer(id, _Rasterizer_Desc{
             cull = desc.cull,
             fill = desc.fill,
             depth_bias = desc.depth_bias,
         }).rs
-        result.input_layout = _getref_or_create_input_layout(_Input_Layout_Desc{
+        result.input_layout = _getref_or_create_input_layout(id, _Input_Layout_Desc{
             vertex_layouts = desc.vertex_layouts,
             vs_handle = desc.vs,
         }).il
@@ -310,14 +312,14 @@ when BACKEND == BACKEND_D3D11 {
             } else {
                 assert(slot.sampler != {})
                 resize(&result.smps, slot.index + 1)
-                result.smps[slot.index] = _getref_or_create_sampler(slot.sampler).smp
+                result.smps[slot.index] = _getref_or_create_sampler(id, slot.sampler).smp
             }
         }
 
         return result, true
     }
 
-    _getref_or_create_input_layout :: proc(desc: _Input_Layout_Desc) -> (result: _Input_Layout_State) {
+    _getref_or_create_input_layout :: proc(id: base.Debug_ID, desc: _Input_Layout_Desc) -> (result: _Input_Layout_State) {
         if desc.vertex_layouts == {} {
             return {}
         }
@@ -368,7 +370,7 @@ when BACKEND == BACKEND_D3D11 {
             }
         }
 
-        _d3d11_check(_state.device->CreateInputLayout(
+        _d3d11_check(id, _state.device->CreateInputLayout(
             pInputElementDescs = &elems[0],
             NumElements = u32(num_elems),
             pShaderBytecodeWithInputSignature = raw_data(vs.data),
@@ -383,7 +385,7 @@ when BACKEND == BACKEND_D3D11 {
         return result
     }
 
-    _getref_or_create_rasterizer :: proc(desc: _Rasterizer_Desc) -> (result: _Rasterizer_State) {
+    _getref_or_create_rasterizer :: proc(id: base.Debug_ID, desc: _Rasterizer_Desc) -> (result: _Rasterizer_State) {
         for existing in _state.rasterizers {
             if existing != {} && existing.desc == desc {
                 assert(existing.rs != nil)
@@ -406,7 +408,7 @@ when BACKEND == BACKEND_D3D11 {
             MultisampleEnable       = false,
             AntialiasedLineEnable   = false,
         }
-        _d3d11_check(_state.device->CreateRasterizerState(&rasterizer_desc, &result.rs))
+        _d3d11_check(id, _state.device->CreateRasterizerState(&rasterizer_desc, &result.rs))
 
         result.desc = desc
         append(&_state.rasterizers, result)
@@ -415,7 +417,7 @@ when BACKEND == BACKEND_D3D11 {
         return result
     }
 
-    _getref_or_create_depth_stencil :: proc(desc: _Depth_Stencil_Desc) -> (result: _Depth_Stencil_State) {
+    _getref_or_create_depth_stencil :: proc(id: base.Debug_ID, desc: _Depth_Stencil_Desc) -> (result: _Depth_Stencil_State) {
         for existing in _state.depth_stencils {
             if existing != {} && existing.desc == desc {
                 assert(existing.dss != nil)
@@ -447,7 +449,7 @@ when BACKEND == BACKEND_D3D11 {
                 StencilFunc         = .ALWAYS,
             },
         }
-        _d3d11_check(_state.device->CreateDepthStencilState(&depth_stencil_desc, &result.dss))
+        _d3d11_check(id, _state.device->CreateDepthStencilState(&depth_stencil_desc, &result.dss))
 
         result.desc = desc
         append(&_state.depth_stencils, result)
@@ -456,7 +458,7 @@ when BACKEND == BACKEND_D3D11 {
         return result
     }
 
-    _getref_or_create_sampler :: proc(desc: Sampler_Desc) -> (result: _Sampler_State) {
+    _getref_or_create_sampler :: proc(id: base.Debug_ID, desc: Sampler_Desc) -> (result: _Sampler_State) {
         for existing in _state.samplers {
             if existing != {} && existing.desc == desc {
                 assert(existing.smp != nil)
@@ -467,7 +469,7 @@ when BACKEND == BACKEND_D3D11 {
 
         base.log_debug("GPU: Creating D3D11 sampler")
 
-        _d3d11_check(_state.device->CreateSamplerState(&d3d11.SAMPLER_DESC{
+        _d3d11_check(id, _state.device->CreateSamplerState(&d3d11.SAMPLER_DESC{
             Filter          = _d3d11_filter(desc.filter),
             AddressU        = _d3d11_texture_bounds(desc.bounds.x),
             AddressV        = _d3d11_texture_bounds(desc.bounds.y),
@@ -487,7 +489,7 @@ when BACKEND == BACKEND_D3D11 {
         return result
     }
 
-    _getref_or_create_blend :: proc(descs: [MAX_BOUND_RENDER_TEXTURES]Blend_Desc) -> (result: _Blend_State) {
+    _getref_or_create_blend :: proc(id: base.Debug_ID, descs: [MAX_BOUND_RENDER_TEXTURES]Blend_Desc) -> (result: _Blend_State) {
         if descs == {} {
             return {}
         }
@@ -511,7 +513,7 @@ when BACKEND == BACKEND_D3D11 {
             blend_desc.RenderTarget[i] = _d3d11_blend_desc(desc)
         }
 
-        _d3d11_check(_state.device->CreateBlendState(&blend_desc, &result.bs))
+        _d3d11_check(id, _state.device->CreateBlendState(&blend_desc, &result.bs))
 
         result.descs = descs
         append(&_state.blends, result)
@@ -543,6 +545,8 @@ when BACKEND == BACKEND_D3D11 {
         assert(_state.device != nil)
         assert(_state.device_context != nil)
 
+        id := base.create_debug_id("D3D11Swapchain", allocator = context.temp_allocator)
+
         if _state.swapchain == nil {
             swapchain_desc := dxgi.SWAP_CHAIN_DESC1{
                 Width  = u32(size.x),
@@ -558,7 +562,7 @@ when BACKEND == BACKEND_D3D11 {
                 Flags = {},
             }
 
-            _d3d11_check(_state.dxgi_factory->CreateSwapChainForHwnd(
+            _d3d11_check(id, _state.dxgi_factory->CreateSwapChainForHwnd(
                 _state.device, dxgi.HWND(window), &swapchain_desc, nil, nil, &_state.swapchain,
             )) or_return
 
@@ -571,7 +575,7 @@ when BACKEND == BACKEND_D3D11 {
             _state.swapchain_tex->Release()
             _state.swapchain_rtv->Release()
 
-            _d3d11_check(_state.swapchain->ResizeBuffers(
+            _d3d11_check(id, _state.swapchain->ResizeBuffers(
                 BufferCount = 0,
                 Width  = u32(size.x),
                 Height = u32(size.y),
@@ -582,8 +586,8 @@ when BACKEND == BACKEND_D3D11 {
 
         _d3d11_messages()
 
-        _d3d11_check(_state.swapchain->GetBuffer(0, d3d11.ITexture2D_UUID, cast(^rawptr)&_state.swapchain_tex)) or_return
-        _d3d11_check(_state.device->CreateRenderTargetView(_state.swapchain_tex, nil, &_state.swapchain_rtv)) or_return
+        _d3d11_check(id, _state.swapchain->GetBuffer(0, d3d11.ITexture2D_UUID, cast(^rawptr)&_state.swapchain_tex)) or_return
+        _d3d11_check(id, _state.device->CreateRenderTargetView(_state.swapchain_tex, nil, &_state.swapchain_rtv)) or_return
         _d3d11_setlabel(_state.swapchain_tex, "Swapchain")
 
         _state.device_context->RSSetViewports(1, &d3d11.VIEWPORT{
@@ -605,7 +609,7 @@ when BACKEND == BACKEND_D3D11 {
             assert(false)
 
         case .Vertex:
-            _d3d11_check(_state.device->CreateVertexShader(
+            _d3d11_check(id, _state.device->CreateVertexShader(
                 pShaderBytecode = raw_data(data),
                 BytecodeLength = uint(len(data)),
                 pClassLinkage = nil,
@@ -615,7 +619,7 @@ when BACKEND == BACKEND_D3D11 {
             _d3d11_setlabel(result.vs, base.get_debug_id_name(id))
 
         case .Pixel:
-            _d3d11_check(_state.device->CreatePixelShader(
+            _d3d11_check(id, _state.device->CreatePixelShader(
                 pShaderBytecode = raw_data(data),
                 BytecodeLength = uint(len(data)),
                 pClassLinkage = nil,
@@ -625,7 +629,7 @@ when BACKEND == BACKEND_D3D11 {
             _d3d11_setlabel(result.ps, base.get_debug_id_name(id))
 
         case .Compute:
-            _d3d11_check(_state.device->CreateComputeShader(
+            _d3d11_check(id, _state.device->CreateComputeShader(
                 pShaderBytecode = raw_data(data),
                 BytecodeLength = uint(len(data)),
                 pClassLinkage = nil,
@@ -678,13 +682,13 @@ when BACKEND == BACKEND_D3D11 {
             initial_data_ptr = &initial_data
         }
 
-        _d3d11_check(_state.device->CreateBuffer(&desc, initial_data_ptr, &result.buf)) or_return
+        _d3d11_check(id, _state.device->CreateBuffer(&desc, initial_data_ptr, &result.buf)) or_return
 
         _d3d11_messages()
         _d3d11_setlabel(result.buf, base.get_debug_id_name(id))
 
         if kind == .Storage {
-            _d3d11_check(_state.device->CreateShaderResourceView(result.buf, nil, &result.srv)) or_return
+            _d3d11_check(id, _state.device->CreateShaderResourceView(result.buf, nil, &result.srv)) or_return
             _d3d11_messages()
             _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
         }
@@ -702,7 +706,7 @@ when BACKEND == BACKEND_D3D11 {
             CPUAccessFlags = {.WRITE},
         }
 
-        _d3d11_check(_state.device->CreateBuffer(&desc, nil, &result.buf)) or_return
+        _d3d11_check(id, _state.device->CreateBuffer(&desc, nil, &result.buf)) or_return
 
         _d3d11_messages()
         _d3d11_setlabel(result.buf, base.get_debug_id_name(id))
@@ -763,19 +767,19 @@ when BACKEND == BACKEND_D3D11 {
             initial_data_ptr = &initial_data
         }
 
-        _d3d11_check(_state.device->CreateTexture2D(&desc, initial_data_ptr, &result.tex2d)) or_return
+        _d3d11_check(id, _state.device->CreateTexture2D(&desc, initial_data_ptr, &result.tex2d)) or_return
 
         _d3d11_messages()
         _d3d11_setlabel(result.tex2d, base.get_debug_id_name(id))
 
         // TODO: SRV for depth buf
         if is_texture_format_depth_stencil(format) {
-            _d3d11_check(_state.device->CreateDepthStencilView(result.tex2d, nil, &result.dsv)) or_return
+            _d3d11_check(id, _state.device->CreateDepthStencilView(result.tex2d, nil, &result.dsv)) or_return
 
             _d3d11_setlabel(result.dsv, base.get_debug_id_name(id))
 
         } else if render_texture {
-            _d3d11_check(_state.device->CreateRenderTargetView(result.tex2d, nil, &result.rtv)) or_return
+            _d3d11_check(id, _state.device->CreateRenderTargetView(result.tex2d, nil, &result.rtv)) or_return
 
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
                 Format = _d3d11_texture_format(format),
@@ -786,7 +790,7 @@ when BACKEND == BACKEND_D3D11 {
                 },
             }
 
-            _d3d11_check(_state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
+            _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
             _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
 
         } else {
@@ -801,7 +805,7 @@ when BACKEND == BACKEND_D3D11 {
                 },
             }
 
-            _d3d11_check(_state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
+            _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
             _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
         }
 
@@ -816,7 +820,7 @@ when BACKEND == BACKEND_D3D11 {
                 },
             }
 
-            _d3d11_check(_state.device->CreateUnorderedAccessView(result.tex2d, &uav_desc, &result.uav)) or_return
+            _d3d11_check(id, _state.device->CreateUnorderedAccessView(result.tex2d, &uav_desc, &result.uav)) or_return
             _d3d11_setlabel(result.uav, base.get_debug_id_name(id))
         }
 
@@ -1218,7 +1222,7 @@ when BACKEND == BACKEND_D3D11 {
 
         case .Dynamic:
             mapped: d3d11.MAPPED_SUBRESOURCE
-            if !_d3d11_check(_state.device_context->Map(
+            if !_d3d11_check(res.id, _state.device_context->Map(
                 res.buf,
                 Subresource = 0,
                 MapType = .WRITE_DISCARD,
@@ -1272,7 +1276,7 @@ when BACKEND == BACKEND_D3D11 {
 
         } else {
             mapped: d3d11.MAPPED_SUBRESOURCE
-            if !_d3d11_check(_state.device_context->Map(
+            if !_d3d11_check(res.id, _state.device_context->Map(
                 res.buf,
                 Subresource = 0,
                 MapType = .WRITE_DISCARD,
@@ -1348,44 +1352,59 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     @(private = "file")
-    _d3d11_check :: proc(res: dxgi.HRESULT, loc := #caller_location) -> bool {
-        // TODO: #caller_expression
+    _d3d11_check :: proc(id: base.Debug_ID, res: dxgi.HRESULT, expr := #caller_expression(res), loc := #caller_location) -> bool {
+        level: base.Log_Level = .Error
+        message := "none"
 
-        switch cast(u32)res {
+        switch transmute(u32)res {
         case 0:
             return true
+
         case 1:
-            base.log_warn("GPU D3D11: S_FALSE: Successful but nonstandard completion (the precise meaning depends on context).", loc = loc)
-            return true
+            level = .Warning
+            message = "S_FALSE: Successful but nonstandard completion (the precise meaning depends on context)"
 
         case 0x887C0002:
-            base.log_err("GPU D3D11: D3D11_ERROR_FILE_NOT_FOUND: The file was not found.", loc = loc)
+            message = "D3D11_ERROR_FILE_NOT_FOUND: The file was not found"
         case 0x887C0001:
-            base.log_err("GPU D3D11: D3D11_ERROR_TOO_MANY_UNIQUE_STATE_OBJECTS: There are too many unique instances of a particular type of state object.", loc = loc)
+            message = "D3D11_ERROR_TOO_MANY_UNIQUE_STATE_OBJECTS: There are too many unique instances of a particular type of state object"
         case 0x887C0003:
-            base.log_err("GPU D3D11: D3D11_ERROR_TOO_MANY_UNIQUE_VIEW_OBJECTS: There are too many unique instances of a particular type of view object.", loc = loc)
+            message = "D3D11_ERROR_TOO_MANY_UNIQUE_VIEW_OBJECTS: There are too many unique instances of a particular type of view object"
         case 0x887C0004:
-            base.log_err("GPU D3D11: D3D11_ERROR_DEFERRED_CONTEXT_MAP_WITHOUT_INITIAL_DISCARD: The first call to ID3D11DeviceContext::Map after either ID3D11Device::CreateDeferredContext or ID3D11DeviceContext::FinishCommandList per Resource was not D3D11_MAP_WRITE_DISCARD.", loc = loc)
+            message = "D3D11_ERROR_DEFERRED_CONTEXT_MAP_WITHOUT_INITIAL_DISCARD: The first call to ID3D11DeviceContext::Map after either ID3D11Device::CreateDeferredContext or ID3D11DeviceContext::FinishCommandList per Resource was not D3D11_MAP_WRITE_DISCARD"
         case 0x887A0001:
-            base.log_err("GPU D3D11: DXGI_ERROR_INVALID_CALL: The method call is invalid. For example, a method's parameter may not be a valid pointer.", loc = loc)
+            message = "DXGI_ERROR_INVALID_CALL: The method call is invalid. For example, a method's parameter may not be a valid pointer"
         case 0x887A000A:
-            base.log_err("GPU D3D11: DXGI_ERROR_WAS_STILL_DRAWING: The previous blit operation that is transferring information to or from this surface is incomplete.", loc = loc)
+            message = "DXGI_ERROR_WAS_STILL_DRAWING: The previous blit operation that is transferring information to or from this surface is incomplete"
         case 0x887A002D:
-            base.log_err("GPU D3D11: DXGI_ERROR_SDK_COMPONENT_MISSING: An SDK component is missing or mismatched.", loc = loc)
+            message = "DXGI_ERROR_SDK_COMPONENT_MISSING: An SDK component is missing or mismatched"
         case 0x80004005:
-            base.log_err("GPU D3D11: E_FAIL: Attempted to create a device with the debug layer enabled and the layer is not installed.", loc = loc)
+            message = "E_FAIL: Attempted to create a device with the debug layer enabled and the layer is not installed"
         case 0x80070057:
-            base.log_err("GPU D3D11: E_INVALIDARG: An invalid parameter was passed to the returning function.", loc = loc)
+            message = "E_INVALIDARG: An invalid parameter was passed to the returning function"
         case 0x8007000E:
-            base.log_err("GPU D3D11: E_OUTOFMEMORY: Direct3D could not allocate sufficient memory to complete the call.", loc = loc)
+            message = "E_OUTOFMEMORY: Direct3D could not allocate sufficient memory to complete the call"
         case 0x80004001:
-            base.log_err("GPU D3D11: E_NOTIMPL: The method call isn't implemented with the passed parameter combination.", loc = loc)
+            message = "E_NOTIMPL: The method call isn't implemented with the passed parameter combination"
         }
 
-        _d3d11_messages()
+        base.log(
+            level = level,
+            format = "D3D11 Error:\n\tMessage: %s\n\tSource: %s %s:%i\n\tExpression: %s",
+            args = {
+                message,
+                base.get_debug_id_name(id),
+                base.get_debug_id_file(id),
+                id.line,
+                expr,
+            },
+            loc = loc,
+        )
 
-        if VALIDATION {
-            panic("GPU D3D11: Error Result", loc = loc)
+        _d3d11_messages(loc)
+
+        if level >= .Error {
+            panic("D3D11 Error", loc = loc)
         }
 
         return false
@@ -1415,14 +1434,14 @@ when BACKEND == BACKEND_D3D11 {
                 case .MESSAGE: level = .Debug
                 }
 
-                base.log(level, "GPU D3D11 %v: %v", msg.Category, msg.pDescription, loc = loc)
+                base.log(level, "D3D11 Message:\n\t%v:\n\t%v", msg.Category, msg.pDescription, loc = loc)
 
                 if msg.Severity == .CORRUPTION || msg.Severity == .ERROR {
-                    panic("GPU D3D11: Error")
+                    panic("Error")
                 }
 
                 if VALIDATION && msg.Severity == .WARNING {
-                    panic("GPU D3D11: Warning")
+                    panic("Warning")
                 }
             }
         }

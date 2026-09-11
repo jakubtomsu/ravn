@@ -1400,7 +1400,6 @@ update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte, l
 
     assert(res.kind == .Buffer, loc = loc)
     assert(total_len <= int(res.size.x), loc = loc)
-    assert(res.size.y == 1 && res.size.z == 1, loc = loc)
     assert(res.usage != .Immutable, loc = loc)
 
     _update_buffer(res, offset, buffers)
