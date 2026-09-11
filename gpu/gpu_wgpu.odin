@@ -608,8 +608,6 @@ when BACKEND == BACKEND_WGPU {
             append(&vertex_buffers, buffer)
         }
 
-        base.eprintfln("%#", vertex_buffers[:])
-
         result.pip = wgpu.DeviceCreateRenderPipeline(_state.device, &{
             label = base.get_debug_id_name(id),
             layout = pip_layout,
@@ -1136,24 +1134,24 @@ when BACKEND == BACKEND_WGPU {
         }
     }
 
-    _draw_non_indexed :: proc(vertex_num: u32, instance_num: u32) {
+    _draw_non_indexed :: proc(vertex_num: int, instance_num: int, vertex_offset: int, instance_offset: int) {
         wgpu.RenderPassEncoderDraw(
             _state.render_pass_encoder,
-            vertexCount = vertex_num,
-            instanceCount = instance_num,
-            firstVertex = 0,
-            firstInstance = 0,
+            vertexCount = u32(vertex_num),
+            instanceCount = u32(instance_num),
+            firstVertex = u32(vertex_offset),
+            firstInstance = u32(instance_offset),
         )
     }
 
-    _draw_indexed :: proc(index_num: u32, instance_num: u32, index_offset: u32) {
+    _draw_indexed :: proc(index_num: int, instance_num: int, index_offset: int, vertex_offset: int, instance_offset: int) {
         wgpu.RenderPassEncoderDrawIndexed(
             _state.render_pass_encoder,
-            indexCount = index_num,
-            instanceCount = instance_num,
-            firstIndex = index_offset,
-            baseVertex = 0,
-            firstInstance = 0,
+            indexCount = u32(index_num),
+            instanceCount = u32(instance_num),
+            firstIndex = u32(index_offset),
+            baseVertex = i32(vertex_offset),
+            firstInstance = u32(instance_offset),
         )
     }
 

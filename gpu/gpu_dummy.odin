@@ -56,8 +56,8 @@ when BACKEND == BACKEND_DUMMY {
     _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]u8) { dummy() }
     _update_texture_2d :: proc(res: ^Resource_State, data: []byte, slice: i32) { dummy() }
 
-    _draw_non_indexed :: proc(vertex_num: u32, instance_num: u32) { dummy() }
-    _draw_indexed :: proc(index_num: u32, instance_num: u32, index_offset: u32) { dummy() }
+    _draw_non_indexed :: proc(vertex_num: int, instance_num: int, vertex_offset: int, instance_offset: int) { dummy() }
+    _draw_indexed :: proc(index_num: int, instance_num: int, index_offset: int, vertex_offset: int, instance_offset: int) { dummy() }
     _dispatch_compute :: proc(size: [3]i32) { dummy() }
 
 }

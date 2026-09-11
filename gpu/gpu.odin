@@ -1420,21 +1420,43 @@ update_texture_2d :: proc(handle: Resource_Handle, data: []byte, #any_int slice:
 }
 
 
-draw_non_indexed :: proc(#any_int vertex_num: u32, #any_int instance_num: u32 = 1) {
+draw_non_indexed :: proc(
+    #any_int vertex_num: int,
+    #any_int instance_num: int = 1,
+    #any_int vertex_offset: int = 0,
+    #any_int instance_offset: int = 0,
+) {
     assert(_state.encoder.mode == .Graphics)
     assert(_state.encoder.graphics_pipeline != {})
     assert(_state.encoder.graphics_pipeline_desc.topo != .Invalid)
     assert(_state.encoder.graphics_pipeline_desc.vs != {})
     assert(_state.encoder.graphics_pipeline_desc.ps != {})
-    _draw_non_indexed(vertex_num = vertex_num, instance_num = instance_num)
+    _draw_non_indexed(
+        vertex_num = vertex_num,
+        instance_num = instance_num,
+        vertex_offset = vertex_offset,
+        instance_offset = instance_offset,
+    )
 }
 
-draw_indexed :: proc(#any_int index_num: u32, #any_int instance_num: u32 = 1, #any_int index_offset: u32 = 0) {
+draw_indexed :: proc(
+    #any_int index_num: int,
+    #any_int instance_num: int = 1,
+    #any_int index_offset: int = 0,
+    #any_int vertex_offset: int = 0,
+    #any_int instance_offset: int = 0,
+) {
     assert(_state.encoder.mode == .Graphics)
     assert(_state.encoder.graphics_pipeline_desc.vs != {})
     assert(_state.encoder.graphics_pipeline_desc.ps != {})
     assert(_state.encoder.graphics_index_format != .Invalid)
-    _draw_indexed(index_num = index_num, instance_num = instance_num, index_offset = index_offset)
+    _draw_indexed(
+        index_num = index_num,
+        instance_num = instance_num,
+        index_offset = index_offset,
+        vertex_offset = vertex_offset,
+        instance_offset = instance_offset,
+    )
 }
 
 dispatch_compute :: proc(size: [3]i32) {

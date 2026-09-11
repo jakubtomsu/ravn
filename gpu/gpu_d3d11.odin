@@ -1305,23 +1305,23 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
     }
 
-    _draw_non_indexed :: proc(vertex_num: u32, instance_num: u32) {
+    _draw_non_indexed :: proc(vertex_num: int, instance_num: int, vertex_offset: int, instance_offset: int) {
         _state.device_context->DrawInstanced(
-            VertexCountPerInstance = vertex_num,
-            InstanceCount = instance_num,
-            StartVertexLocation = 0,
-            StartInstanceLocation = 0,
+            VertexCountPerInstance = u32(vertex_num),
+            InstanceCount = u32(instance_num),
+            StartVertexLocation = u32(vertex_offset),
+            StartInstanceLocation = u32(instance_offset),
         )
         _d3d11_messages()
     }
 
-    _draw_indexed :: proc(index_num: u32, instance_num: u32, index_offset: u32) {
+    _draw_indexed :: proc(index_num: int, instance_num: int, index_offset: int, vertex_offset: int, instance_offset: int) {
         _state.device_context->DrawIndexedInstanced(
-            IndexCountPerInstance = index_num,
-            InstanceCount = instance_num,
-            StartIndexLocation = index_offset,
-            BaseVertexLocation = 0, // not supported
-            StartInstanceLocation = 0,
+            IndexCountPerInstance = u32(index_num),
+            InstanceCount = u32(instance_num),
+            StartIndexLocation = u32(index_offset),
+            BaseVertexLocation = i32(vertex_offset),
+            StartInstanceLocation = u32(instance_offset),
         )
         _d3d11_messages()
     }
