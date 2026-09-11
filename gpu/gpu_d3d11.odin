@@ -233,8 +233,7 @@ when BACKEND == BACKEND_D3D11 {
             depth_bias = desc.depth_bias,
         }).rs
         result.input_layout = _getref_or_create_input_layout(_Input_Layout_Desc{
-            vertex_layout = desc.vertex_layout,
-            instance_layout = desc.instance_layout,
+            vertex_layouts = desc.vertex_layouts,
             vs_handle = desc.vs,
         }).il
         return result, true
