@@ -1022,11 +1022,7 @@ when BACKEND == BACKEND_WGPU {
         )
     }
 
-    _set_graphics_pipeline :: proc(
-        curr_pip: ^Graphics_Pipeline_State,
-        curr: Graphics_Pipeline_Desc,
-        prev: Graphics_Pipeline_Desc,
-    ) {
+    _set_graphics_pipeline :: proc(curr_pip: ^Graphics_Pipeline_State) {
         assert(curr_pip.pip != nil)
         base.assert_id(curr_pip.id, _state.render_pass_encoder != nil)
         wgpu.RenderPassEncoderSetPipeline(_state.render_pass_encoder, curr_pip.pip)
@@ -1048,9 +1044,9 @@ when BACKEND == BACKEND_WGPU {
         _state.compute_pass_encoder = nil
     }
 
-    _set_compute_pipeline :: proc(curr_pip: ^Compute_Pipeline_State, prev: Compute_Pipeline_Desc) {
+    _set_compute_pipeline :: proc(pip: ^Compute_Pipeline_State) {
         assert(_state.compute_pass_encoder != nil)
-        wgpu.ComputePassEncoderSetPipeline(_state.compute_pass_encoder, curr_pip.pip)
+        wgpu.ComputePassEncoderSetPipeline(_state.compute_pass_encoder, pip.pip)
     }
 
     _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]byte) {

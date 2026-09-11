@@ -32,9 +32,10 @@ when BACKEND == BACKEND_D3D11 {
         swapchain_rtv:          ^d3d11.IRenderTargetView,
         render_texture:         ^d3d11.ITexture2D,
         render_texture_view:    ^d3d11.IRenderTargetView,
-
         info_queue:             ^d3d11.IInfoQueue,
 
+        prev_graphics_pip:      Graphics_Pipeline_State,
+        prev_compute_pip:       Compute_Pipeline_State,
         depth_stencils:         [dynamic; _MAX_DEPTH_STENCILS]_Depth_Stencil_State,
         samplers:               [dynamic; _MAX_SAMPLERS]_Sampler_State,
         rasterizers:            [dynamic; _MAX_RASTERIZERS]_Rasterizer_State,
@@ -996,6 +997,17 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
     }
 
+    _unbind_vertex_buffers :: proc() {
+        bufs:    [d3d11.IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT]^d3d11.IBuffer
+        strides: [d3d11.IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT]u32
+        offsets: [d3d11.IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT]u32
+        _state.device_context->IASetVertexBuffers(0, d3d11.IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT, &bufs[0], &strides[0], &offsets[0])
+    }
+
+    _unbind_index_buffers :: proc() {
+        _state.device_context->IASetIndexBuffer(nil, .R32_UINT, 0)
+    }
+
     _unbind_shaders :: proc(shaders: bit_set[Shader_Kind]) {
         if .Vertex  in shaders do _state.device_context->VSSetShader(nil, nil, 0)
         if .Pixel   in shaders do _state.device_context->PSSetShader(nil, nil, 0)
@@ -1098,7 +1110,10 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _end_graphics_pass :: proc() {
+        _state.prev_graphics_pip = {}
         _unbind_cs_rw_resources()
+        _unbind_vertex_buffers()
+        _unbind_index_buffers()
         _unbind_shaders({.Vertex, .Pixel, .Compute})
         _unbind_resources({.Vertex, .Pixel, .Compute})
         _unbind_constants({.Vertex, .Pixel, .Compute})
@@ -1137,34 +1152,42 @@ when BACKEND == BACKEND_D3D11 {
         }
     }
 
-    _set_graphics_pipeline :: proc(
-        pip: ^Graphics_Pipeline_State,
-        curr: Graphics_Pipeline_Desc,
-        prev: Graphics_Pipeline_Desc,
-    ) {
-        if curr.topo != prev.topo {
-            _state.device_context->IASetPrimitiveTopology(_d3d11_topology(curr.topo))
+    _set_graphics_pipeline :: proc(pip: ^Graphics_Pipeline_State) {
+        if pip.desc.topo != _state.prev_graphics_pip.desc.topo {
+            _state.device_context->IASetPrimitiveTopology(_d3d11_topology(pip.desc.topo))
         }
 
-        _state.device_context->OMSetBlendState(pBlendState = pip.blend, BlendFactor = nil, SampleMask = 0xffff_ffff)
-        _state.device_context->RSSetState(pip.rasterizer)
-        _state.device_context->OMSetDepthStencilState(pip.depth_stencil, 0)
-        _state.device_context->IASetInputLayout(pip.input_layout)
+        if pip.blend != _state.prev_graphics_pip.blend {
+            _state.device_context->OMSetBlendState(pip.blend, BlendFactor = nil, SampleMask = 0xffff_ffff)
+        }
 
-        if curr.vs != prev.vs {
-            if shader, shader_ok := _get_shader(curr.vs); shader_ok {
+        if pip.rasterizer != _state.prev_graphics_pip.rasterizer {
+            _state.device_context->RSSetState(pip.rasterizer)
+        }
+
+        if pip.depth_stencil != _state.prev_graphics_pip.depth_stencil {
+            _state.device_context->OMSetDepthStencilState(pip.depth_stencil, 0)
+        }
+
+        if pip.input_layout != _state.prev_graphics_pip.input_layout {
+            _state.device_context->IASetInputLayout(pip.input_layout)
+        }
+
+        if pip.desc.vs != _state.prev_graphics_pip.desc.vs {
+            if shader, shader_ok := _get_shader(pip.desc.vs); shader_ok {
                 assert(shader.kind == .Vertex)
                 _set_shader(shader^)
             }
         }
 
-        if curr.ps != prev.ps {
-            if shader, shader_ok := _get_shader(curr.ps); shader_ok {
+        if pip.desc.ps != _state.prev_graphics_pip.desc.ps {
+            if shader, shader_ok := _get_shader(pip.desc.ps); shader_ok {
                 assert(shader.kind == .Pixel)
                 _set_shader(shader^)
             }
         }
 
+        _state.prev_graphics_pip = pip^
         _d3d11_messages()
     }
 
@@ -1173,16 +1196,18 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _end_compute_pass :: proc() {
+        _state.prev_compute_pip = {}
         _unbind_cs_rw_resources()
     }
 
-    _set_compute_pipeline :: proc(curr: ^Compute_Pipeline_State, prev: Compute_Pipeline_Desc) {
-        if curr.desc.cs != prev.cs {
-            if shader, shader_ok := _get_shader(curr.desc.cs); shader_ok {
+    _set_compute_pipeline :: proc(pip: ^Compute_Pipeline_State) {
+        if pip.desc.cs != _state.prev_compute_pip.desc.cs {
+            if shader, shader_ok := _get_shader(pip.desc.cs); shader_ok {
                 assert(shader.kind == .Compute)
                 _set_shader(shader^)
             }
         }
+        _state.prev_compute_pip = pip^
         _d3d11_messages()
     }
 

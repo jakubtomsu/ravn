@@ -1314,15 +1314,9 @@ set_graphics_pipeline :: proc(handle: Graphics_Pipeline_Handle) {
     validate_graphics_pipeline_desc(pip.id, pip.desc)
     validate_graphics_pipeline_for_pass(pip.id, pip.desc, _state.encoder.graphics_pass_desc)
 
-    prev_desc := _state.encoder.graphics_pipeline_desc
-
     _state.encoder.graphics_pipeline = handle
     _state.encoder.graphics_pipeline_desc = pip.desc
-
-    _set_graphics_pipeline(pip,
-        curr = pip.desc,
-        prev = prev_desc,
-    )
+    _set_graphics_pipeline(pip)
 }
 
 @(deferred_none = end_compute_pass)
@@ -1357,10 +1351,9 @@ set_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) {
 
     validate_compute_pipeline_desc(pip.id, pip.desc)
 
-    _set_compute_pipeline(pip, _state.encoder.compute_pipeline_desc)
-
     _state.encoder.compute_pipeline = handle
     _state.encoder.compute_pipeline_desc = pip.desc
+    _set_compute_pipeline(pip)
 }
 
 update_constants :: proc(handle: Resource_Handle, data: []byte, loc := #caller_location) {

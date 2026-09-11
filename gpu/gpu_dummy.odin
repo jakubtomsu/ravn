@@ -47,8 +47,8 @@ when BACKEND == BACKEND_DUMMY {
     _begin_compute_pass :: proc(id: base.Debug_ID) { dummy() }
     _end_compute_pass :: proc() { dummy() }
 
-    _set_graphics_pipeline :: proc(curr_pip: ^Graphics_Pipeline_State, curr: Graphics_Pipeline_Desc, prev: Graphics_Pipeline_Desc) { dummy() }
-    _set_compute_pipeline :: proc(curr_pip: ^Compute_Pipeline_State, prev: Compute_Pipeline_Desc) { dummy() }
+    _set_graphics_pipeline :: proc(curr_pip: ^Graphics_Pipeline_State) { dummy() }
+    _set_compute_pipeline :: proc(curr_pip: ^Compute_Pipeline_State) { dummy() }
     _set_bind_group :: proc(slot: int, bind_group: ^Bind_Group_State, offsets: []u32) { dummy() }
     _set_index_buffer :: proc(res: ^Resource_State, format: Index_Format, offset: int) { dummy() }
 
