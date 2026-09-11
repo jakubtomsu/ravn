@@ -1381,17 +1381,17 @@ update_constants :: proc(handle: Resource_Handle, data: []byte, loc := #caller_l
 // Written range is [offset : offset + sum_of_all_buffer_sizes].
 // This way the backend can sometimes more efficiently copy the data to the native buffer,
 // compared to always allocating a temp buffer to combine the writes.
-update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte, loc := #caller_location) {
+update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte, loc := #caller_location) -> bool {
     assert(_state.encoder.mode == .None, "You must do all buffer updates outside passes", loc = loc)
 
     if len(buffers) == 0 {
-        return
+        return false
     }
 
     res, res_ok := _get_resource(handle)
     assert(res_ok, loc = loc)
     if !res_ok {
-        return
+        return false
     }
 
     total_len := 0
@@ -1404,6 +1404,7 @@ update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte, l
     assert(res.usage != .Immutable, loc = loc)
 
     _update_buffer(res, offset, buffers)
+    return true
 }
 
 update_texture_2d :: proc(handle: Resource_Handle, data: []byte, #any_int slice: i32 = 0) -> bool {
@@ -1466,6 +1467,144 @@ dispatch_compute :: proc(size: [3]i32) {
     assert(size.y > 0 && size.y < MAX_DISPATCH_SIZE)
     assert(size.z > 0 && size.z < MAX_DISPATCH_SIZE)
     _dispatch_compute(size)
+}
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Arena
+//
+// Not a traditional resource behind an opaque handle, it's a lightweight "userspace" wrapper
+// over buffer resources for easy bump allocation.
+//
+
+Arena :: struct #all_or_none {
+    usage:              Usage,
+    kind:               Buffer_Kind,
+    size:               i32,
+    stride:             i32,
+
+    buf:                Resource_Handle,
+    submitted_offset:   u64,
+    upload_buf:         []byte,
+    upload_offset:      u64,
+    upload_allocator:   runtime.Allocator,
+}
+
+create_arena :: proc(
+    kind:               Buffer_Kind,
+    #any_int stride:    i32,
+    #any_int size:      i32,
+    usage:              Usage = .Default,
+    loc                 := #caller_location,
+    allocator           := context.allocator, // for upload buf
+) -> (result: Arena, ok: bool) {
+    assert(kind != .Invalid, loc = loc)
+    assert(size > 0, loc = loc)
+    assert(size % stride == 0, loc = loc)
+    assert(stride >= 4, loc = loc)
+    assert(stride % 4 == 0, loc = loc)
+
+    result = {
+        usage = usage,
+        kind = kind,
+        size = size,
+        stride = stride,
+
+        buf = {},
+        submitted_offset = 0,
+        upload_buf = runtime.make_aligned([]byte, size, alignment = 4096, allocator = allocator),
+        upload_offset = 0,
+        upload_allocator = allocator,
+    }
+
+    switch usage {
+    case .Default, .Dynamic:
+        if !_create_arena_buffer(&result, data = nil, loc = loc) {
+            return {}, false
+        }
+
+    case .Immutable:
+        // Resource will be created on submit
+    }
+
+    return result, true
+}
+
+destroy_arena :: proc(arena: ^Arena) {
+    destroy_resource(arena.buf)
+    delete(arena.upload_buf, allocator = arena.upload_allocator)
+    arena^ = {}
+}
+
+_create_arena_buffer :: proc(arena: ^Arena, data: []byte, loc := #caller_location) -> bool {
+    if !create_buffer(
+        handle = &arena.buf,
+        kind = arena.kind,
+        stride = arena.stride,
+        size = arena.size,
+        usage = arena.usage,
+        data = data,
+        name = "Arena",
+        loc = loc,
+    ) {
+        base.log_err("GPU: Failed to create arena buffer", loc = loc)
+        return false
+    }
+    return true
+}
+
+// Write the data to the CPU-side staging buffer
+append_arena :: proc(arena: ^Arena, data: []byte) -> bool {
+    space := len(arena.upload_buf) - int(arena.upload_offset)
+    if len(data) > space {
+        return false
+    }
+    runtime.mem_copy_non_overlapping(
+        raw_data(arena.upload_buf[arena.upload_offset:]),
+        raw_data(data),
+        len(data),
+    )
+    arena.upload_offset += u64(len(data))
+    return true
+}
+
+// Flush the CPU-side staging buffer to the GPU
+submit_arena :: proc(arena: ^Arena, loc := #caller_location) -> bool {
+    assert(arena.upload_offset > 0, "Submitting an empty arena", loc = loc)
+    switch arena.usage {
+    case .Immutable:
+        if arena.submitted_offset != 0 {
+            base.log_err("Immutable arena cannot be submitted-to multiple times. Always clear in between.", loc = loc)
+            return false
+        }
+
+        if !_create_arena_buffer(arena, arena.upload_buf[:arena.upload_offset]) {
+            return false
+        }
+
+    case .Default, .Dynamic:
+        assert(arena.buf != {})
+        update_buffer(
+            arena.buf,
+            offset = int(arena.submitted_offset),
+            buffers = {
+                arena.upload_buf[:arena.upload_offset],
+            },
+            loc = loc,
+        )
+    }
+
+    arena.submitted_offset += arena.upload_offset
+    arena.upload_offset = 0
+
+    return true
+}
+
+// NOTE: doesn't zero any memory
+clear_arena :: proc(arena: ^Arena) {
+    arena.upload_offset = 0
+    arena.submitted_offset = 0
 }
 
 
