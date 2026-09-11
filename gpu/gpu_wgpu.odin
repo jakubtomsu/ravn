@@ -1,3 +1,4 @@
+#+vet explicit-allocators style shadowing unused
 package ravn_gpu
 
 import "../base"
@@ -5,6 +6,7 @@ import "vendor:wgpu"
 import "base:runtime"
 import "base:intrinsics"
 
+_ :: base
 _ :: wgpu
 _ :: runtime
 _ :: intrinsics
@@ -573,7 +575,7 @@ when BACKEND == BACKEND_WGPU {
 
         num_slots := 0
         vertex_buffers: [dynamic; MAX_PIPELINE_VERTEX_LAYOUTS]wgpu.VertexBufferLayout
-        for layout, layout_index in desc.vertex_layouts {
+        for layout in desc.vertex_layouts {
             if layout == {} {
                 continue
             }
@@ -769,16 +771,16 @@ when BACKEND == BACKEND_WGPU {
         rw_resource: bool,
         data: []byte,
     ) -> (result: _Resource_State, ok: bool) {
-        usage: wgpu.TextureUsageFlags = {.TextureBinding}
+        usage_flags: wgpu.TextureUsageFlags = {.TextureBinding}
 
         if render_texture {
-            usage += {.RenderAttachment}
+            usage_flags += {.RenderAttachment}
         } else {
-            usage += {.CopyDst}
+            usage_flags += {.CopyDst}
         }
 
         if rw_resource {
-            usage += {.StorageBinding}
+            usage_flags += {.StorageBinding}
         }
 
         formats := [?]wgpu.TextureFormat{
@@ -787,7 +789,7 @@ when BACKEND == BACKEND_WGPU {
 
         tex_desc := wgpu.TextureDescriptor{
             label = base.get_debug_id_name(id),
-            usage = usage,
+            usage = usage_flags,
             dimension = ._2D,
             size = {
                 width = u32(size.x),
@@ -837,13 +839,13 @@ when BACKEND == BACKEND_WGPU {
         result.tex_view = wgpu.TextureCreateView(result.tex, &wgpu.TextureViewDescriptor{
 	        label = base.get_debug_id_name(id),
 	        format = formats[0],
-	        dimension = ._2DArray,
+	        dimension = array_depth > 1 ? ._2DArray : ._2D,
 	        baseMipLevel = 0,
 	        mipLevelCount = u32(mips),
 	        baseArrayLayer = 0,
 	        arrayLayerCount = u32(array_depth),
 	        aspect = wgpu.TextureAspect.All, // tf is this
-	        usage = usage,
+	        usage = usage_flags,
         })
 
         if result.tex_view == nil {
@@ -966,8 +968,6 @@ when BACKEND == BACKEND_WGPU {
             }
         }
 
-        assert(color_atts != {})
-
         depth_stencil: ^wgpu.RenderPassDepthStencilAttachment
         if res, res_ok := _get_resource(desc.depth.resource); res_ok {
             depth_stencil = &{
@@ -1006,7 +1006,7 @@ when BACKEND == BACKEND_WGPU {
             slot = u32(slot),
             buffer = res.buf,
             offset = u64(offset),
-            size = u64(res.size.x),
+            size = u64(res.size.x) - u64(offset),
         )
     }
 
@@ -1016,7 +1016,7 @@ when BACKEND == BACKEND_WGPU {
             buffer = res.buf,
             format = _wgpu_index_format(format),
             offset = u64(offset),
-            size = u64(res.size.x),
+            size = u64(res.size.x) - u64(offset),
         )
     }
 

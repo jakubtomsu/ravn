@@ -1,13 +1,18 @@
-#+vet explicit-allocators shadowing
+#+vet explicit-allocators style shadowing unused
 #+build windows
 package ravn_gpu
 
 import "../base"
-
 import "base:runtime"
 import "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
+
+_ :: base
+_ :: runtime
+_ :: windows
+_ :: d3d11
+_ :: dxgi
 
 // https://www.gamedevs.org/uploads/efficient-buffer-management.pdf
 // TODO: all input constraints must be spelled out at the top if each proc in gpu.odin.
@@ -349,7 +354,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             offset := 0
-            for format, i in layout.slots {
+            for format in layout.slots {
                 if format == {} {
                     break
                 }
@@ -697,10 +702,8 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _create_constants :: proc(id: base.Debug_ID, item_size: i32, item_num: i32) -> (result: _Resource_State, ok: bool) {
-        // Create a single buffer and rely on driver buffer renaming.
-
         desc := d3d11.BUFFER_DESC{
-            ByteWidth = u32(item_size),
+            ByteWidth = u32(item_size * item_num),
             Usage = .DYNAMIC,
             BindFlags = {.CONSTANT_BUFFER},
             CPUAccessFlags = {.WRITE},
@@ -729,7 +732,9 @@ when BACKEND == BACKEND_D3D11 {
 
         if render_texture {
             if is_texture_format_depth_stencil(format) {
-                bind_flags = {.DEPTH_STENCIL}
+                // SHADER_RESOURCE so the depth buffer can be sampled. This requires a
+                // typeless resource format (see _d3d11_texture_resource_format).
+                bind_flags = {.DEPTH_STENCIL, .SHADER_RESOURCE}
             } else {
                 bind_flags = {.RENDER_TARGET, .SHADER_RESOURCE}
             }
@@ -742,6 +747,7 @@ when BACKEND == BACKEND_D3D11 {
         }
 
         desc := d3d11.TEXTURE2D_DESC{
+            // Depth formats must be created as typeless so we can make both a DSV and an SRV over them.
             Format = _d3d11_texture_format(format),
             Usage = _d3d11_usage(usage),
             Width = u32(size.x),
@@ -772,11 +778,25 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
         _d3d11_setlabel(result.tex2d, base.get_debug_id_name(id))
 
-        // TODO: SRV for depth buf
         if is_texture_format_depth_stencil(format) {
-            _d3d11_check(id, _state.device->CreateDepthStencilView(result.tex2d, nil, &result.dsv)) or_return
-
+            dsv_desc := d3d11.DEPTH_STENCIL_VIEW_DESC{
+                Format = _d3d11_texture_depth_dsv_format(format),
+                ViewDimension = .TEXTURE2D,
+                Texture2D = {MipSlice = 0},
+            }
+            _d3d11_check(id, _state.device->CreateDepthStencilView(result.tex2d, &dsv_desc, &result.dsv)) or_return
             _d3d11_setlabel(result.dsv, base.get_debug_id_name(id))
+
+            srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
+                Format = _d3d11_texture_depth_srv_format(format),
+                ViewDimension = .TEXTURE2D,
+                Texture2D = {
+                    MostDetailedMip = 0,
+                    MipLevels = 1,
+                },
+            }
+            _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
+            _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
 
         } else if render_texture {
             _d3d11_check(id, _state.device->CreateRenderTargetView(result.tex2d, nil, &result.rtv)) or_return
@@ -796,13 +816,22 @@ when BACKEND == BACKEND_D3D11 {
         } else {
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
                 Format = _d3d11_texture_format(format),
-                ViewDimension = .TEXTURE2DARRAY,
-                Texture2DArray = {
+            }
+
+            if array_depth > 1 {
+                srv_desc.ViewDimension = .TEXTURE2DARRAY
+                srv_desc.Texture2DArray = {
                     MostDetailedMip = 0,
                     MipLevels = 1,
                     FirstArraySlice = 0,
                     ArraySize = u32(array_depth),
-                },
+                }
+            } else {
+                srv_desc.ViewDimension = .TEXTURE2D
+                srv_desc.Texture2D = {
+                    MostDetailedMip = 0,
+                    MipLevels = 1,
+                }
             }
 
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
@@ -937,23 +966,23 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _set_constants :: proc(shaders: bit_set[Shader_Kind], cbufs: []^d3d11.IBuffer, offset_starts: []u32, offset_nums: []u32, start_slot: i32) {
-        if .Vertex  in shaders {
+        if .Vertex in shaders {
             _state.device_context->VSSetConstantBuffers1(
                 StartSlot = u32(start_slot),
                 NumBuffers = u32(len(cbufs)),
                 ppConstantBuffers = raw_data(cbufs),
-                pFirstConstant = nil,
-                pNumConstants = nil,
+                pFirstConstant = raw_data(offset_starts),
+                pNumConstants = raw_data(offset_nums),
             )
         }
 
-        if .Pixel   in shaders {
+        if .Pixel in shaders {
             _state.device_context->PSSetConstantBuffers1(
                 StartSlot = u32(start_slot),
                 NumBuffers = u32(len(cbufs)),
                 ppConstantBuffers = raw_data(cbufs),
-                pFirstConstant = nil,
-                pNumConstants = nil,
+                pFirstConstant = raw_data(offset_starts),
+                pNumConstants = raw_data(offset_nums),
             )
         }
 
@@ -962,8 +991,8 @@ when BACKEND == BACKEND_D3D11 {
                 StartSlot = u32(start_slot),
                 NumBuffers = u32(len(cbufs)),
                 ppConstantBuffers = raw_data(cbufs),
-                pFirstConstant = nil,
-                pNumConstants = nil,
+                pFirstConstant = raw_data(offset_starts),
+                pNumConstants = raw_data(offset_nums),
             )
         }
 
@@ -1068,14 +1097,15 @@ when BACKEND == BACKEND_D3D11 {
         }
 
         resolution: [2]i32
-        for color, i in desc.colors {
+        color_num := 0
+        for color in desc.colors {
             color := color
             rtv: ^d3d11.IRenderTargetView
             if color.resource == SWAPCHAIN_HANDLE {
                 rtv = _state.swapchain_rtv
                 resolution = _state.swapchain_size
             } else {
-                res := _get_resource(color.resource) or_continue
+                res := _get_resource(color.resource) or_break
                 #partial switch res.kind {
                 case .Texture2D:
                 case:
@@ -1086,7 +1116,8 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             assert(rtv != nil)
-            rtvs[i] = rtv
+            rtvs[color_num] = rtv
+            color_num += 1
 
             switch color.clear_mode {
             case .Keep:
@@ -1096,8 +1127,8 @@ when BACKEND == BACKEND_D3D11 {
         }
 
         _state.device_context->OMSetRenderTargets(
-            NumViews = u32(len(rtvs)),
-            ppRenderTargetViews = &rtvs[0],
+            NumViews = u32(color_num),
+            ppRenderTargetViews = color_num == 0 ? nil : &rtvs[0],
             pDepthStencilView = dsv,
         )
 
@@ -1137,9 +1168,16 @@ when BACKEND == BACKEND_D3D11 {
             offset_starts: [MAX_BIND_GROUP_CONSTANTS]u32
             offset_nums:   [MAX_BIND_GROUP_CONSTANTS]u32
 
-            for handle, i in bind_group.consts {
-                // todo: precompute offset_nums or something
-                unimplemented()
+            index := 0
+            for _, i in bind_group.consts {
+                if i not_in bind_group.consts_dyn {
+                    continue
+                }
+
+                assert(offsets[index] % 4 == 0)
+                offset_starts[index] = offsets[index] / 4
+                offset_nums[index] = u32(bind_group.consts_sizes[i]) / 4
+                index += 1
             }
 
             _set_constants(
@@ -1415,8 +1453,6 @@ when BACKEND == BACKEND_D3D11 {
         when !RELEASE {
             defer _state.info_queue->ClearStoredMessages()
 
-            buf: [1024]u8
-
             count := _state.info_queue->GetNumStoredMessages()
             for i in 0..<count {
                 msg_size: uint
@@ -1590,6 +1626,26 @@ when BACKEND == BACKEND_D3D11 {
         return .MIN_MAG_MIP_POINT
     }
 
+    _d3d11_texture_depth_srv_format :: proc(format: Texture_Format) -> dxgi.FORMAT {
+        #partial switch format {
+        case .Depth_F32:            return .R32_FLOAT
+        case .Depth_U16_Norm:       return .R16_UNORM
+        case .Depth_U24_Norm_S_U8:  return .R24_UNORM_X8_TYPELESS
+        }
+        assert(false)
+        return .UNKNOWN
+    }
+
+    _d3d11_texture_depth_dsv_format :: proc(format: Texture_Format) -> dxgi.FORMAT {
+        #partial switch format {
+        case .Depth_F32:            return .D32_FLOAT
+        case .Depth_U16_Norm:       return .D16_UNORM
+        case .Depth_U24_Norm_S_U8:  return .D24_UNORM_S8_UINT
+        }
+        assert(false)
+        return .UNKNOWN
+    }
+
     _d3d11_texture_format :: proc(format: Texture_Format) -> dxgi.FORMAT {
         switch format {
         case .Invalid:              return .UNKNOWN
@@ -1633,9 +1689,9 @@ when BACKEND == BACKEND_D3D11 {
         case .R_U8:                 return .R8_UINT
         case .R_S8_Norm:            return .R8_SNORM
         case .R_S8:                 return .R8_SINT
-        case .Depth_F32:            return .D32_FLOAT
-        case .Depth_U24_Norm_S_U8:  return .D24_UNORM_S8_UINT
-        case .Depth_U16_Norm:       return .D16_UNORM
+        case .Depth_F32:            return .R32_TYPELESS
+        case .Depth_U16_Norm:       return .R16_TYPELESS
+        case .Depth_U24_Norm_S_U8:  return .R24G8_TYPELESS
         }
         assert(false)
         return .R8G8B8A8_UNORM
@@ -1666,9 +1722,9 @@ when BACKEND == BACKEND_D3D11 {
         case .U16_Norm:      return .R16_UNORM
         case .U16x2_Norm:    return .R16G16_UNORM
         case .U16x4_Norm:    return .R16G16B16A16_UNORM
-        case .I16_Norm:      return .R16_SINT
-        case .I16x2_Norm:    return .R16G16_SINT
-        case .I16x4_Norm:    return .R16G16B16A16_SINT
+        case .I16_Norm:      return .R16_SNORM
+        case .I16x2_Norm:    return .R16G16_SNORM
+        case .I16x4_Norm:    return .R16G16B16A16_SNORM
         case .F16:           return .R16_FLOAT
         case .F16x2:         return .R16G16_FLOAT
         case .F16x4:         return .R16G16B16A16_FLOAT

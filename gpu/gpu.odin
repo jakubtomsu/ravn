@@ -134,6 +134,7 @@ Bind_Layout_State :: struct #all_or_none {
 Bind_Group_State :: struct #all_or_none {
     using native:   _Bind_Group_State,
     consts:         [MAX_BIND_GROUP_CONSTANTS]Resource_Handle,
+    consts_sizes:   [MAX_BIND_GROUP_CONSTANTS]u16,
     consts_dyn:     bit_set[0..<MAX_BIND_GROUP_CONSTANTS],
     id:             base.Debug_ID,
 }
@@ -852,6 +853,7 @@ create_bind_group :: proc(
     state := Bind_Group_State{
         native = {},
         consts = {},
+        consts_sizes = {},
         consts_dyn = {},
         id = id,
     }
@@ -866,6 +868,7 @@ create_bind_group :: proc(
         res := _get_resource(slot.resource) or_continue
         if res.kind == .Constants {
             state.consts[slot.index] = slot.resource
+            state.consts_sizes[slot.index] = u16(res.size.x)
             if res.size.y > 1 {
                 state.consts_dyn += {int(slot.index)}
             }
@@ -936,13 +939,11 @@ create_compute_pipeline :: proc(
     return true
 }
 
-// Set 'item_num' above 1 or more to enable multi const buffers with dynamic offsets.
-
 @(require_results)
 create_constants :: proc(
     handle:     ^Resource_Handle,
     item_size:  i32,
-    item_num:   i32 = 1,
+    item_num:   i32 = 1, // set above 1 to enable multi const buffers with dynamic offsets.
     name        := #caller_expression(handle),
     loc         := #caller_location,
 ) -> (ok: bool) {
@@ -955,7 +956,7 @@ create_constants :: proc(
     base.assert_id(id, item_size % 16 == 0)
 
     if item_num > 1 {
-        base.assert_id(id, item_size % 256 == 0, "Dynamic constant buffers must be aligned to 256 bytes due to hardware")
+        base.assert_id(id, item_size % 256 == 0, "Dynamic constant buffers must be aligned to 256 bytes due to hardware reasons")
     }
 
     _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
@@ -1136,7 +1137,7 @@ create_buffer :: proc(
 
     state := Resource_State{
         kind = .Buffer,
-        size = {i32(runtime.align_forward_int(int(size), 64)), stride, 1},
+        size = {size, stride, 1},
         usage = usage,
         id = id,
         tex_format = {},
