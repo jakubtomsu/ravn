@@ -152,12 +152,18 @@ Graphics_Pipeline_Desc :: struct #align(64) #all_or_none {
     color_format:       [MAX_BOUND_RENDER_TEXTURES]Texture_Format,
     depth_format:       Texture_Format,
     bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
-    vertex_layout:      [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format,
-    instance_layout:    [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format,
+    vertex_layouts:     [MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc,
 }
 
-Vertex_Layout_Slot_Desc :: struct {
-    format: Vertex_Format,
+// Layout of a single contiguous vertex data channel
+Vertex_Layout_Desc :: struct {
+    slots:  [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format,
+    mode:   Vertex_Step_Mode,
+}
+
+Vertex_Step_Mode :: enum u8 {
+    Vertex = 0,
+    Instance,
 }
 
 Compute_Pipeline_Desc :: struct {
@@ -563,8 +569,7 @@ make_graphics_pipeline_desc :: proc(
     ps:                 Shader_Handle,
     vs:                 Shader_Handle,
     layouts:            [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {},
-    vertex_layout:      [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format = {},
-    instance_layout:    [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format = {},
+    vertex_layouts:     [MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc,
     out_colors:         []Texture_Format,
     out_depth:          Texture_Format = .Invalid,
     blends:             []Blend_Desc = {},
@@ -591,8 +596,7 @@ make_graphics_pipeline_desc :: proc(
         depth_bias = depth_bias,
         depth_format = out_depth,
         bind_layouts = layouts,
-        vertex_layout = vertex_layout,
-        instance_layout = instance_layout,
+        vertex_layouts = vertex_layouts,
         color_format = {},
         blends = {},
     }
@@ -625,7 +629,7 @@ make_compute_pipeline_desc :: proc(
 //      uv:    [2]f32,
 //      color: [4]u8 `gpu:"U8x4_Norm"`,
 //  }
-make_vertex_layout :: proc($T: typeid, loc := #caller_location) -> (result: [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format) {
+make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode = .Vertex, loc := #caller_location) -> (result: Vertex_Layout_Desc) {
     st, is_struct := runtime.type_info_base(type_info_of(T)).variant.(runtime.Type_Info_Struct)
     if !is_struct {
         base.log_err("'%v' is not a struct", typeid_of(T), loc = loc)
@@ -648,7 +652,7 @@ make_vertex_layout :: proc($T: typeid, loc := #caller_location) -> (result: [MAX
 
         ok: bool
         if tag_val, has_tag := _struct_tag_lookup(st.tags[field_index], "gpu"); has_tag {
-            result[field_index], ok = _vertex_format_from_name(tag_val, T, name, loc)
+            result.slots[field_index], ok = _vertex_format_from_name(tag_val, T, name, loc)
             if !ok {
                 base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, tag_val, loc = loc)
                 panic("no matching Vertex_Format", loc)
@@ -678,13 +682,14 @@ make_vertex_layout :: proc($T: typeid, loc := #caller_location) -> (result: [MAX
             format_name = base.tprintf("%sx%i", format_name, num_components)
         }
 
-        result[field_index], ok = _vertex_format_from_name(format_name, T, name, loc)
+        result.slots[field_index], ok = _vertex_format_from_name(format_name, T, name, loc)
         if !ok {
             base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, format_name, loc = loc)
             panic("no matching Vertex_Format", loc)
         }
     }
 
+    result.mode = mode
     return result
 }
 

@@ -466,12 +466,10 @@ when BACKEND == BACKEND_WGPU {
             append(&bind_layouts, bind_layout.bgl)
         }
 
-        base.assert_id(id, len(bind_layouts) > 0)
-
         pip_layout := wgpu.DeviceCreatePipelineLayout(_state.device, &wgpu.PipelineLayoutDescriptor{
             label = base.get_debug_id_name(id),
             bindGroupLayoutCount = uint(len(bind_layouts)),
-            bindGroupLayouts = &bind_layouts[0],
+            bindGroupLayouts = len(bind_layouts) == 0 ? nil : &bind_layouts[0],
         })
 
         if pip_layout == nil {
@@ -492,7 +490,7 @@ when BACKEND == BACKEND_WGPU {
         base.assert_id(id, vs.kind == .Vertex)
 
         color_targets_num := 0
-        color_targets: [RENDER_TEXTURE_BIND_SLOTS]wgpu.ColorTargetState
+        color_targets: [MAX_BOUND_RENDER_TEXTURES]wgpu.ColorTargetState
 
         for color, i in desc.color_format {
             if color == .Invalid {
@@ -573,6 +571,45 @@ when BACKEND == BACKEND_WGPU {
             }
         }
 
+        num_slots := 0
+        vertex_buffers: [dynamic; MAX_PIPELINE_VERTEX_LAYOUTS]wgpu.VertexBufferLayout
+        for layout, layout_index in desc.vertex_layouts {
+            if layout == {} {
+                continue
+            }
+
+            attribs := make([dynamic]wgpu.VertexAttribute, 0, MAX_VERTEX_LAYOUT_SLOTS, context.temp_allocator)
+            offset := 0
+
+            for format in layout.slots {
+                if format == {} {
+                    break
+                }
+
+                attrib := wgpu.VertexAttribute{
+                    format = _wgpu_vertex_format(format),
+                    offset = u64(offset),
+                    shaderLocation = u32(num_slots),
+                }
+
+                append(&attribs, attrib)
+                offset += get_vertex_format_size(format)
+                offset = runtime.align_forward_int(offset, 4)
+                num_slots += 1
+            }
+
+            buffer := wgpu.VertexBufferLayout{
+                stepMode = layout.mode == .Instance ? .Instance : .Vertex,
+                arrayStride = u64(offset),
+                attributeCount = len(attribs),
+                attributes = raw_data(attribs),
+            }
+
+            append(&vertex_buffers, buffer)
+        }
+
+        base.eprintfln("%#", vertex_buffers[:])
+
         result.pip = wgpu.DeviceCreateRenderPipeline(_state.device, &{
             label = base.get_debug_id_name(id),
             layout = pip_layout,
@@ -588,8 +625,8 @@ when BACKEND == BACKEND_WGPU {
                 entryPoint = "vs_main",
                 constantCount = 0,
                 constants = nil, // push constants not available
-                bufferCount = 0,
-                buffers = nil,
+                bufferCount = uint(len(vertex_buffers)),
+                buffers = len(vertex_buffers) == 0 ? nil : &vertex_buffers[0],
             },
             fragment = &wgpu.FragmentState{
                 module = ps.module,
@@ -628,12 +665,10 @@ when BACKEND == BACKEND_WGPU {
             append(&bind_layouts, bind_layout.bgl)
         }
 
-        base.assert_id(id, len(bind_layouts) > 0)
-
         pip_layout := wgpu.DeviceCreatePipelineLayout(_state.device, &wgpu.PipelineLayoutDescriptor{
             label = base.get_debug_id_name(id),
             bindGroupLayoutCount = uint(len(bind_layouts)),
-            bindGroupLayouts = &bind_layouts[0],
+            bindGroupLayouts = len(bind_layouts) == 0 ? nil : &bind_layouts[0],
         })
 
         if pip_layout == nil {
@@ -774,7 +809,7 @@ when BACKEND == BACKEND_WGPU {
             return {}, false
         }
 
-        row_bytes := u32(get_texture_format_pixel_size(format) * size.x)
+        row_bytes := u32(get_texture_format_pixel_size(format) * int(size.x))
 
         // assert(row_bytes % 256 == 0)
 
@@ -828,7 +863,7 @@ when BACKEND == BACKEND_WGPU {
         usage:  Usage,
         data:   []u8,
     ) -> (result: _Resource_State, ok: bool) {
-        result.buf = wgpu.DeviceCreateBuffer(_state.device, &{
+        result.buf = wgpu.DeviceCreateBuffer(_state.device, &wgpu.BufferDescriptor{
             label            = base.get_debug_id_name(id),
             usage            = _wgpu_buffer_usage(usage) + _wgpu_buffer_kind(kind),
             size             = u64(size),
@@ -898,7 +933,7 @@ when BACKEND == BACKEND_WGPU {
         assert(_state.render_pass_encoder == nil)
 
         num_color_atts := 0
-        color_atts: [RENDER_TEXTURE_BIND_SLOTS]wgpu.RenderPassColorAttachment
+        color_atts: [MAX_BOUND_RENDER_TEXTURES]wgpu.RenderPassColorAttachment
 
         for color, i in desc.colors {
             view: wgpu.TextureView
@@ -967,12 +1002,22 @@ when BACKEND == BACKEND_WGPU {
         _state.render_pass_encoder = nil
     }
 
-    _set_index_buffer :: proc(res: ^Resource_State, format: Index_Format, offset: u64) {
+    _set_vertex_buffer :: proc(slot: int, res: ^Resource_State, offset: int) {
+        wgpu.RenderPassEncoderSetVertexBuffer(
+            _state.render_pass_encoder,
+            slot = u32(slot),
+            buffer = res.buf,
+            offset = u64(offset),
+            size = u64(res.size.x),
+        )
+    }
+
+    _set_index_buffer :: proc(res: ^Resource_State, format: Index_Format, offset: int) {
         wgpu.RenderPassEncoderSetIndexBuffer(
             _state.render_pass_encoder,
             buffer = res.buf,
             format = _wgpu_index_format(format),
-            offset = offset,
+            offset = u64(offset),
             size = u64(res.size.x),
         )
     }
@@ -1051,7 +1096,7 @@ when BACKEND == BACKEND_WGPU {
     _update_texture_2d :: proc(res: ^Resource_State, data: []byte, slice: i32) {
         base.assert_id(res.id, res.tex_format != .Invalid)
 
-        row_bytes := u32(get_texture_format_pixel_size(res.tex_format) * res.size.x)
+        row_bytes := u32(get_texture_format_pixel_size(res.tex_format) * int(res.size.x))
         wgpu.QueueWriteTexture(_state.queue,
             data = raw_data(data),
             dataSize = len(data),
@@ -1171,6 +1216,7 @@ when BACKEND == BACKEND_WGPU {
         case .Invalid: return {}
         case .Storage: return {.Storage}
         case .Index:   return {.Index}
+        case .Vertex:  return {.Vertex}
         }
         assert(false)
         return {.CopyDst}
@@ -1295,53 +1341,102 @@ when BACKEND == BACKEND_WGPU {
 
     _wgpu_texture_format :: proc(format: Texture_Format) -> wgpu.TextureFormat {
         switch format {
-        case .Invalid:          return .Undefined
-        case .Swapchain:        return .BGRA8Unorm
-        case .RGBA_F32:         return .RGBA32Float
-        case .RGBA_U32:         return .RGBA32Uint
-        case .RGBA_S32:         return .RGBA32Sint
-        case .RGBA_F16:         return .RGBA16Float
-        case .RGBA_U16_Norm:    return .RGBA16Unorm
-        case .RGBA_U16:         return .RGBA16Uint
-        case .RGBA_S16_Norm:    return .RGBA16Snorm
-        case .RGBA_S16:         return .RGBA16Sint
-        case .RG_F32:           return .RG32Float
-        case .RG_U32:           return .RG32Uint
-        case .RG_S32:           return .RG32Sint
-        case .RG_U10_A_U2_Norm: return .RGB10A2Unorm
-        case .RG_U10_A_U2:      return .RGB10A2Uint
-        case .RG_F11_B_F10:     return .RG11B10Ufloat
-        case .RGBA_U8_Norm:     return .RGBA8Unorm
-        case .RGBA_U8:          return .RGBA8Uint
-        case .RGBA_S8_Norm:     return .RGBA8Snorm
-        case .RGBA_S8:          return .RGBA8Sint
-        case .RG_F16:           return .RG16Float
-        case .RG_U16_Norm:      return .RG16Unorm
-        case .RG_U16:           return .RG16Uint
-        case .RG_S16_Norm:      return .RG16Snorm
-        case .RG_S16:           return .RG16Sint
-        case .D_F32:            return .Depth32Float
-        case .R_F32:            return .R32Float
-        case .R_U32:            return .R32Uint
-        case .R_S32:            return .R32Sint
-        case .D_U24_Norm_S_U8:  return .Depth24PlusStencil8
-        case .RG_U8_Norm:       return .RG8Unorm
-        case .RG_U8:            return .RG8Uint
-        case .RG_S8_Norm:       return .RG8Snorm
-        case .RG_S8:            return .RG8Sint
-        case .R_F16:            return .R16Float
-        case .D_U16_Norm:       return .Depth16Unorm
-        case .R_U16_Norm:       return .R16Unorm
-        case .R_U16:            return .R16Uint
-        case .R_S16_Norm:       return .R16Snorm
-        case .R_S16:            return .R16Sint
-        case .R_U8_Norm:        return .R8Unorm
-        case .R_U8:             return .R8Uint
-        case .R_S8_Norm:        return .R8Snorm
-        case .R_S8:             return .R8Sint
+        case .Invalid:              return .Undefined
+        case .Swapchain:            return .BGRA8Unorm
+        case .RGBA_F32:             return .RGBA32Float
+        case .RGBA_U32:             return .RGBA32Uint
+        case .RGBA_S32:             return .RGBA32Sint
+        case .RGBA_F16:             return .RGBA16Float
+        case .RGBA_U16_Norm:        return .RGBA16Unorm
+        case .RGBA_U16:             return .RGBA16Uint
+        case .RGBA_S16_Norm:        return .RGBA16Snorm
+        case .RGBA_S16:             return .RGBA16Sint
+        case .RG_F32:               return .RG32Float
+        case .RG_U32:               return .RG32Uint
+        case .RG_S32:               return .RG32Sint
+        case .RG_U10_A_U2_Norm:     return .RGB10A2Unorm
+        case .RG_U10_A_U2:          return .RGB10A2Uint
+        case .RG_F11_B_F10:         return .RG11B10Ufloat
+        case .RGBA_U8_Norm:         return .RGBA8Unorm
+        case .RGBA_U8:              return .RGBA8Uint
+        case .RGBA_S8_Norm:         return .RGBA8Snorm
+        case .RGBA_S8:              return .RGBA8Sint
+        case .RG_F16:               return .RG16Float
+        case .RG_U16_Norm:          return .RG16Unorm
+        case .RG_U16:               return .RG16Uint
+        case .RG_S16_Norm:          return .RG16Snorm
+        case .RG_S16:               return .RG16Sint
+        case .R_F32:                return .R32Float
+        case .R_U32:                return .R32Uint
+        case .R_S32:                return .R32Sint
+        case .RG_U8_Norm:           return .RG8Unorm
+        case .RG_U8:                return .RG8Uint
+        case .RG_S8_Norm:           return .RG8Snorm
+        case .RG_S8:                return .RG8Sint
+        case .R_F16:                return .R16Float
+        case .R_U16_Norm:           return .R16Unorm
+        case .R_U16:                return .R16Uint
+        case .R_S16_Norm:           return .R16Snorm
+        case .R_S16:                return .R16Sint
+        case .R_U8_Norm:            return .R8Unorm
+        case .R_U8:                 return .R8Uint
+        case .R_S8_Norm:            return .R8Snorm
+        case .R_S8:                 return .R8Sint
+        case .Depth_F32:            return .Depth32Float
+        case .Depth_U24_Norm_S_U8:  return .Depth24PlusStencil8
+        case .Depth_U16_Norm:       return .Depth16Unorm
         }
         assert(false)
         return .RGBA8Unorm
+    }
+
+    _wgpu_vertex_format :: proc(format: Vertex_Format) -> wgpu.VertexFormat {
+        switch format {
+        case .Invalid:
+            assert(false)
+        case .U8:            return .Uint8
+        case .U8x2:          return .Uint8x2
+        case .U8x4:          return .Uint8x4
+        case .I8:            return .Sint8
+        case .I8x2:          return .Sint8x2
+        case .I8x4:          return .Sint8x4
+        case .U8_Norm:       return .Unorm8
+        case .U8x2_Norm:     return .Unorm8x2
+        case .U8x4_Norm:     return .Unorm8x4
+        case .I8_Norm:       return .Snorm8
+        case .I8x2_Norm:     return .Snorm8x2
+        case .I8x4_Norm:     return .Snorm8x4
+        case .U16:           return .Uint16
+        case .U16x2:         return .Uint16x2
+        case .U16x4:         return .Uint16x4
+        case .I16:           return .Sint16
+        case .I16x2:         return .Sint16x2
+        case .I16x4:         return .Sint16x4
+        case .U16_Norm:      return .Unorm16
+        case .U16x2_Norm:    return .Unorm16x2
+        case .U16x4_Norm:    return .Unorm16x4
+        case .I16_Norm:      return .Snorm16
+        case .I16x2_Norm:    return .Snorm16x2
+        case .I16x4_Norm:    return .Snorm16x4
+        case .F16:           return .Float16
+        case .F16x2:         return .Float16x2
+        case .F16x4:         return .Float16x4
+        case .F32:           return .Float32
+        case .F32x2:         return .Float32x2
+        case .F32x3:         return .Float32x3
+        case .F32x4:         return .Float32x4
+        case .U32:           return .Uint32
+        case .U32x2:         return .Uint32x2
+        case .U32x3:         return .Uint32x3
+        case .U32x4:         return .Uint32x4
+        case .I32:           return .Sint32
+        case .I32x2:         return .Sint32x2
+        case .I32x3:         return .Sint32x3
+        case .I32x4:         return .Sint32x4
+        case .U10x3_U2_Norm: return .Unorm10_10_10_2
+        }
+        assert(false)
+        return .Uint8
     }
 
 }

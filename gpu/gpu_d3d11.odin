@@ -134,8 +134,7 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _Input_Layout_Desc :: struct #all_or_none {
-        vertex_layout:      [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format,
-        instance_layout:    [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format,
+        vertex_layouts:     [MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc,
         vs_handle:          Shader_Handle,
     }
 
@@ -318,40 +317,8 @@ when BACKEND == BACKEND_D3D11 {
         return result, true
     }
 
-    _d3d11_input_layout :: proc(
-        dst:                []d3d11.INPUT_ELEMENT_DESC,
-        layout:             [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format,
-        semantic_offset:    int,
-        is_instance:        bool,
-    ) -> (num_slots: int) {
-        assert(len(dst) >= MAX_VERTEX_LAYOUT_SLOTS)
-
-        offset := 0
-        for format, i in layout {
-            if format == {} {
-                break
-            }
-            elem := d3d11.INPUT_ELEMENT_DESC{
-                SemanticName = "TEXCOORD",
-                SemanticIndex = u32(i),
-                Format = _d3d11_vertex_format(format),
-                InputSlot = is_instance ? 1 : 0,
-                AlignedByteOffset = u32(offset),
-                InputSlotClass = is_instance ? .INSTANCE_DATA : .VERTEX_DATA,
-                InstanceDataStepRate = is_instance ? 1 : 0,
-            }
-
-            dst[i] = elem
-            offset += get_vertex_format_size(format)
-            offset = runtime.align_forward_int(offset, 4)
-            num_slots += 1
-        }
-
-        return num_slots
-    }
-
     _getref_or_create_input_layout :: proc(desc: _Input_Layout_Desc) -> (result: _Input_Layout_State) {
-        if desc.vertex_layout == {} && desc.instance_layout == {} {
+        if desc.vertex_layouts == {} {
             return {}
         }
 
@@ -372,9 +339,34 @@ when BACKEND == BACKEND_D3D11 {
         }
 
         num_elems := 0
-        elems: [MAX_VERTEX_LAYOUT_SLOTS * 2]d3d11.INPUT_ELEMENT_DESC
-        num_elems += _d3d11_input_layout(elems[num_elems:], desc.vertex_layout,   semantic_offset = num_elems, is_instance = false)
-        num_elems += _d3d11_input_layout(elems[num_elems:], desc.instance_layout, semantic_offset = num_elems, is_instance = true)
+        elems: [MAX_VERTEX_LAYOUT_SLOTS * MAX_PIPELINE_VERTEX_LAYOUTS]d3d11.INPUT_ELEMENT_DESC
+
+        for layout, layout_index in desc.vertex_layouts {
+            if layout == {} {
+                continue
+            }
+
+            offset := 0
+            for format, i in layout.slots {
+                if format == {} {
+                    break
+                }
+                elem := d3d11.INPUT_ELEMENT_DESC{
+                    SemanticName = "TEXCOORD",
+                    SemanticIndex = u32(num_elems),
+                    Format = _d3d11_vertex_format(format),
+                    InputSlot = u32(layout_index),
+                    AlignedByteOffset = u32(offset),
+                    InputSlotClass = layout.mode == .Instance ? .INSTANCE_DATA : .VERTEX_DATA,
+                    InstanceDataStepRate = layout.mode == .Instance ? 1 : 0,
+                }
+
+                elems[num_elems] = elem
+                offset += get_vertex_format_size(format)
+                offset = runtime.align_forward_int(offset, 4)
+                num_elems += 1
+            }
+        }
 
         _d3d11_check(_state.device->CreateInputLayout(
             pInputElementDescs = &elems[0],

@@ -73,7 +73,7 @@ main :: proc() {
         vs = vs,
         cull = .None,
         // layouts = {0 = layout},
-        vertex_layout = gpu.make_vertex_layout(Vertex),
+        vertex_layouts = {0 = gpu.make_vertex_layout(Vertex)},
         out_colors = {0 = .Swapchain},
     )) or_else panic("pip")
 
