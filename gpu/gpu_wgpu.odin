@@ -79,7 +79,6 @@ when BACKEND == BACKEND_WGPU {
 
     @(require_results)
     _init :: proc(native_window: rawptr) -> bool {
-
         inst_desc: wgpu.InstanceDescriptor
         _state.instance = wgpu.CreateInstance(&inst_desc)
 
@@ -92,6 +91,7 @@ when BACKEND == BACKEND_WGPU {
             return false
         }
 
+        assert(native_window != nil)
         _state.surface = _wgpu_create_native_surface(_state.instance, native_window, ptr = nil)
 
         if _state.surface == nil {
