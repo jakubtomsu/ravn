@@ -33,7 +33,11 @@ main :: proc() {
     window := sdl.CreateWindow("Ravn GPU SDL3 Triangle", 1280, 780, {.HIGH_PIXEL_DENSITY, .HIDDEN, .RESIZABLE})
     defer sdl.DestroyWindow(window)
 
-    native_window := sdl.GetPointerProperty(sdl.GetWindowProperties(window), sdl.PROP_WINDOW_WIN32_HWND_POINTER, nil)
+    when ODIN_OS == .Windows {
+        native_window := sdl.GetPointerProperty(sdl.GetWindowProperties(window), sdl.PROP_WINDOW_WIN32_HWND_POINTER, nil)
+    } else {
+        native_window := rawptr(window)
+    }
 
     size: [2]i32
     sdl.GetWindowSize(window, &size.x, &size.y)
@@ -41,12 +45,11 @@ main :: proc() {
     gpu_state := new(gpu.State)
     gpu.init(gpu_state, native_window)
 
-    shc: shader_compiler.State
-    if !shader_compiler.init(&shc, SHADER_TARGET) {
+    if !shader_compiler.init(SHADER_TARGET) {
         panic("No shader compiler")
     }
-    ps_blob := shader_compiler.compile(&shc, "triangle.hlsl", _shader_code, {stage = .Pixel}) or_else panic("ps_blob")
-    vs_blob := shader_compiler.compile(&shc, "triangle.hlsl", _shader_code, {stage = .Vertex}) or_else panic("vs_blob")
+    ps_blob := shader_compiler.compile_source("triangle.hlsl", _shader_code, {stage = .Pixel}) or_else panic("ps_blob")
+    vs_blob := shader_compiler.compile_source("triangle.hlsl", _shader_code, {stage = .Vertex}) or_else panic("vs_blob")
 
     vbuf: gpu.Resource_Handle
     inst_buf: gpu.Resource_Handle
@@ -85,7 +88,7 @@ main :: proc() {
         cull = .None,
         // layouts = {0 = layout},
         vertex_layouts = {
-            0 = gpu.make_vertex_layout(Vertex),
+            0 = gpu.make_vertex_layout(Vertex, .Vertex),
             1 = gpu.make_vertex_layout(Instance, .Instance),
         },
         out_colors = {0 = .Swapchain},
