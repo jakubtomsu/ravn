@@ -148,7 +148,7 @@ _compile_slang :: proc(
     session: ^slang.ISession
     _slang_check(state.slang.global_session->createSession(session_desc, &session))
 
-    cname := clone_to_cstring(name, context.temp_allocator)
+    cname := base.clone_to_cstring(name, context.temp_allocator)
 
     source_blob := state.slang.createBlob(raw_data(source), len(source))
     diag: ^slang.IBlob

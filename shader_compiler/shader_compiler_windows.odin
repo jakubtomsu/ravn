@@ -57,8 +57,8 @@ _compile_dxbc :: proc(
 
     for def, i in opts.defines {
         defs[i] = {
-            Name = clone_to_cstring(def[0], context.temp_allocator),
-            Definition = clone_to_cstring(def[1], context.temp_allocator),
+            Name = base.clone_to_cstring(def[0], context.temp_allocator),
+            Definition = base.clone_to_cstring(def[1], context.temp_allocator),
         }
     }
 
@@ -79,7 +79,7 @@ _compile_dxbc :: proc(
     res := d3d_compiler.Compile(
         pSrcData = raw_data(source),
         SrcDataSize = len(source),
-        pSourceName = clone_to_cstring(name, context.temp_allocator),
+        pSourceName = base.clone_to_cstring(name, context.temp_allocator),
         pDefines = defs,
         pInclude = &include_handler,
         pEntrypoint = entry_point_name,
