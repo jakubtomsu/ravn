@@ -1,36 +1,17 @@
+#+vet unused shadowing style explicit-allocators
 package ravn_base
 
 import "base:intrinsics"
 
-/*
-SPSC - Single-Producer Single-Consumer Lock-Free Queue
-
-This is a ring buffer which can be safely operated on by two threads:
-- one "producer" which keeps pushing values
-- and one "consumer" which keeps popping them
-
-(in theory it's safe for both threads to push and pop at once, but it's probably not a good architecture)
-
-There is no internal locking, only two atomic operations per push/pop.
-
-Push can fail if the queue is full, there are a few ways you can deal with that:
-1. ignore it and throw away the value
-2. run push in a hot loop until it succeeds
-3. retry push after some time if it fails, doing additional work in-between
-
-You should consider batching your pushes and pops and call push_elems/pop_elems with more than one item at once.
-However it depends on your workload, it's a tradeoff between latency between producer and consumer,
-and the overhead spent on synchronization.
-
-The head/tail values are each on a separate cache-line to avoid false sharing.
-I'm not sure if it's necessary to separate *all* of them, maybe tails could be shared
-since they are both accessed by both threads at roughly the same time.
-However the overhead is just 4 cache lines, which is nothing for a big queue.
-
-Resources:
-https://github.com/freebsd/freebsd-src/blob/main/sys/sys/buf_ring.h
-https://book-of-gehn.github.io/articles/2020/03/22/Lock-Free-Queue-Part-I.html
-*/
+// SPSC - Single-Producer Single-Consumer Lock-Free Queue
+//
+// This is a ring buffer which can be safely operated on by two threads:
+// - one "producer" which keeps pushing values
+// - and one "consumer" which keeps popping them
+//
+// Resources:
+//     https://github.com/freebsd/freebsd-src/blob/main/sys/sys/buf_ring.h
+//     https://book-of-gehn.github.io/articles/2020/03/22/Lock-Free-Queue-Part-I.html
 SPSC :: struct($Num: u64, $Val: typeid) {
     using _: struct #align(64) { producer_head:  u64, },
     using _: struct #align(64) { producer_tail:  u64, },

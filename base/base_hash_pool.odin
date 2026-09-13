@@ -1,3 +1,4 @@
+#+vet unused shadowing style explicit-allocators
 package ravn_base
 
 import "base:intrinsics"
