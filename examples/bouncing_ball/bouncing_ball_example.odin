@@ -81,7 +81,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
 
     rv.update_draw_layer(0, rv.make_screen_camera(rv.get_screen_size()))
 
-    rv.set_draw_texture(rv.get_texture("circle"))
+    rv.set_draw_texture(rv.find_texture_by_name("circle"))
     rv.draw_sprite(
         pos = state.ball.position,
         scale = {ball.radius * 2, ball.radius * 2},

@@ -131,7 +131,7 @@ _update :: proc(hot_state: rawptr) -> rawptr {
     }
 
     for &p, index in state.parts {
-        if !base.bit_pool_check_1(state.pool, index) {
+        if !base.bit_pool_is_1(state.pool, index) {
             continue
         }
 
