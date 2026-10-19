@@ -458,7 +458,7 @@ when BACKEND == BACKEND_WINDOWS {
             lpstrFilter       = nil,
             lpstrCustomFilter = nil,
             nFilterIndex      = 0,
-            lpstrFile         = cstring16(&file_buf[0]),
+            lpstrFile         = &file_buf[0],
             nMaxFile          = len(file_buf),
             lpstrTitle        = windows.utf8_to_wstring(title, context.temp_allocator),
             Flags             = windows.OFN_PATHMUSTEXIST,

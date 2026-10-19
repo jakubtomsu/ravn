@@ -42,8 +42,8 @@ _init :: proc() {
     state.cam_pos = {1.5, 3, -8}
     state.cam_ang = {0.3, 0, 0}
 
-    state.res0 = rv.create_sound_resource_encoded("sound", #load("../data/snake_death_sound.wav"))
-    state.res1 = rv.create_sound_resource_encoded("sound", #load("../data/snake_powerup_sound.wav"))
+    state.res0 = rv.create_sound_resource_encoded("sound0", #load("../data/snake_death_sound.wav"))
+    state.res1 = rv.create_sound_resource_encoded("sound1", #load("../data/snake_powerup_sound.wav"))
     state.sound = audio.create_sound(rv.get_sound_resource(state.res1),
         flags = {.Loop, .Spatial},
         attenuation_range = ATTENUATION_RANGE,
