@@ -24,11 +24,7 @@ _State :: struct {
     _: u8,
 }
 
-_File_Handle :: struct { _: u8 }
-_Directory_Iter :: struct { _: u8 }
-_Thread :: struct { _: u8 }
 _Window :: struct { _: u8 }
-_Module :: struct { _: u8 }
 
 
 
@@ -62,28 +58,8 @@ _shutdown :: proc() {
 
 
 
-@(require_results)
-_get_commandline_args :: proc(allocator: runtime.Allocator) -> []string {
-    return nil
-}
-
-@(require_results)
-_run_shell_command :: proc(command: string) -> int {
-    return 0
-}
-
-_exit_process :: proc(code: int) -> ! {
-    // HACK
-    js.trap()
-}
-
 _register_default_exception_handler :: proc() {
 
-}
-
-@(require_results)
-_memory_protect :: proc(ptr: rawptr, num_bytes: int, protect: Memory_Protection) -> bool {
-    return true
 }
 
 @(require_results)
@@ -137,7 +113,6 @@ _set_gamepad_feedback :: proc(#any_int index: int, output: Gamepad_Feedback) -> 
     return false
 }
 
-
 @(require_results)
 _get_user_data_dir :: proc(allocator := context.allocator) -> string {
     _js_unsupported()
@@ -154,71 +129,6 @@ _set_mouse_visible :: proc(visible: bool) {
 _get_main_monitor_rect :: proc() -> Rect {
     return _get_window_rect({})
 }
-
-@(require_results)
-_set_current_directory :: proc(path: string) -> bool {
-    _js_unsupported()
-    return false
-}
-
-@(require_results)
-_get_executable_path :: proc(allocator := context.temp_allocator) -> string {
-    _js_unsupported()
-    return ""
-}
-
-@(require_results)
-_load_module :: proc(path: string) -> (result: Module, ok: bool) {
-    _js_unsupported()
-    return {}, false
-}
-
-_unload_module :: proc(module: Module) {
-    _js_unsupported()
-}
-
-@(require_results)
-_get_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
-    _js_unsupported()
-    return nil
-}
-
-_sleep_ms :: proc(#any_int ms: int) {
-    _js_unsupported()
-}
-
-@(require_results)
-_get_time_ns :: proc() -> u64 {
-    return u64(_tick_now() * 1e6)
-}
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Thread
-//
-
-@(require_results)
-_create_thread :: proc(procedure: Thread_Proc, name: string) -> Thread {
-    _js_unsupported()
-    return {}
-}
-
-_join_thread :: proc(thread: Thread) {
-
-}
-
-@(require_results)
-_get_current_thread_id :: proc() -> u64 {
-    return 0
-}
-
-_refresh_cpu_core_info :: proc() {
-}
-
-_pin_thread_to_cpu_core :: proc(thread: Thread, core_index: int) -> bool {
-    return false
-}
-
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -297,77 +207,6 @@ _poll_window_events :: proc(window: Window) -> (ok: bool) {
     return false
 }
 
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: File IO
-//
-
-@(require_results)
-_open_file :: proc(path: string) -> (File_Handle, bool) {
-    _js_unsupported()
-    return {}, false
-}
-
-_close_file :: proc(handle: File_Handle) {
-}
-
-@(require_results)
-_get_last_write_time :: proc(handle: File_Handle) -> (u64, bool) {
-    _js_unsupported()
-    return 0, false
-}
-
-@(require_results)
-_delete_file :: proc(path: string) -> bool {
-    _js_unsupported()
-    return false
-}
-
-@(require_results)
-_read_file_by_path :: proc(path: string, allocator := context.allocator) -> (data: []byte, ok: bool) {
-    _js_unsupported()
-    return nil, false
-}
-
-@(require_results)
-_write_file_by_path :: proc(path: string, data: []u8) -> bool {
-    _js_unsupported()
-    return false
-}
-
-@(require_results)
-_file_exists :: proc(path: string) -> bool {
-    _js_unsupported()
-    return false
-}
-
-@(require_results)
-_clone_file :: proc(path: string, new_path: string, fail_if_exists := true) -> bool {
-    _js_unsupported()
-    return false
-}
-
-@(require_results)
-_create_directory :: proc(path: string) -> bool {
-    _js_unsupported()
-    return false
-}
-
-@(require_results)
-_is_file :: proc(path: string) -> bool {
-    return false
-}
-
-@(require_results)
-_is_directory :: proc(path: string) -> bool {
-    return false
-}
-
-@(require_results)
-_iter_directory :: proc(iter: ^Directory_Iter, pattern: string, allocator := context.temp_allocator) -> (result: string, ok: bool) {
-    return "", false
-}
 
 @(require_results)
 _file_dialog :: proc(mode: File_Dialog_Mode, default_path: string, patterns: []File_Pattern, title := "") -> (string, bool) {

@@ -1,11 +1,6 @@
 #+vet explicit-allocators shadowing unused
 package ravn_platform
 
-import "base:runtime"
-
-// TODO: cpu sets
-// https://learn.microsoft.com/en-us/windows/win32/procthread/cpu-sets
-
 BACKEND :: #config(PLATFORM_BACKEND, DEFAULT_BACKEND)
 
 BACKEND_DUMMY :: "Dummy"
@@ -42,25 +37,7 @@ State :: struct {
 
     event_queue:        _Event_Queue,
     event_counter:      i32,
-
-    core_info:          [MAX_CORE_INFO]CPU_Core_Info,
-    core_info_num:      i32,
-
 }
-
-File_Handle :: struct {
-    using native: _File_Handle,
-}
-
-Directory_Iter :: struct {
-    using native:   _Directory_Iter,
-}
-
-Thread :: struct {
-    using native: _Thread,
-}
-
-Thread_Proc :: #type proc "contextless" ()
 
 Rect :: struct {
     min:    [2]i32, // top left
@@ -110,10 +87,6 @@ Event_Window_Size :: struct {
     size:   [2]i32,
 }
 
-Module :: struct {
-    using native:   _Module,
-}
-
 File_Dialog_Mode :: enum u8 {
     Open,
     Save,
@@ -122,29 +95,6 @@ File_Dialog_Mode :: enum u8 {
 File_Pattern :: struct {
     desc:    string,
     filters: []string,
-}
-
-Memory_Protection :: enum u8 {
-    No_Access,
-    Read,
-    Read_Write,
-    Execute,
-    Execute_Read,
-    Execute_Read_Write,
-}
-
-CPU_Core_Info :: struct {
-    id:             u32,
-    efficiency:     u8,
-    // Logical index within a physical core, in case there are multiple entries with the same
-    // core ID each will have a different logical_index. You can filter physical cores only by checking logical_index == 0.
-    logical_index:  u8,
-    kind:           CPU_Core_Kind,
-}
-
-CPU_Core_Kind :: enum {
-    Efficiency,
-    Performance,
 }
 
 Gamepad_State :: struct {
@@ -292,23 +242,6 @@ shutdown :: proc() {
 }
 
 
-@(require_results)
-get_commandline_args :: proc(allocator := context.allocator) -> []string {
-    return _get_commandline_args(allocator)
-}
-
-run_shell_command :: proc(command: string) -> int {
-    return _run_shell_command(command)
-}
-
-exit_process :: proc(code: int) -> ! {
-    _exit_process(code)
-}
-
-memory_protect :: proc(ptr: rawptr, num_bytes: int, protect: Memory_Protection) -> bool {
-    return _memory_protect(ptr, num_bytes, protect)
-}
-
 clipboard_set :: proc(data: string) -> bool {
     return _clipboard_set(data)
 }
@@ -325,7 +258,6 @@ get_gamepad_state :: proc(#any_int index: int) -> (result: Gamepad_State, ok: bo
 set_gamepad_feedback :: proc(#any_int index: int, output: Gamepad_Feedback) -> bool {
     return _set_gamepad_feedback(index, output)
 }
-
 
 get_user_data_dir :: proc(allocator := context.allocator) -> string {
     return _get_user_data_dir(allocator)
@@ -348,110 +280,8 @@ set_mouse_visible :: proc(visible: bool) {
     _set_mouse_visible(visible)
 }
 
-set_current_directory :: proc(path: string) -> bool {
-    return _set_current_directory(path)
-}
-
-get_executable_path :: proc(allocator := context.temp_allocator) -> string {
-    return _get_executable_path(allocator)
-}
-
-@(require_results)
-load_module :: proc(path: string) -> (result: Module, ok: bool) {
-    return _load_module(path)
-}
-
-unload_module :: proc(module: Module) {
-    _unload_module(module)
-}
-
-@(require_results)
-get_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
-    return _get_module_symbol_address(module, cstr)
-}
-
-sleep_ms :: proc(#any_int ms: int) {
-    _sleep_ms(ms)
-}
-
-@(require_results)
-get_time_ns :: proc() -> u64 {
-    return _get_time_ns()
-}
-
-@(require_results)
-get_time_sec :: proc() -> f32 {
-    return f32(f64(get_time_ns()) * 1e-9)
-}
-
 register_default_exception_handler :: proc() {
     _register_default_exception_handler()
-}
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: Thread
-//
-
-create_thread :: proc(procedure: Thread_Proc, name: string) -> Thread {
-    return _create_thread(procedure, name)
-}
-
-join_thread :: proc(thread: Thread) {
-    _join_thread(thread)
-}
-
-get_current_thread_id :: proc() -> u64 {
-    return _get_current_thread_id()
-}
-
-refresh_cpu_core_info :: proc() {
-    _state.core_info_num = 0
-    _state.core_info = {}
-
-    _refresh_cpu_core_info()
-
-    max_efficiency: u8 = 0
-    for info in _state.core_info[:_state.core_info_num] {
-        max_efficiency = max(max_efficiency, info.efficiency)
-    }
-
-    for &info in _state.core_info[:_state.core_info_num] {
-        info.kind = info.efficiency == max_efficiency ? .Performance : .Efficiency
-    }
-}
-
-get_cpu_core_num :: proc() -> int {
-    if _state.core_info_num == 0 {
-        refresh_cpu_core_info()
-    }
-
-    return int(_state.core_info_num)
-}
-
-get_cpu_core_info :: proc(#any_int core_index: int) -> CPU_Core_Info {
-    if _state.core_info_num == 0 {
-        refresh_cpu_core_info()
-    }
-
-    if core_index >= 0 && core_index < int(_state.core_info_num) {
-        return _state.core_info[core_index]
-    }
-
-    return {}
-}
-
-// thread == {} means current thread
-pin_thread_to_cpu_core :: proc(thread: Thread, #any_int core_index: int) -> bool {
-    if _state.core_info_num == 0 {
-        refresh_cpu_core_info()
-    }
-
-    if core_index < 0 || core_index >= int(_state.core_info_num) {
-        return false
-    }
-
-    return _pin_thread_to_cpu_core(thread, core_index)
 }
 
 
@@ -560,75 +390,6 @@ get_main_monitor_rect :: proc() -> Rect {
     return _get_main_monitor_rect()
 }
 
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// MARK: File IO
-//
-
-@(require_results)
-open_file :: proc(path: string) -> (File_Handle, bool) {
-    return _open_file(path)
-}
-
-close_file :: proc(handle: File_Handle) {
-    _close_file(handle)
-}
-
-@(require_results)
-get_last_write_time :: proc(handle: File_Handle) -> (u64, bool) #optional_ok {
-    return _get_last_write_time(handle)
-}
-
-@(require_results)
-get_last_write_time_by_path :: proc(path: string) -> (result: u64, ok: bool) #optional_ok {
-    handle := open_file(path) or_return
-    result = _get_last_write_time(handle) or_return
-    close_file(handle)
-    return result, true
-}
-
-delete_file :: proc(path: string) -> bool {
-    return _delete_file(path)
-}
-
-@(require_results)
-read_file_by_path :: proc(path: string, allocator := context.allocator) -> (data: []byte, ok: bool) #optional_ok {
-    return _read_file_by_path(path, allocator)
-}
-
-write_file_by_path :: proc(path: string, data: []u8) -> bool {
-    return _write_file_by_path(path, data)
-}
-
-@(require_results)
-file_exists :: proc(path: string) -> bool {
-    return _file_exists(path)
-}
-
-clone_file :: proc(dst_path: string, src_path: string, fail_if_exists := false) -> bool {
-    return _clone_file(path = src_path, new_path = dst_path, fail_if_exists = fail_if_exists)
-}
-
-create_directory :: proc(path: string) -> bool {
-    return _create_directory(path)
-}
-
-@(require_results)
-is_file :: proc(path: string) -> bool {
-    return _is_file(path)
-}
-
-@(require_results)
-is_directory :: proc(path: string) -> bool {
-    return _is_directory(path)
-}
-
-@(require_results)
-iter_directory :: proc(iter: ^Directory_Iter, pattern: string, allocator := context.temp_allocator) -> (result: string, ok: bool) {
-    return _iter_directory(iter, pattern, allocator)
-}
-
 file_dialog :: proc(mode: File_Dialog_Mode, default_path: string, patterns: []File_Pattern, title := "") -> (string, bool) {
     return _file_dialog(mode, default_path, patterns, title)
 }
@@ -668,19 +429,4 @@ _event_queue_pop :: proc(loc := #caller_location) -> (result: Event, ok: bool) {
 _event_queue_clear :: proc() {
     _state.event_queue.len = 0
     _state.event_queue.offset = 0
-}
-
-
-clone_to_cstring :: proc(
-    s: string,
-    allocator: runtime.Allocator,
-    loc := #caller_location,
-) -> (
-    res: cstring,
-    err: runtime.Allocator_Error,
-) #optional_allocator_error {
-    c := make([]byte, len(s)+1, allocator, loc) or_return
-    copy(c, s)
-    c[len(s)] = 0
-    return cstring(&c[0]), nil
 }

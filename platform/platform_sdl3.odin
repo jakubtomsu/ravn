@@ -30,25 +30,14 @@ when BACKEND == BACKEND_SDL3 {
 
     _State :: struct { _: u8 }
 
-    _File_Handle :: struct {
-    }
-
     _Directory_Iter :: struct {
         index: i32,
         count: i32,
         matches: [^]cstring, // allocated by sdl.GlobDirectory
     }
 
-    _Thread :: struct {
-        thread: ^sdl3.Thread,
-    }
-
     _Window :: struct {
         window: ^sdl3.Window,
-    }
-
-    _Module :: struct {
-        lib: dynlib.Library,
     }
 
     _init :: proc() {
@@ -68,38 +57,8 @@ when BACKEND == BACKEND_SDL3 {
     // MARK: Common
     //
 
-    @(require_results)
-    _get_commandline_args :: proc(allocator: runtime.Allocator) -> []string {
-        return os.args
-    }
-
-    @(require_results)
-    _run_shell_command :: proc(command: string) -> int {
-        state, _, _, err := os.process_exec(
-            os.Process_Desc{
-                // We run the command fully without splitting, to keep the `""` and `''` as-is
-                // If we are to split by spaces, we could be splitting inside quotes and run the command wrong
-                command = {"sh", "-c", command},
-            },
-            allocator = context.temp_allocator,
-        )
-        if err != nil {
-            return -1
-        }
-        return state.exit_code
-    }
-
-    _exit_process :: proc(code: int) -> ! {
-        runtime.trap()
-    }
-
     _register_default_exception_handler :: proc() {
 
-    }
-
-    @(require_results)
-    _memory_protect :: proc(ptr: rawptr, num_bytes: int, protect: Memory_Protection) -> bool {
-        return false
     }
 
     @(require_results)
@@ -192,76 +151,6 @@ when BACKEND == BACKEND_SDL3 {
                 r.h,
             },
         }
-    }
-
-    @(require_results)
-    _set_current_directory :: proc(path: string) -> bool {
-        return os.set_working_directory(path) != nil
-    }
-
-    @(require_results)
-    _get_executable_path :: proc(allocator := context.temp_allocator) -> string {
-        unimplemented()
-    }
-
-    @(require_results)
-    _load_module :: proc(path: string) -> (result: Module, ok: bool) {
-        lib := dynlib.load_library(path, global_symbols = true, allocator = context.temp_allocator) or_return
-        return {
-            lib = lib,
-        }, true
-    }
-
-    _unload_module :: proc(module: Module) {
-        dynlib.unload_library(module.lib)
-    }
-
-    @(require_results)
-    _get_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
-        return dynlib.symbol_address(module.lib, string(cstr), context.temp_allocator) or_else nil
-    }
-
-    _sleep_ms :: proc(#any_int ms: int) {
-        time.sleep(time.Millisecond * time.Duration(ms))
-    }
-
-    @(require_results)
-    _get_time_ns :: proc() -> u64 {
-        return sdl3.GetTicksNS()
-    }
-
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MARK: Thread
-    //
-
-    @(require_results)
-    _create_thread :: proc(procedure: Thread_Proc, name: string) -> (result: Thread) {
-        result.thread = sdl3.CreateThread(_thread_proc, clone_to_cstring(name, context.temp_allocator), rawptr(procedure))
-
-        return
-
-        _thread_proc :: proc "c" (data: rawptr) -> i32 {
-            proc_ptr := transmute(Thread_Proc)data
-            proc_ptr()
-            return 0
-        }
-    }
-
-    _join_thread :: proc(thread: Thread) {
-        sdl3.WaitThread(thread.thread, nil)
-    }
-
-    @(require_results)
-    _get_current_thread_id :: proc() -> u64 {
-        return u64(sdl3.GetCurrentThreadID())
-    }
-
-    _refresh_cpu_core_info :: proc() {
-    }
-
-    _pin_thread_to_cpu_core :: proc(thread: Thread, core_index: int) -> bool {
-        return false
     }
 
 
@@ -557,99 +446,6 @@ when BACKEND == BACKEND_SDL3 {
         case .MENU: return .Menu
         }
         return .Invalid
-    }
-
-
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MARK: File IO
-    //
-
-    @(require_results)
-    _open_file :: proc(path: string) -> (File_Handle, bool) {
-        unimplemented()
-    }
-
-    _close_file :: proc(handle: File_Handle) {
-        unimplemented()
-    }
-
-    @(require_results)
-    _get_last_write_time :: proc(handle: File_Handle) -> (u64, bool) {
-        unimplemented()
-    }
-
-    @(require_results)
-    _delete_file :: proc(path: string) -> bool {
-        return (os.remove_all(path) == nil)
-    }
-
-    @(require_results)
-    _read_file_by_path :: proc(path: string, allocator := context.allocator) -> (data: []byte, ok: bool) {
-        size: uint
-        ptr := cast([^]byte)sdl3.LoadFile(clone_to_cstring(path, context.temp_allocator), &size)
-        return ptr[:size], ptr != nil
-    }
-
-    @(require_results)
-    _write_file_by_path :: proc(path: string, data: []u8) -> bool {
-        unimplemented()
-    }
-
-    @(require_results)
-    _file_exists :: proc(path: string) -> bool {
-        return os.exists(path)
-    }
-
-    @(require_results)
-    _clone_file :: proc(path: string, new_path: string, fail_if_exists := true) -> bool {
-        unimplemented()
-    }
-
-    @(require_results)
-    _create_directory :: proc(path: string) -> bool {
-        return false
-    }
-
-    @(require_results)
-    _is_file :: proc(path: string) -> bool {
-        return false
-    }
-
-    @(require_results)
-    _is_directory :: proc(path: string) -> bool {
-        return false
-    }
-
-    @(require_results)
-    _iter_directory :: proc(iter: ^Directory_Iter, pattern: string, allocator := context.temp_allocator) -> (result: string, ok: bool) {
-        dir := filepath.dir(pattern)
-
-        if iter^ == {}{
-            file_pat := filepath.base(pattern)
-
-            cdir := strings.clone_to_cstring(dir, context.temp_allocator)
-            cfile_pat := strings.clone_to_cstring(file_pat, context.temp_allocator)
-
-            count : i32
-            iter.matches = cast([^]cstring)(sdl3.GlobDirectory(cdir, cfile_pat, {}, &count))
-            iter.count = count
-
-            if iter.matches == nil {
-                return {}, false
-            }
-        }
-
-        // If at the end of null-terminated matches
-        if iter.index >= iter.count {
-            sdl3.free(iter.matches)
-            iter^ = {}
-            return {}, false
-        }
-        entry := iter.matches[iter.index]
-        iter.index += 1
-
-        return strings.clone(ufmt.tprintf("%s/%s", dir, entry), allocator), true
     }
 
     @(require_results)
