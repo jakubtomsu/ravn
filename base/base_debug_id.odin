@@ -27,8 +27,8 @@ create_debug_id :: proc(name: string, loc := #caller_location, allocator := cont
     }
 }
 
-destroy_debug_id :: proc(id: ^Debug_ID) {
-    delete(transmute(string)(id.name_ptr[:id.name_len]))
+destroy_debug_id :: proc(id: ^Debug_ID, allocator := context.allocator) {
+    delete(transmute(string)(id.name_ptr[:id.name_len]), allocator = allocator)
 }
 
 format_debug_id :: proc(id: Debug_ID, allocator := context.temp_allocator) -> string {
