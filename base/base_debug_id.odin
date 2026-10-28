@@ -16,7 +16,7 @@ create_debug_id :: proc(name: string, loc := #caller_location, allocator := cont
     if name == "" {
         name = "AnonID"
     }
-    name_clone := make([]byte, len(name), allocator)
+    name_clone := make([]byte, len(name), allocator, loc = loc)
     copy(name_clone, name)
     return {
         name_ptr = raw_data(name_clone),
