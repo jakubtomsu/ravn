@@ -13,7 +13,6 @@ NOTE: frame loop is done by the odin.js repeatedly calling `step`:
 package ravn_platform
 
 import "../base"
-import "base:runtime"
 import "core:sys/wasm/js"
 
 #assert(BACKEND == BACKEND_JS)
@@ -228,11 +227,11 @@ _js_unsupported :: proc(loc := #caller_location) {
 _js_mouse_button :: proc(index: i16) -> Button {
     // https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/button
     switch index {
-    case 0: return .Left // Main button, usually the left button or the un-initialized state
-    case 1: return .Middle // Auxiliary button, usually the wheel button or the middle button (if present)
-    case 2: return .Right // Secondary button, usually the right button
-    case 3: return .Extra_1 // Fourth button, typically the Browser Back button
-    case 4: return .Extra_2 // Fifth button, typically the Browser Forward button
+    case 0: return .Mouse_Left // Main button, usually the left button or the un-initialized state
+    case 1: return .Mouse_Middle // Auxiliary button, usually the wheel button or the middle button (if present)
+    case 2: return .Mouse_Right // Secondary button, usually the right button
+    case 3: return .Mouse_Extra_1 // Fourth button, typically the Browser Back button
+    case 4: return .Mouse_Extra_2 // Fifth button, typically the Browser Forward button
     }
     assert(false)
     return .Left
