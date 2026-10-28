@@ -1,6 +1,6 @@
 <div align="center">
 
-# RAVN
+<img src="data/logo.png" width=100px>
 
 (pronounced *raven*)
 
