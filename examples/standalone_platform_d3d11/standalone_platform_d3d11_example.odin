@@ -114,7 +114,7 @@ main :: proc() {
             case platform.Event_Exit:
                 break main_loop
 
-            case platform.Event_Key:
+            case platform.Event_Button:
                 pressed := false
                 if v.pressed {
                     if v.key not_in keys_down {

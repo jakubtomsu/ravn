@@ -2,6 +2,7 @@ package ravn_triangle_example
 
 import "core:slice"
 import "../../base"
+import "../../glue"
 import "../../gpu"
 import "../../platform"
 import "../../shader_compiler"
@@ -26,13 +27,12 @@ main :: proc() {
     gpu.init(window = platform.get_native_window_ptr(window))
     defer gpu.shutdown()
 
-    if !shader_compiler.init(.DXBC) {
+    if !shader_compiler.init(glue.SHADER_TARGET) {
         return
     }
 
     vs_bin := shader_compiler.compile_source(#file, VS, {stage = .Vertex}) or_else panic("VS")
     ps_bin := shader_compiler.compile_source(#file, PS, {stage = .Pixel}) or_else panic("PS")
-
     ps: gpu.Shader_Handle; gpu.create_shader(&ps, ps_bin, .Pixel) or_else panic("shader create")
     vs: gpu.Shader_Handle; gpu.create_shader(&vs, vs_bin, .Vertex) or_else panic("shader create")
 
@@ -52,20 +52,21 @@ main :: proc() {
     })) or_else panic("vbuf")
 
     running := true
-    for running && gpu.begin_frame() {
-
+    for running {
         for event in platform.poll_window_events(window) {
             #partial switch ev in event {
             case platform.Event_Exit:
                 running = false
-            case platform.Event_Key:
-                if ev.key == .Escape {
+            case platform.Event_Button:
+                if ev.button == .Escape {
                     running = false
                 }
             }
         }
 
         gpu.resize_swapchain(platform.get_native_window_ptr(window), platform.get_window_rect(window).size)
+
+        gpu.begin_frame()
 
         gpu.begin_graphics_pass("main", {
             colors = { 0 = { resource = gpu.SWAPCHAIN_HANDLE, clear_mode = .Clear, clear_val = {0.1, 0.2, 0.3, 1} }},
