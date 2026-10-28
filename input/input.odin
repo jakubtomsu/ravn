@@ -1,7 +1,7 @@
 #+vet explicit-allocators shadowing style
 package ravn
 
-import "platform"
+import "../platform"
 import "core:math/linalg"
 import "base:intrinsics"
 
