@@ -595,7 +595,7 @@ end_frame :: proc(sync: bool = true, loc := #caller_location) {
 make_graphics_pipeline_desc :: proc(
     ps:                 Shader_Handle,
     vs:                 Shader_Handle,
-    layouts:            [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {},
+    bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {},
     vertex_layouts:     [MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc,
     out_colors:         []Texture_Format,
     out_depth:          Texture_Format = .Invalid,
@@ -622,7 +622,7 @@ make_graphics_pipeline_desc :: proc(
         depth_write = depth_write,
         depth_bias = depth_bias,
         depth_format = out_depth,
-        bind_layouts = layouts,
+        bind_layouts = bind_layouts,
         vertex_layouts = vertex_layouts,
         color_format = {},
         blends = {},

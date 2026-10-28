@@ -11,6 +11,10 @@ Vertex :: struct {
     col:    [4]f32,
 }
 
+Constants :: struct {
+    col:    [4]f32,
+}
+
 main :: proc() {
     context.logger = base.make_logger()
 
@@ -49,7 +53,6 @@ main :: proc() {
 
     running := true
     for running && gpu.begin_frame() {
-        defer gpu.end_frame()
 
         for event in platform.poll_window_events(window) {
             #partial switch ev in event {
@@ -71,6 +74,8 @@ main :: proc() {
         gpu.set_vertex_buffer(0, vbuf)
         gpu.draw_non_indexed(3)
         gpu.end_graphics_pass()
+
+        gpu.end_frame(false)
     }
 }
 
