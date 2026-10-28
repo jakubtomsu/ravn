@@ -1,4 +1,4 @@
-# Ravn GPU
+# RAVN GPU
 
 A lightweight cross-platform GPU abstraction layer.
 
