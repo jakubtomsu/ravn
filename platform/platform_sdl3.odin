@@ -64,7 +64,7 @@ when BACKEND == BACKEND_SDL3 {
     @(require_results)
     _clipboard_set :: proc(data: string) -> bool {
         return sdl3.SetClipboardText(
-            clone_to_cstring(data, context.temp_allocator),
+            strings.clone_to_cstring(data, context.temp_allocator),
         )
     }
 
@@ -173,7 +173,7 @@ when BACKEND == BACKEND_SDL3 {
             flags += {.HIGH_PIXEL_DENSITY}
         }
 
-        name_ptr := clone_to_cstring(name, context.temp_allocator)
+        name_ptr := strings.clone_to_cstring(name, context.temp_allocator)
 
         wnd := sdl3.CreateWindow(name_ptr, rect.size.x, rect.size.y, flags)
         if wnd == nil {
@@ -196,7 +196,7 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     _set_window_title :: proc(window: Window, name: string) {
-        sdl3.SetWindowTitle(window.window, clone_to_cstring(name, context.temp_allocator))
+        sdl3.SetWindowTitle(window.window, strings.clone_to_cstring(name, context.temp_allocator))
     }
 
     _set_window_style :: proc(window: Window, style: Window_Style) {
@@ -263,8 +263,8 @@ when BACKEND == BACKEND_SDL3 {
                 return true
 
             case .KEY_DOWN, .KEY_UP:
-                _event_queue_push(Event_Key{
-                    key = _sdl_scancode_to_key(event.key.scancode),
+                _event_queue_push(Event_Button{
+                    button = _sdl_scancode_to_button(event.key.scancode),
                     pressed = event.key.down,
                 })
                 return true
@@ -283,7 +283,7 @@ when BACKEND == BACKEND_SDL3 {
                 return true
 
             case .MOUSE_BUTTON_DOWN, .MOUSE_BUTTON_UP:
-                _event_queue_push(Event_Mouse_Button{
+                _event_queue_push(Event_Button{
                     button = _sdl_mouse_to_button(event.button.button),
                     pressed = event.button.down,
                 })
@@ -312,19 +312,18 @@ when BACKEND == BACKEND_SDL3 {
         return false
     }
 
-    _sdl_mouse_to_button :: proc(button: sdl3.Uint8) -> Mouse_Button {
+    _sdl_mouse_to_button :: proc(button: u8) -> Button {
         switch button {
-        case sdl3.BUTTON_LEFT: return .Left
-        case sdl3.BUTTON_MIDDLE: return .Middle
-        case sdl3.BUTTON_RIGHT: return .Right
-        case sdl3.BUTTON_X1: return .Extra_1
-        case sdl3.BUTTON_X2: return .Extra_2
+        case sdl3.BUTTON_LEFT:  return .Mouse_Left
+        case sdl3.BUTTON_MIDDLE:return .Mouse_Middle
+        case sdl3.BUTTON_RIGHT: return .Mouse_Right
+        case sdl3.BUTTON_X1:    return .Mouse_Extra_1
+        case sdl3.BUTTON_X2:    return .Mouse_Extra_2
         }
-        assert(false)
-        return .Left
+        return .Invalid
     }
 
-    _sdl_scancode_to_key :: proc(scancode: sdl3.Scancode) -> Key {
+    _sdl_scancode_to_button :: proc(scancode: sdl3.Scancode) -> Button {
         // NOTE: few of our keys don't map cleanly.
         #partial switch scancode {
         case .UNKNOWN: return .Invalid
@@ -451,17 +450,6 @@ when BACKEND == BACKEND_SDL3 {
     @(require_results)
     _file_dialog :: proc(mode: File_Dialog_Mode, default_path: string, patterns: []File_Pattern, title := "") -> (string, bool) {
         return "", false
-    }
-
-    _sdl_mouse_button :: proc(b: u8) -> Mouse_Button {
-        switch b {
-        case sdl3.BUTTON_LEFT:   return .Left
-        case sdl3.BUTTON_MIDDLE: return .Middle
-        case sdl3.BUTTON_RIGHT:  return .Right
-        case sdl3.BUTTON_X1:     return .Extra_1
-        case sdl3.BUTTON_X2:     return .Extra_2
-        }
-        return .Left
     }
 
 }

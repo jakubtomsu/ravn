@@ -225,7 +225,7 @@ _js_unsupported :: proc(loc := #caller_location) {
     // base.log_warn("'%s' is not supported on JS target", loc.procedure, loc = loc)
 }
 
-_js_mouse_button :: proc(index: i16) -> Mouse_Button {
+_js_mouse_button :: proc(index: i16) -> Button {
     // https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/button
     switch index {
     case 0: return .Left // Main button, usually the left button or the un-initialized state
@@ -238,7 +238,7 @@ _js_mouse_button :: proc(index: i16) -> Mouse_Button {
     return .Left
 }
 
-_js_key_code :: proc(str: string) -> Key {
+_js_key_code_to_button :: proc(str: string) -> Button {
     // https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
     // https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/code
     // TODO: first match prefix for faster lookups?
@@ -358,7 +358,7 @@ _js_event_callbacks := [js.Event_Kind]_JS_Event_Callback {
 
     .Mouse_Up = proc(e: js.Event) {
         assert(e.kind == .Mouse_Up)
-        _event_queue_push(Event_Mouse_Button{
+        _event_queue_push(Event_Button{
             button = _js_mouse_button(e.mouse.button),
             pressed = false,
         })
@@ -366,7 +366,7 @@ _js_event_callbacks := [js.Event_Kind]_JS_Event_Callback {
 
     .Mouse_Down = proc(e: js.Event) {
         assert(e.kind == .Mouse_Down)
-        _event_queue_push(Event_Mouse_Button{
+        _event_queue_push(Event_Button{
             button = _js_mouse_button(e.mouse.button),
             pressed = true,
         })
@@ -380,20 +380,20 @@ _js_event_callbacks := [js.Event_Kind]_JS_Event_Callback {
 
     .Key_Up = proc(e: js.Event) {
         assert(e.kind == .Key_Up)
-        key := _js_key_code(e.key.code)
-        if key == .Invalid do return
-        _event_queue_push(Event_Key{
-            key = key,
+        button := _js_key_code_to_button(e.key.code)
+        if button == .Invalid do return
+        _event_queue_push(Event_Button{
+            button = button,
             pressed = false,
         })
     },
 
     .Key_Down = proc(e: js.Event) {
         assert(e.kind == .Key_Down)
-        key := _js_key_code(e.key.code)
-        if key == .Invalid do return
-        _event_queue_push(Event_Key{
-            key = key,
+        button := _js_key_code_to_button(e.key.code)
+        if button == .Invalid do return
+        _event_queue_push(Event_Button{
+            button = button,
             pressed = true,
         })
     },

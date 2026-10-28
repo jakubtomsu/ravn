@@ -58,28 +58,23 @@ Window_Style :: enum u8 {
 
 Event :: union {
     Event_Exit,
-    Event_Key,
+    Event_Button,
     Event_Mouse,
-    Event_Mouse_Button,
     Event_Scroll,
     Event_Window_Size,
 }
 
 Event_Exit :: struct {}
 
-Event_Key :: struct {
-    key:        Key,
+// Keyboard or mouse
+Event_Button :: struct {
+    button:     Button,
     pressed:    bool,
 }
 
 Event_Mouse :: struct {
     pos:    [2]i32,
     move:   [2]i32,
-}
-
-Event_Mouse_Button :: struct {
-    button:     Mouse_Button,
-    pressed:    bool,
 }
 
 Event_Scroll :: struct {
@@ -89,6 +84,7 @@ Event_Scroll :: struct {
 Event_Window_Size :: struct {
     size:   [2]i32,
 }
+
 
 File_Dialog_Mode :: enum u8 {
     Open,
@@ -136,15 +132,15 @@ Gamepad_Feedback :: struct {
     right_motor_speed:  f32,
 }
 
-Mouse_Button :: enum u8 {
-    Left,
-    Middle,
-    Right,
-    Extra_1,
-    Extra_2,
+MOUSE_BUTTONS :: []Button{
+    .Mouse_Left,
+    .Mouse_Middle,
+    .Mouse_Right,
+    .Mouse_Extra_1,
+    .Mouse_Extra_2,
 }
 
-Key :: enum u8 {
+Button :: enum u8 {
     Invalid = 0,
 
     Num0, Num1, Num2, Num3, Num4, Num5, Num6, Num7, Num8, Num9,
@@ -207,6 +203,12 @@ Key :: enum u8 {
     Right_Alt,
     Right_Super,
     Menu,
+
+    Mouse_Left,
+    Mouse_Middle,
+    Mouse_Right,
+    Mouse_Extra_1,
+    Mouse_Extra_2,
 }
 
 

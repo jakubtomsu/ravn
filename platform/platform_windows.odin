@@ -526,61 +526,59 @@ when BACKEND == BACKEND_WINDOWS {
             scancode := (lparam >> 16) & 0xFF
             is_extended := (lparam & (1 << 24)) != 0
 
-            // key := _win32_scancode_to_key(scancode)
-
-            key: Key = .Invalid
+            button: Button = .Invalid
 
             if int(scancode) < len(_win32_scancode_table) {
-                key = _win32_scancode_table[scancode]
+                button = _win32_scancode_table[scancode]
 
                 if is_extended {
-                    #partial switch key {
-                    case .Enter: key = .Keypad_Enter
-                    case .Left_Alt: key = .Right_Alt
-                    case .Left_Control: key = .Right_Control
-                    case .Slash: key = .Keypad_Divide
-                    case .Capslock: key = .Capslock
+                    #partial switch button {
+                    case .Enter: button = .Keypad_Enter
+                    case .Left_Alt: button = .Right_Alt
+                    case .Left_Control: button = .Right_Control
+                    case .Slash: button = .Keypad_Divide
+                    case .Capslock: button = .Capslock
                     }
                 } else {
-                    #partial switch key  {
-                    case .Home: key = .Keypad_7
-                    case .Up: key = .Keypad_8
-                    case .Page_Up: key = .Keypad_9
-                    case .Left: key = .Keypad_4
-                    case .Right: key = .Keypad_6
-                    case .End: key = .Keypad_1
-                    case .Down: key = .Keypad_2
-                    case .Page_Down: key = .Keypad_3
-                    case .Insert: key = .Keypad_0
-                    case .Delete: key = .Keypad_Decimal
-                    case .Print_Screen: key = .Keypad_Multiply
+                    #partial switch button  {
+                    case .Home: button = .Keypad_7
+                    case .Up: button = .Keypad_8
+                    case .Page_Up: button = .Keypad_9
+                    case .Left: button = .Keypad_4
+                    case .Right: button = .Keypad_6
+                    case .End: button = .Keypad_1
+                    case .Down: button = .Keypad_2
+                    case .Page_Down: button = .Keypad_3
+                    case .Insert: button = .Keypad_0
+                    case .Delete: button = .Keypad_Decimal
+                    case .Print_Screen: button = .Keypad_Multiply
                     }
                 }
             }
 
-            if key == .Invalid {
+            if button == .Invalid {
                 switch wparam {
-                case windows.VK_LEFT: key = .Left
-                case windows.VK_RIGHT: key = .Right
-                case windows.VK_UP: key = .Up
-                case windows.VK_DOWN: key = .Down
+                case windows.VK_LEFT: button = .Left
+                case windows.VK_RIGHT: button = .Right
+                case windows.VK_UP: button = .Up
+                case windows.VK_DOWN: button = .Down
                 }
             }
 
-            if key == .Invalid {
+            if button == .Invalid {
                 break
             }
 
             // Check for Alt+F4
             if msg == windows.WM_KEYDOWN || msg == windows.WM_SYSKEYDOWN {
-                if bool(windows.HIWORD(lparam) & windows.KF_ALTDOWN) && key == .F4 {
+                if bool(windows.HIWORD(lparam) & windows.KF_ALTDOWN) && button == .F4 {
                     _event_queue_push(Event_Exit{})
                     break
                 }
             }
 
-            _event_queue_push(Event_Key{
-                key = key,
+            _event_queue_push(Event_Button{
+                button = button,
                 pressed = pressed,
             })
 
@@ -623,26 +621,26 @@ when BACKEND == BACKEND_WINDOWS {
             windows.WM_XBUTTONDOWN,
             windows.WM_XBUTTONDBLCLK:
 
-            #unroll for button in Mouse_Button {
+            for button in MOUSE_BUTTONS {
                 mask: uintptr
-                switch button {
-                case .Left:     mask = windows.MK_LBUTTON
-                case .Middle:   mask = windows.MK_MBUTTON
-                case .Right:    mask = windows.MK_RBUTTON
-                case .Extra_1:  mask = windows.MK_XBUTTON1
-                case .Extra_2:  mask = windows.MK_XBUTTON2
+                #partial switch button {
+                case .Mouse_Left:     mask = windows.MK_LBUTTON
+                case .Mouse_Middle:   mask = windows.MK_MBUTTON
+                case .Mouse_Right:    mask = windows.MK_RBUTTON
+                case .Mouse_Extra_1:  mask = windows.MK_XBUTTON1
+                case .Mouse_Extra_2:  mask = windows.MK_XBUTTON2
                 }
 
                 curr_down := (wparam & mask) != 0
                 prev_down := (_state.last_mouse_wparam & mask) != 0
 
                 if curr_down && !prev_down {
-                    _event_queue_push(Event_Mouse_Button{
+                    _event_queue_push(Event_Button{
                         button = button,
                         pressed = true,
                     })
                 } else if prev_down && !curr_down {
-                    _event_queue_push(Event_Mouse_Button{
+                    _event_queue_push(Event_Button{
                         button = button,
                         pressed = false,
                     })
@@ -678,17 +676,6 @@ when BACKEND == BACKEND_WINDOWS {
             }
 
             result = 0
-
-        case windows.WM_INPUT:
-            // if !_state.mouse_relative {
-            //     break
-            // }
-
-            // raw: windows.RAWINPUT
-            // size: u32 = size_of(raw)
-            // windows.GetRawInputData(windows.HRAWINPUT(lparam), windows.RID_INPUT, &raw, &size, size_of(windows.RAWINPUTHEADER))
-
-            // _win32_process_raw_input_message(&raw)
         }
 
         if result < 0 {
@@ -723,75 +710,16 @@ when BACKEND == BACKEND_WINDOWS {
                 })
             }
 
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_1_DOWN) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Left,
-                    pressed = true,
-                })
-            }
-
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_1_UP) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Left,
-                    pressed = false,
-                })
-            }
-
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_2_DOWN) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Right,
-                    pressed = true,
-                })
-            }
-
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_2_UP) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Right,
-                    pressed = false,
-                })
-            }
-
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_3_DOWN) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Middle,
-                    pressed = true,
-                })
-            }
-
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_3_UP) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Middle,
-                    pressed = false,
-                })
-            }
-
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_4_DOWN) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Extra_1,
-                    pressed = true,
-                })
-            }
-
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_4_UP) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Extra_1,
-                    pressed = false,
-                })
-            }
-
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_5_DOWN) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Extra_2,
-                    pressed = true,
-                })
-            }
-
-            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_5_UP) != 0 {
-                _event_queue_push(Event_Mouse_Button{
-                    button = .Extra_2,
-                    pressed = false,
-                })
-            }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_1_DOWN) != 0 { _event_queue_push(Event_Button{ button = .Mouse_Left, pressed = true }) }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_1_UP)   != 0 { _event_queue_push(Event_Button{ button = .Mouse_Left, pressed = false }) }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_2_DOWN) != 0 { _event_queue_push(Event_Button{ button = .Mouse_Right, pressed = true }) }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_2_UP)   != 0 { _event_queue_push(Event_Button{ button = .Mouse_Right, pressed = false }) }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_3_DOWN) != 0 { _event_queue_push(Event_Button{ button = .Mouse_Middle, pressed = true }) }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_3_UP)   != 0 { _event_queue_push(Event_Button{ button = .Mouse_Middle, pressed = false }) }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_4_DOWN) != 0 { _event_queue_push(Event_Button{ button = .Mouse_Extra_1, pressed = true }) }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_4_UP)   != 0 { _event_queue_push(Event_Button{ button = .Mouse_Extra_1, pressed = false }) }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_5_DOWN) != 0 { _event_queue_push(Event_Button{ button = .Mouse_Extra_2, pressed = true }) }
+            if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_5_UP)   != 0 { _event_queue_push(Event_Button{ button = .Mouse_Extra_2, pressed = false }) }
 
         case:
             assert(false)
@@ -1060,7 +988,7 @@ when BACKEND == BACKEND_WINDOWS {
 
     // from sdl/scancodes_windows.h
     @(rodata)
-    _win32_scancode_table := [?]Key{
+    _win32_scancode_table := [?]Button{
         .Invalid,
         .Escape,
         .Num1,
