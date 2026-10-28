@@ -95,6 +95,8 @@ _compile_dxbc :: proc(
         if errors != nil {
             str := string((cast([^]u8)errors->GetBufferPointer())[:errors->GetBufferSize()])
             base.log_err("Shader compile error:\n\t%s", str)
+        } else {
+            base.log_err("No errors")
         }
         return {}, false
     }
