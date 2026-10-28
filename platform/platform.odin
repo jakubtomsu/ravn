@@ -1,6 +1,8 @@
 #+vet explicit-allocators shadowing unused
 package ravn_platform
 
+import "base:runtime"
+
 BACKEND :: #config(PLATFORM_BACKEND, DEFAULT_BACKEND)
 
 BACKEND_DUMMY :: "Dummy"
@@ -30,6 +32,7 @@ _state: ^State
 
 State :: struct {
     using native:       _State,
+    state_allocator:    runtime.Allocator,
 
     mouse_pos:          [2]i32,
     mouse_relative:     bool,
@@ -211,17 +214,16 @@ Key :: enum u8 {
 // MARK: General
 //
 
-set_state_ptr :: proc(state: ^State) {
-    _state = state
-}
+init :: proc(state: ^State = nil, allocator := context.allocator) {
+    state := state
 
-get_state_ptr :: proc() -> (state: ^State) {
-    return _state
-}
-
-init :: proc(state: ^State) {
     if _state != nil {
         return
+    }
+
+    if state == nil {
+        state = new(State, allocator)
+        state.state_allocator = allocator
     }
 
     _state = state
@@ -238,9 +240,12 @@ shutdown :: proc() {
 
     _shutdown()
 
+    if _state.state_allocator != {} {
+        free(_state, _state.state_allocator)
+    }
+
     _state = nil
 }
-
 
 clipboard_set :: proc(data: string) -> bool {
     return _clipboard_set(data)
@@ -291,7 +296,7 @@ register_default_exception_handler :: proc() {
 //
 
 @(require_results)
-create_window :: proc(name: string, style: Window_Style = .Regular, rect: Rect = {}, high_dpi := false) -> Window {
+create_window :: proc(name: string, style: Window_Style = .Regular, rect: Rect = {}, high_dpi := true) -> Window {
     rect := rect
 
     if rect.size == 0 {
