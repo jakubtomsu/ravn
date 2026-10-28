@@ -11,6 +11,23 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
     }
     fmt.sbprintln(&sb, "{")
 
+    fmt.sbprintfln(&sb, "\tstring_data_len = %i",            len(scene.string_data))
+    fmt.sbprintfln(&sb, "\tnode_data_len = %i",              len(scene.node_data))
+    fmt.sbprintfln(&sb, "\timage_data_len = %i",             len(scene.image_data))
+    fmt.sbprintfln(&sb, "\tmesh_data_len = %i",              len(scene.mesh_data))
+    fmt.sbprintfln(&sb, "\tskin_data_len = %i",              len(scene.skin_data))
+    fmt.sbprintfln(&sb, "\tspline_data_len = %i",            len(scene.spline_data))
+    fmt.sbprintfln(&sb, "\tskeleton_data_len = %i",          len(scene.skeleton_data))
+    fmt.sbprintfln(&sb, "\tbone_data_len = %i",              len(scene.bone_data))
+    fmt.sbprintfln(&sb, "\tanim_data_len = %i",              len(scene.anim_data))
+    fmt.sbprintfln(&sb, "\tmesh_vert_data_len = %i",         len(scene.mesh_vert_data))
+    fmt.sbprintfln(&sb, "\tskin_vert_data_len = %i",         len(scene.skin_vert_data))
+    fmt.sbprintfln(&sb, "\tspline_vert_data_len = %i",       len(scene.spline_vert_data))
+    fmt.sbprintfln(&sb, "\tindex_data_len = %i",             len(scene.index_data))
+    fmt.sbprintfln(&sb, "\tanim_curve_data_len = %i",        len(scene.anim_curve_data))
+    fmt.sbprintfln(&sb, "\tanim_float3_frame_data_len = %i", len(scene.anim_float3_frame_data))
+    fmt.sbprintfln(&sb, "\tanim_float4_frame_data_len = %i", len(scene.anim_float4_frame_data))
+
     // Images
     fmt.sbprintln(&sb, "\timages = {")
     for it in scene.image_data {
