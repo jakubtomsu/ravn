@@ -1090,6 +1090,7 @@ when BACKEND == BACKEND_D3D11 {
 
             switch desc.depth.clear_mode {
             case .Keep:
+            case .Undefined:
             case .Clear:
                 assert(depth.dsv != nil)
                 _state.device_context->ClearDepthStencilView(depth.dsv, {.DEPTH}, Depth = desc.depth.clear_val, Stencil = 0)
@@ -1121,6 +1122,7 @@ when BACKEND == BACKEND_D3D11 {
 
             switch color.clear_mode {
             case .Keep:
+            case .Undefined:
             case .Clear:
                 _state.device_context->ClearRenderTargetView(rtv, &color.clear_val)
             }

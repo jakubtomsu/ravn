@@ -959,12 +959,7 @@ when BACKEND == BACKEND_WGPU {
                 resolveTarget = nil,
                 loadOp = _wgpu_clear_mode(color.clear_mode),
                 storeOp = .Store,
-                clearValue = {
-                    f64(color.clear_val.r),
-                    f64(color.clear_val.g),
-                    f64(color.clear_val.b),
-                    f64(color.clear_val.a),
-                },
+                clearValue = cast([4]f64)color.clear_val,
             }
         }
 
@@ -1192,6 +1187,7 @@ when BACKEND == BACKEND_WGPU {
         switch mode {
         case .Keep: return .Load
         case .Clear: return .Clear
+        case .Undefined: return .Undefined
         }
         assert(false)
         return .Load

@@ -63,7 +63,7 @@ State :: struct #align(4096) {
     using native:                   _State,
     in_frame:                       bool,
     init_context:                   runtime.Context,
-    allocator:                      runtime.Allocator,
+    state_allocator:                runtime.Allocator,
     // On WebGPU, the initialization is async.
     init_done:                      bool,
     swapchain_size:                 [2]i32,
@@ -229,6 +229,7 @@ Graphics_Pass_Depth_Desc :: struct {
 Clear_Mode :: enum u8 {
     Keep = 0,
     Clear,
+    Undefined,
 }
 
 Buffer_Kind :: enum u8 {
@@ -516,10 +517,19 @@ make_sampler_desc :: proc(
 // MARK: General
 //
 
-init :: proc(state: ^State, native_window: rawptr) -> bool {
+// window: platform-specific window pointer. You may use platform.get_native_window_ptr().
+init :: proc(state: ^State = nil, window: rawptr, allocator := context.allocator) -> bool {
+    state := state
+
     if _state != nil {
         return true
     }
+
+    if state == nil {
+        state = new(State, allocator)
+        state.state_allocator = allocator
+    }
+
     _state = state
     _state.init_context = context
 
@@ -530,15 +540,28 @@ init :: proc(state: ^State, native_window: rawptr) -> bool {
     base.pool_clear(&_state.bind_groups)
     base.pool_clear(&_state.shaders)
 
-    return _init(native_window)
+    if !_init(window) {
+        return false
+    }
+
+    return true
 }
 
 shutdown :: proc() {
     if _state == nil {
         return
     }
-    assert(!_state.in_frame)
+
+    if _state.in_frame {
+        panic("Invalid")
+    }
+
     _shutdown()
+
+    if _state.state_allocator != {} {
+        free(_state, _state.state_allocator)
+    }
+
     _state = nil
 }
 
@@ -555,6 +578,7 @@ end_frame :: proc(sync: bool = true, loc := #caller_location) {
     assert(_state != nil)
     assert(_state.in_frame)
     assert(_state.encoder == {})
+    assert(_state.swapchain_size != 0, "Swapchain must be initialized")
     _end_frame(sync)
     _state.in_frame = false
 }
@@ -563,6 +587,8 @@ end_frame :: proc(sync: bool = true, loc := #caller_location) {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Create
+//
+// Passing existing handle into the handle ptr arg re-creates the resource. Useful for reloading.
 //
 
 @(require_results)
@@ -804,7 +830,7 @@ create_bind_layout :: proc(
     desc := desc
     base.log_debug("Creating bind_group layout '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id)
+    defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
     for &slot in desc.slots {
         if slot.stages == {} {
@@ -845,7 +871,7 @@ create_bind_group :: proc(
 ) -> (ok: bool) {
     base.log_debug("Creating bind_group '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id)
+    defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
     validate_bind_group_desc(id, desc, loc = loc)
     _find_free_or_destroy_existing(id, &_state.bind_groups, handle, _destroy_bind_group_state) or_return
@@ -888,7 +914,7 @@ create_graphics_pipeline :: proc(
 ) -> (ok: bool) {
     base.log_debug("Creating graphics pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id)
+    defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
     validate_graphics_pipeline_desc(id, desc)
     _find_free_or_destroy_existing(id, &_state.graphics_pipelines, handle, _destroy_graphics_pipeline_state) or_return
@@ -918,7 +944,7 @@ create_compute_pipeline :: proc(
 ) -> (ok: bool) {
     base.log_debug("Creating compute pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id)
+    defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
     validate_compute_pipeline_desc(id, desc, loc = loc)
     _find_free_or_destroy_existing(id, &_state.compute_pipelines, handle, _destroy_compute_pipeline_state) or_return
@@ -948,7 +974,7 @@ create_constants :: proc(
     loc         := #caller_location,
 ) -> (ok: bool) {
     id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id)
+    defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
     base.assert_id(id, item_size > 0)
     base.assert_id(id, item_num >= 1)
@@ -989,7 +1015,7 @@ create_shader :: proc(
     loc     := #caller_location,
 ) -> (ok: bool) {
     id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id)
+    defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
     base.assert_id(id, kind != .Invalid)
     base.assert_id(id, len(data) > 0)
@@ -1043,7 +1069,7 @@ create_texture_2d :: proc(
 ) -> (ok: bool) {
     base.log_debug("Creating texture: %s", name)
     id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id)
+    defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
     base.assert_id(id, format != .Invalid)
     base.assert_id(id, size.x > 0)
@@ -1112,7 +1138,7 @@ create_buffer :: proc(
 ) -> (ok: bool) {
     base.log_debug("Creating buffer: %s", name)
     id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id)
+    defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
     size := size
 
@@ -1209,32 +1235,32 @@ destroy_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) -> bool {
 
 _destroy_shader_state :: proc(state: ^Shader_State) {
     _destroy_shader(state^)
-    base.destroy_debug_id(&state.id)
+    base.destroy_debug_id(&state.id, context.allocator)
 }
 
 _destroy_resource_state :: proc(state: ^Resource_State) {
     _destroy_resource(state^)
-    base.destroy_debug_id(&state.id)
+    base.destroy_debug_id(&state.id, context.allocator)
 }
 
 _destroy_bind_group_state :: proc(state: ^Bind_Group_State) {
     _destroy_bind_group(state^)
-    base.destroy_debug_id(&state.id)
+    base.destroy_debug_id(&state.id, context.allocator)
 }
 
 _destroy_bind_layout_state :: proc(state: ^Bind_Layout_State) {
     _destroy_bind_layout(state^)
-    base.destroy_debug_id(&state.id)
+    base.destroy_debug_id(&state.id, context.allocator)
 }
 
 _destroy_graphics_pipeline_state :: proc(state: ^Graphics_Pipeline_State) {
     _destroy_graphics_pipeline(state^)
-    base.destroy_debug_id(&state.id)
+    base.destroy_debug_id(&state.id, context.allocator)
 }
 
 _destroy_compute_pipeline_state :: proc(state: ^Compute_Pipeline_State) {
     _destroy_compute_pipeline(state^)
-    base.destroy_debug_id(&state.id)
+    base.destroy_debug_id(&state.id, context.allocator)
 }
 
 
