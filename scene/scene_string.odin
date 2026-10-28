@@ -88,15 +88,15 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
         fmt.sbprintfln(&sb, "\t\t%q = {{", get_range_slice(scene.string_data, it.name_range))
         bones := get_range_slice(scene.bone_data, it.bone_range)
         for b in bones {
-            fmt.sbprintfln(&sb, "\t\t\t%q = {{ parent=%d, pos=%v, length=%f, rot=%v }},",
+            fmt.sbprintfln(&sb, "\t\t\t%q = {{ parent=%q, pos=%v, length=%f, rot=%v }},",
                 get_range_slice(scene.string_data, b.name_range),
-                b.parent,
+                (b.parent == INVALID_PARENT) ? "<NONE>" : string(get_range_slice(scene.string_data, scene.bone_data[b.parent].name_range)),
                 b.pos,
                 b.length,
                 b.rot,
             )
         }
-        fmt.sbprintln(&sb, "\t\t}},")
+        fmt.sbprintln(&sb, "\t\t},")
     }
     fmt.sbprintln(&sb, "\t},")
 
@@ -107,12 +107,27 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
         curves := get_range_slice(scene.anim_curve_data, it.curve_range)
         for c in curves {
             if include_data {
-                fmt.sbprintfln(&sb, "\t\t\t%q = {{ pos_frames=%v, rot_frames=%v, scale_frames=%v }},",
-                    get_range_slice(scene.string_data, c.name_range),
-                    get_range_slice(scene.anim_float3_frame_data, c.pos_range),
-                    get_range_slice(scene.anim_float4_frame_data, c.rot_range),
-                    get_range_slice(scene.anim_float3_frame_data, c.scale_range),
-                )
+                fmt.sbprintfln(&sb, "\t\t\t%q = {{", get_range_slice(scene.string_data, c.name_range))
+
+                fmt.sbprintln(&sb, "\t\t\t\tpos_frames = {")
+                for frame in get_range_slice(scene.anim_float3_frame_data, c.pos_range) {
+                    fmt.sbprintfln(&sb, "\t\t\t\t\ttime=%d, value=%v,", frame.time, frame.value)
+                }
+                fmt.sbprintln(&sb, "\t\t\t\t},")
+
+                fmt.sbprintln(&sb, "\t\t\t\trot_frames = {")
+                for frame in get_range_slice(scene.anim_float4_frame_data, c.rot_range) {
+                    fmt.sbprintfln(&sb, "\t\t\t\t\ttime=%d, value=%v,", frame.time, frame.value)
+                }
+                fmt.sbprintln(&sb, "\t\t\t\t},")
+
+                fmt.sbprintln(&sb, "\t\t\t\tscale_frames = {")
+                for frame in get_range_slice(scene.anim_float3_frame_data, c.scale_range) {
+                    fmt.sbprintfln(&sb, "\t\t\t\t\ttime=%d, value=%v,", frame.time, frame.value)
+                }
+                fmt.sbprintln(&sb, "\t\t\t\t},")
+
+                fmt.sbprintln(&sb, "\t\t\t},")
             } else {
                 fmt.sbprintfln(&sb, "\t\t\t%q = {{ num_pos=%d, num_rot=%d, num_scale=%d }},",
                     get_range_slice(scene.string_data, c.name_range),
@@ -122,7 +137,7 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
                 )
             }
         }
-        fmt.sbprintln(&sb, "\t\t}},")
+        fmt.sbprintln(&sb, "\t\t},")
     }
     fmt.sbprintln(&sb, "\t},")
 

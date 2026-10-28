@@ -212,7 +212,7 @@ def get_mesh_loop_verts(mesh, dtype):
     vert_positions = vert_positions @ conv_mat_np.T
     loop_normals = loop_normals @ conv_mat_inv_np.T
 
-    loop_normals = ((loop_normals).clip(-1.0, 1.0) * 127).astype(np.int8)
+    loop_normals = np.rint(loop_normals.clip(-1.0, 1.0) * 127).astype(np.int8)
 
     loop_verts = np.empty(len(mesh.loop_triangles) * 3, dtype=dtype)
 
@@ -410,6 +410,9 @@ def export_rscn(context, out_name):
         if mat.is_grease_pencil:
             continue
 
+        if mat.node_tree is None:
+            continue
+
         mat_name_range = get_interned_str(str_map, str_buf, norm_name(mat.name))
 
         for node in mat.node_tree.nodes:
@@ -433,7 +436,8 @@ def export_rscn(context, out_name):
         bones = []
 
         for bone in obj.pose.bones:
-            rot_quat = bone.matrix.to_quaternion()
+            rot_mat = conv_mat @ bone.matrix.to_3x3() @ conv_mat_inv
+            rot_quat = rot_mat.to_quaternion()
             depth = 0
             curr_parent = bone.parent
             while curr_parent != None:
@@ -445,7 +449,7 @@ def export_rscn(context, out_name):
             bone_entry = np.zeros(1, dtype=bone_dtype)
             bone_entry[0]['name_range'] = bone_name_range
             bone_entry[0]['parent'] = 0 # later
-            bone_entry[0]['pos'] =  bone.head
+            bone_entry[0]['pos'] = conv_mat @ bone.head
             bone_entry[0]['length'] = bone.bone.length
             bone_entry[0]['rot'] = [rot_quat.x, rot_quat.y, rot_quat.z, rot_quat.w]
             print(bone_entry)
@@ -529,6 +533,16 @@ def export_rscn(context, out_name):
         for name, curves in bone_curves.items():
             bone_name_range = get_interned_str(str_map, str_buf, norm_name(name))
 
+            for frame, value in curves['pos'].items():
+                curves['pos'][frame] = conv_mat_np @ value
+            for frame, value in curves['rot'].items():
+                quat = mathutils.Quaternion((value[3], value[0], value[1], value[2]))
+                rot_mat = conv_mat @ quat.to_matrix() @ conv_mat_inv
+                quat = rot_mat.to_quaternion()
+                curves['rot'][frame] = np.array((quat.x, quat.y, quat.z, quat.w), dtype=np.float32)
+            for frame, value in curves['scale'].items():
+                curves['scale'][frame] = conv_mat_np @ value
+
             pos_data = np.array(sorted(curves['pos'].items()), dtype=anim_float3_frame_dtype)
             rot_data = np.array(sorted(curves['rot'].items()), dtype=anim_float4_frame_dtype)
             scale_data = np.array(sorted(curves['scale'].items()), dtype=anim_float3_frame_dtype)
@@ -568,7 +582,7 @@ def export_rscn(context, out_name):
             loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=mesh_vert_dtype)
 
             verts, loop_to_unique = np.unique(loop_verts, return_inverse=True)
-            indices = loop_to_unique.astype(np.uint32)
+            indices = loop_to_unique.astype(np.uint32).reshape(-1, 3)[:, [0, 2, 1]].ravel()
 
             verts_offset = mesh_vertex_buf.append(verts)
             indices_offset = index_buf.append(indices)
@@ -589,7 +603,7 @@ def export_rscn(context, out_name):
             loop_verts['weights'] = vert_weights[tri_vert_indices.ravel()]
 
             verts, loop_to_unique = np.unique(loop_verts, return_inverse=True)
-            indices = loop_to_unique.astype(np.uint32)
+            indices = loop_to_unique.astype(np.uint32).reshape(-1, 3)[:, [0, 2, 1]].ravel()
 
             verts_offset = skin_vertex_buf.append(verts)
             indices_offset = index_buf.append(indices)
@@ -674,7 +688,7 @@ def export_rscn(context, out_name):
 
         pos = obj.matrix_local.to_translation()
         pos = conv_mat @ pos
-        scale = obj.matrix_local.to_scale()
+        scale = conv_mat @ obj.matrix_local.to_scale()
         mat = obj.matrix_local.to_3x3()
         mat = conv_mat @ mat @ conv_mat_inv
         rot = mat.to_quaternion()

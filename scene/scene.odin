@@ -29,8 +29,8 @@ Scene :: struct {
     spline_vert_data:       []Spline_Vert,
     index_data:             []u32,
     anim_curve_data:        []Anim_Curve,
-    anim_float3_frame_data: [][3]f32,
-    anim_float4_frame_data: [][4]f32,
+    anim_float3_frame_data: []Anim_Float3_Frame,
+    anim_float4_frame_data: []Anim_Float4_Frame,
 }
 
 Error :: union #shared_nil {
@@ -189,22 +189,22 @@ load_from_data :: proc(data: []byte) -> (scene: Scene, err: Error) {
         return {}, .Invalid_Version
     }
 
-    scene.string_data            = slice.reinterpret([]byte,        get_range_slice(data, header.string_range))
-    scene.node_data              = slice.reinterpret([]Node,        get_range_slice(data, header.node_range))
-    scene.image_data             = slice.reinterpret([]Image,       get_range_slice(data, header.image_range))
-    scene.mesh_data              = slice.reinterpret([]Mesh,        get_range_slice(data, header.mesh_range))
-    scene.skin_data              = slice.reinterpret([]Skin,        get_range_slice(data, header.skin_range))
-    scene.spline_data            = slice.reinterpret([]Spline,      get_range_slice(data, header.spline_range))
-    scene.skeleton_data          = slice.reinterpret([]Skeleton,    get_range_slice(data, header.skeleton_range))
-    scene.bone_data              = slice.reinterpret([]Bone,        get_range_slice(data, header.bone_range))
-    scene.anim_data              = slice.reinterpret([]Anim,        get_range_slice(data, header.anim_range))
-    scene.mesh_vert_data         = slice.reinterpret([]Mesh_Vert,   get_range_slice(data, header.mesh_vert_range))
-    scene.skin_vert_data         = slice.reinterpret([]Skin_Vert,   get_range_slice(data, header.skin_vert_range))
-    scene.spline_vert_data       = slice.reinterpret([]Spline_Vert, get_range_slice(data, header.spline_vert_range))
-    scene.index_data             = slice.reinterpret([]u32,         get_range_slice(data, header.index_range))
-    scene.anim_curve_data        = slice.reinterpret([]Anim_Curve,  get_range_slice(data, header.anim_curve_range))
-    scene.anim_float3_frame_data = slice.reinterpret([][3]f32,      get_range_slice(data, header.anim_float3_frame_range))
-    scene.anim_float4_frame_data = slice.reinterpret([][4]f32,      get_range_slice(data, header.anim_float4_frame_range))
+    scene.string_data            = slice.reinterpret([]byte,                get_range_slice(data, header.string_range))
+    scene.node_data              = slice.reinterpret([]Node,                get_range_slice(data, header.node_range))
+    scene.image_data             = slice.reinterpret([]Image,               get_range_slice(data, header.image_range))
+    scene.mesh_data              = slice.reinterpret([]Mesh,                get_range_slice(data, header.mesh_range))
+    scene.skin_data              = slice.reinterpret([]Skin,                get_range_slice(data, header.skin_range))
+    scene.spline_data            = slice.reinterpret([]Spline,              get_range_slice(data, header.spline_range))
+    scene.skeleton_data          = slice.reinterpret([]Skeleton,            get_range_slice(data, header.skeleton_range))
+    scene.bone_data              = slice.reinterpret([]Bone,                get_range_slice(data, header.bone_range))
+    scene.anim_data              = slice.reinterpret([]Anim,                get_range_slice(data, header.anim_range))
+    scene.mesh_vert_data         = slice.reinterpret([]Mesh_Vert,           get_range_slice(data, header.mesh_vert_range))
+    scene.skin_vert_data         = slice.reinterpret([]Skin_Vert,           get_range_slice(data, header.skin_vert_range))
+    scene.spline_vert_data       = slice.reinterpret([]Spline_Vert,         get_range_slice(data, header.spline_vert_range))
+    scene.index_data             = slice.reinterpret([]u32,                 get_range_slice(data, header.index_range))
+    scene.anim_curve_data        = slice.reinterpret([]Anim_Curve,          get_range_slice(data, header.anim_curve_range))
+    scene.anim_float3_frame_data = slice.reinterpret([]Anim_Float3_Frame,   get_range_slice(data, header.anim_float3_frame_range))
+    scene.anim_float4_frame_data = slice.reinterpret([]Anim_Float4_Frame,   get_range_slice(data, header.anim_float4_frame_range))
 
     scene.header = header^
     scene.data = data
@@ -213,6 +213,17 @@ load_from_data :: proc(data: []byte) -> (scene: Scene, err: Error) {
 }
 
 // Range is offset + len
+range_is_valid :: proc(data: []$T, range: [2]$Int) -> bool where intrinsics.type_is_integer(Int) {
+    start := u64(range[0])
+    count := u64(range[1])
+    data_len := u64(len(data))
+    return start <= data_len && count <= data_len - start
+}
+
+// Range is offset + len
 get_range_slice :: proc(data: []$T, range: [2]$Int) -> []T where intrinsics.type_is_integer(Int) {
+    if !range_is_valid(data, range) {
+        return nil
+    }
     return data[range[0]:][:range[1]]
 }
