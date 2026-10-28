@@ -571,6 +571,7 @@ begin_frame :: proc() -> (ok: bool) {
     assert(_state.encoder == {})
     _state.encoder = {}
     _state.in_frame = true
+    assert(_state.swapchain_size != 0, "Swapchain must be initialized. Call resize_swapchain().")
     return _begin_frame()
 }
 
@@ -578,7 +579,7 @@ end_frame :: proc(sync: bool = true, loc := #caller_location) {
     assert(_state != nil)
     assert(_state.in_frame)
     assert(_state.encoder == {})
-    assert(_state.swapchain_size != 0, "Swapchain must be initialized")
+    assert(_state.swapchain_size != 0, "Swapchain must be initialized. Call resize_swapchain().")
     _end_frame(sync)
     _state.in_frame = false
 }
