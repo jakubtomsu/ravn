@@ -442,13 +442,6 @@ _iter_sub_next_variant :: proc(it: ^Iter_Sub($Val_Union, $Sub_Union, $Sub)) -> (
 
 
 @(require_results)
-_reinterpret_bytes :: proc "contextless" ($T: typeid, bytes: []byte, loc := #caller_location) -> []T {
-    n := len(bytes) / size_of(T)
-    assert_contextless(n * size_of(T) == len(bytes))
-    return ([^]T)(raw_data(bytes))[:n]
-}
-
-@(require_results)
 _extract_variant_index :: proc "contextless" (val: ^$T) -> int where intrinsics.type_is_union(T) {
     tag := (cast(^intrinsics.type_union_tag_type(T))(uintptr(val) + intrinsics.type_union_tag_offset(T)))^
     return int(tag) - intrinsics.type_union_base_tag_value(T)

@@ -3,9 +3,10 @@
 package ravn_shader_compiler
 
 import "../base"
-import "../platform"
 import "slang"
 import "base:runtime"
+import "core:strings"
+import "core:dynlib"
 
 when ODIN_OS == .Windows {
     SLANG_DYNLIB_PATH :: "slang.dll"
@@ -17,7 +18,7 @@ when ODIN_OS == .Windows {
 
 _Slang_State :: struct {
     using vtable:   slang.Global_VTable,
-    module:         platform.Module,
+    module:         dynlib.Library,
     global_session: ^slang.IGlobalSession,
 }
 
@@ -27,7 +28,7 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
     }
 
     module_ok: bool
-    state.module, module_ok = platform.load_module(SLANG_DYNLIB_PATH)
+    state.module, module_ok = dynlib.load_library(SLANG_DYNLIB_PATH, global_symbols = false, allocator = context.temp_allocator)
     if !module_ok {
         base.log_err("Failed to load " + SLANG_DYNLIB_PATH + ". Ensure it's in your working directory to compile shaders.")
         return false
@@ -52,8 +53,8 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
 
     return true
 
-    _load_sym :: proc(state: ^_Slang_State, name: cstring) -> (rawptr, bool) {
-        result := platform.get_module_symbol_address(state.module, name)
+    _load_sym :: proc(state: ^_Slang_State, name: string) -> (rawptr, bool) {
+        result := dynlib.symbol_address(state.module, name, context.temp_allocator)
         if result == nil {
             base.log_err("Failed to find symbol '%s' in slang.dll", name)
             return nil, false
@@ -148,7 +149,7 @@ _compile_slang :: proc(
     session: ^slang.ISession
     _slang_check(state.slang.global_session->createSession(session_desc, &session))
 
-    cname := base.clone_to_cstring(name, context.temp_allocator)
+    cname := strings.clone_to_cstring(name, context.temp_allocator)
 
     source_blob := state.slang.createBlob(raw_data(source), len(source))
     diag: ^slang.IBlob
@@ -256,8 +257,6 @@ _slang_ifilesystem_loadfile :: proc "system" (
 
     assert(path != nil)
     assert(outBlob != nil)
-
-    // base.log_info("INCLUDE %s", path)
 
     if this.opts.include_proc == nil {
         return .E_NOT_FOUND

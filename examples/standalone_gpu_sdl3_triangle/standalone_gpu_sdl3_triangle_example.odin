@@ -5,6 +5,7 @@ import "../../gpu"
 import "../../shader_compiler"
 import sdl "vendor:sdl3"
 import "core:math"
+import "core:slice"
 
 when gpu.BACKEND == gpu.BACKEND_WGPU {
     SHADER_TARGET :: shader_compiler.Target.WGSL
@@ -60,7 +61,7 @@ main :: proc() {
     vs: gpu.Shader_Handle
     tex: gpu.Resource_Handle
 
-    gpu.create_buffer(&vbuf, .Vertex, size_of(Vertex), data = base.slice_bytes(verts)) or_else panic("buf")
+    gpu.create_buffer(&vbuf, .Vertex, size_of(Vertex), data = slice.to_bytes(verts)) or_else panic("buf")
     gpu.create_buffer(&inst_buf, .Vertex, size_of(Instance), size_of(Instance) * MAX_INSTS, usage = .Dynamic) or_else panic("buf")
     gpu.create_texture_2d(&tex, .RGBA_U8_Norm, 2, .Immutable, data = {
         0, 0, 0, 0, 255, 0, 0, 255,
@@ -119,7 +120,7 @@ main :: proc() {
         for &inst, i in inst_data {
             inst.pos = {(f32(i) / MAX_INSTS - 0.5) * 1.5, math.sin_f32(f32(i) * 20 / MAX_INSTS + time) * 0.2, f32(i) * 0.001, 0}
         }
-        gpu.update_buffer(inst_buf, 0, base.slice_bytes(inst_data[:]))
+        gpu.update_buffer(inst_buf, 0, slice.to_bytes(inst_data[:]))
 
         gpu.begin_graphics_pass("main", {
             colors = {0 = {resource = gpu.SWAPCHAIN_HANDLE, clear_mode = .Clear, clear_val = {0.01, 0.1, 0.2, 1}}},
