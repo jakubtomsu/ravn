@@ -30,7 +30,7 @@ when BACKEND == BACKEND_D3D11 {
 
     _State :: struct {
         device:                 ^d3d11.IDevice,
-        device_context:         ^ID3D11DeviceContext1,
+        device_context:         ^d3d11.IDeviceContext1,
         dxgi_factory:           ^dxgi.IFactory2,
         swapchain:              ^dxgi.ISwapChain1,
         swapchain_tex:          ^d3d11.ITexture2D,
@@ -178,7 +178,7 @@ when BACKEND == BACKEND_D3D11 {
 
         _d3d11_check(id, base_device->QueryInterface(d3d11.IDevice_UUID, cast(^rawptr)&_state.device)) or_return
         // _d3d11_check(id, base_device_context->QueryInterface(d3d11.IDeviceContext_UUID, cast(^rawptr)&_state.device_context)) or_return
-        _d3d11_check(id, base_device_context->QueryInterface(ID3D11DeviceContext1_UUID, cast(^rawptr)&_state.device_context)) or_return
+        _d3d11_check(id, base_device_context->QueryInterface(d3d11.IDeviceContext1_UUID, cast(^rawptr)&_state.device_context)) or_return
 
         dxgi_device: ^dxgi.IDevice1
         _d3d11_check(id, _state.device->QueryInterface(dxgi.IDevice1_UUID, cast(^rawptr)&dxgi_device)) or_return
