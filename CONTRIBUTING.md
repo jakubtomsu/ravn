@@ -31,7 +31,7 @@ Bug fixes are the most preferred type of contributions. Please make sure the "fi
 
 ### New Features
 
-It is **strongly recommended to discuss new features on Discord**. If a feature doesn't align with the project direction, it might be rejected.
+It is strongly recommended to discuss new features on Discord. If a feature doesn't align with the project direction, it might be rejected.
 
 Small additions or tweaks are fine, but also may be rejected if it's something too specific, not useful for most users, that would just bloat the project.
 
