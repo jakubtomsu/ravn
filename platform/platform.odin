@@ -230,6 +230,8 @@ init :: proc(state: ^State = nil, allocator := context.allocator) {
 
     _state = state
 
+    register_default_exception_handler()
+
     _init()
 
     _state.mouse_visible = true

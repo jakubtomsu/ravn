@@ -1,5 +1,5 @@
 #+test
-#+vet shadowing unused
+#+vet shadowing
 package ravn_gpu
 
 // import "core:slice"
@@ -56,6 +56,8 @@ _render_output :: proc(t: ^testing.T) {
     readback: Resource_Handle
     create_texture_2d(&readback, .RGBA_U8_Norm, {512, 512}, .Staging) or_else panic("tex")
     defer destroy_resource(readback)
+
+
 
     for i in 0..<20 {
         begin_frame()
