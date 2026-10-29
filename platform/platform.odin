@@ -59,6 +59,7 @@ Window_Style :: enum u8 {
 Event :: union {
     Event_Exit,
     Event_Button,
+    Event_Char,
     Event_Mouse,
     Event_Scroll,
     Event_Window_Size,
@@ -83,6 +84,10 @@ Event_Scroll :: struct {
 
 Event_Window_Size :: struct {
     size:   [2]i32,
+}
+
+Event_Char :: struct {
+    char:   rune,
 }
 
 

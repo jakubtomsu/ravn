@@ -2,6 +2,7 @@
 #+vet explicit-allocators shadowing unused
 package ravn_platform
 
+import "core:unicode/utf16"
 // TODO: FIXME: on very low FPS input messages seem to get dropped
 
 import "../base"
@@ -16,6 +17,48 @@ _ :: windows
 
 // https://ph3at.github.io/posts/Windows-Input/
 
+
+//
+//  Surrogate pairs
+//
+//  Conversion examples:
+//
+//  A) The first character in the Surrogate range (D800, DC00) as UTF-32:
+//
+//  1.  D800: binary 1101100000000000  (lower ten bits: 0000000000)
+//  2.  DC00: binary 1101110000000000  (lower ten bits: 0000000000)
+//  3.  Concatenate 0000000000+0000000000 = 0x0000
+//  4.  Add 0x10000
+//
+//  Result: U+10000. This is correct, since the first character in the Supplementary character
+//  range immediately follows the last code point in the 16-bit UTF-16 range (U+FFFF)
+//
+//  B) A UTF-32 code point such as U+2040A (this a CJK character in CJK Extension B), and wish
+//  to convert it in UTF-16:
+//
+//  1.  Subtract 0x10000 - Result: 0x1040A
+//  2.  Split into two ten-bit pieces: 0001000001 0000001010
+//  3.  Add 1101100000000000 (0xD800) to the high 10 bits piece (0001000001) - Result: 1101100001000001 (0xD841)
+//  4.  Add 1101110000000000 (0xDC00) to the low 10 bits piece (0000001010) - Result: 1101110000001010 (0xDC0A)
+//
+//  RESULT: The surrogate pair: U+D841, U+DC0A
+//
+//  Special Unicode code point values, for use with UTF-16 surrogate pairs.
+//
+_WIN32_HIGH_SURROGATE_START  :: 0xd800
+_WIN32_HIGH_SURROGATE_END    :: 0xdbff
+_WIN32_LOW_SURROGATE_START   :: 0xdc00
+_WIN32_LOW_SURROGATE_END     :: 0xdfff
+
+
+//  Macros to determine whether a character is a high or low surrogate,
+//  and whether two code points make up a surrogate pair (a high surrogate
+//  and a low surrogate).
+//
+_WIN32_IS_HIGH_SURROGATE :: proc(wch: windows.wchar_t) -> bool { return wch >= _WIN32_HIGH_SURROGATE_START  && wch <= _WIN32_HIGH_SURROGATE_END }
+_WIN32_IS_LOW_SURROGATE  :: proc(wch: windows.wchar_t) -> bool { return wch >= _WIN32_LOW_SURROGATE_START   && wch <= _WIN32_LOW_SURROGATE_END }
+
+
 when BACKEND == BACKEND_WINDOWS {
 
     _State :: struct {
@@ -27,6 +70,7 @@ when BACKEND == BACKEND_WINDOWS {
         xinput_query_counter:   f32,
         perf_counter_freq:      windows.LARGE_INTEGER,
         perf_counter_start:     windows.LARGE_INTEGER,
+        prev_wm_char:           windows.wchar_t,
     }
 
     _Window :: struct {
@@ -584,6 +628,34 @@ when BACKEND == BACKEND_WINDOWS {
 
             result = 0
 
+        case windows.WM_CHAR:
+            ch := cast(windows.wchar_t)wparam
+
+            if _WIN32_IS_HIGH_SURROGATE(ch) {
+                _state.prev_wm_char = ch
+                return 0;
+            }
+
+            buf: [2]windows.wchar_t
+            buf_len := 0
+
+            if _WIN32_IS_LOW_SURROGATE(ch) && _state.prev_wm_char != 0 {
+                buf = {_state.prev_wm_char, ch}
+                buf_len = 2;
+            } else {
+                buf = {ch, 0};
+                buf_len = 1;
+            }
+
+            _state.prev_wm_char = 0
+
+            r, rwidth := utf16.decode_rune_in_string(string16(buf[:buf_len]))
+            assert(rwidth > 0)
+
+            _event_queue_push(Event_Char{
+                char = r,
+            })
+
         case windows.WM_MOUSEMOVE:
             if !_state.mouse_relative {
                 pos := [2]i32{
@@ -836,8 +908,6 @@ when BACKEND == BACKEND_WINDOWS {
 
         return true
     }
-
-
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MARK: gamepad
