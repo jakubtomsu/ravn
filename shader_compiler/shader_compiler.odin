@@ -83,11 +83,11 @@ compile :: proc {
     compile_from_source,
 }
 
-compile_from_path :: proc(path: string, stage: Stage, opts: Options, loc := #caller_location) -> (result: Blob, ok: bool) {
+compile_from_path :: proc(path: string, opts: Options = {}, loc := #caller_location) -> (result: Blob, ok: bool) {
     data, err := os.read_entire_file_from_path(path, context.temp_allocator)
     if err != nil {
         log.error("Failed to read shader file:", err)
-        return nil, false
+        return {}, false
     }
     return compile_from_source(path, string(data), opts)
 }
@@ -95,7 +95,7 @@ compile_from_path :: proc(path: string, stage: Stage, opts: Options, loc := #cal
 compile_from_source :: proc(
     name:           string,
     source:         string,
-    opts:           Options,
+    opts:           Options = {},
     loc := #caller_location,
 ) -> (result: Blob, ok: bool) {
     opts := opts

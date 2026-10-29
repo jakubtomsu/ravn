@@ -111,8 +111,8 @@ _compile_dxbc :: proc(
 }
 
 _dxbc_blob_destroy :: proc(blob: ^_DXBC_Blob) {
-    if blob.binary != nil {
-        blob.binary->Release()
+    if blob.blob != nil {
+        blob.blob->Release()
     }
 }
 
