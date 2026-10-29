@@ -140,6 +140,14 @@ MOUSE_BUTTONS :: []Button{
     .Mouse_Extra_2,
 }
 
+MOUSE_BUTTON_SET :: bit_set[Button]{
+    .Mouse_Left,
+    .Mouse_Middle,
+    .Mouse_Right,
+    .Mouse_Extra_1,
+    .Mouse_Extra_2,
+}
+
 Button :: enum u8 {
     Invalid = 0,
 

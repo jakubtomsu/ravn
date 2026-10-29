@@ -45,6 +45,8 @@ when BACKEND == BACKEND_SDL3 {
             panic("Failed to initialize SDL3")
         }
         base.log_info("Initialized SDL3")
+
+        // sdl3.SetHint(sdl3.HINT_MOUSE_FOCUS_CLICKTHROUGH, "1")
     }
 
     _shutdown :: proc() {
