@@ -203,6 +203,12 @@ _compile_slang :: proc(
     }
 }
 
+_slang_blob_destroy :: proc(blob: ^_Slang_Blob) {
+    if blob.blob != nil {
+        blob.blob->release()
+    }
+}
+
 _slang_check :: proc(res: slang.Result, expr := #caller_expression(res), loc := #caller_location) -> bool {
     if res != .OK {
         base.log_err("Slang Error: %v (%x)", res, transmute(u32)res, loc = loc)
