@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="data/logo.png" width=100px>
+<img src="data/logo.png" width=180px>
 
 (pronounced *raven*)
 
