@@ -22,6 +22,10 @@ _Slang_State :: struct {
     global_session: ^slang.IGlobalSession,
 }
 
+_Slang_Blob :: struct {
+    blob:   ^slang.IBlob
+}
+
 _slang_init :: proc(state: ^_Slang_State) -> bool {
     if SLANG_DYNLIB_PATH == "" {
         return false
@@ -68,7 +72,7 @@ _compile_slang :: proc(
     name:           string,
     source:         string,
     opts:           Options,
-) -> (result: []byte, ok: bool) {
+) -> (result: Blob, ok: bool) {
     assert(state.slang.global_session != nil)
 
     // Implements something like the following slangc command:
@@ -187,7 +191,12 @@ _compile_slang :: proc(
         return nil, false
     }
 
-    return _slang_blob_buf(code), true
+    result.data = _slang_blob_buf(code)
+    result._slang = {
+        blob = code
+    }
+
+    return result, true
 
     pack_vk_shift :: proc(#any_int kind: u8, set: u32) -> i32 {
         return transmute(i32)((u32(kind) << 24) | (set & 0x00FFFFFF))

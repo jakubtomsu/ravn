@@ -2,19 +2,22 @@
 #+build windows
 package ravn_shader_compiler
 
-import "../base"
-
 import "base:runtime"
 import "core:sys/windows"
 import "core:strings"
+import "core:log"
 import "vendor:directx/d3d11"
 import "vendor:directx/d3d_compiler"
+
+_DXBC_Blob :: struct {
+    blob: ^d3d11.IBlob,
+}
 
 _compile_dxbc :: proc(
     name:           string,
     source:         string,
     opts:           Options,
-) -> (result: []byte, ok: bool) {
+) -> (result: Blob, ok: bool) {
     entry_point_name: cstring
     target_name: cstring
 
@@ -94,17 +97,23 @@ _compile_dxbc :: proc(
     if res != 0 {
         if errors != nil {
             str := string((cast([^]u8)errors->GetBufferPointer())[:errors->GetBufferSize()])
-            base.log_err("Shader compile error:\n\t%s", str)
-        } else {
-            base.log_err("No errors")
+            log.error("Shader compile error:\n\t%s", str)
         }
         return {}, false
     }
 
-    // TODO: FIXME: the binary gets leaked...
-    result = (transmute([^]byte)binary->GetBufferPointer())[:binary->GetBufferSize()]
+    result.data = (transmute([^]byte)binary->GetBufferPointer())[:binary->GetBufferSize()]
+    result._dxbc = {
+        blob = binary,
+    }
 
     return result, true
+}
+
+_dxbc_blob_destroy :: proc(blob: ^_DXBC_Blob) {
+    if blob.binary != nil {
+        blob.binary->Release()
+    }
 }
 
 D3D_Include_Handler :: struct #all_or_none {

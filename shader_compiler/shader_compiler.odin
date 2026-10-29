@@ -1,6 +1,9 @@
 #+vet explicit-allocators shadowing style
 package ravn_shader_compiler
 
+import "core:log"
+import "core:strings"
+import "core:os"
 import "base:runtime"
 
 _state: ^State
@@ -30,6 +33,12 @@ Options :: struct {
     release:        bool,
     include_proc:   Include_Proc,
     user:           rawptr,
+}
+
+Blob :: struct {
+    _dxbc:  _DXBC_Blob,
+    _slang: _Slang_Blob,
+    data:   []byte,
 }
 
 Include_Proc :: #type proc (path: string, user: rawptr) -> (string, bool)
@@ -69,18 +78,41 @@ shutdown :: proc() {
     _state = nil
 }
 
-compile :: proc(path: string, stage: Stage, loc := #caller_location) -> (result: []byte, ok: bool) {
-    unimplemented()
+compile :: proc {
+    compile_from_path,
+    compile_from_source,
 }
 
-compile_source :: proc(
+compile_from_path :: proc(path: string, stage: Stage, opts: Options, loc := #caller_location) -> (result: Blob, ok: bool) {
+    data, err := os.read_entire_file_from_path(path, context.temp_allocator)
+    if err != nil {
+        log.error("Failed to read shader file:", err)
+        return nil, false
+    }
+    return compile_from_source(path, string(data), opts)
+}
+
+compile_from_source :: proc(
     name:           string,
     source:         string,
     opts:           Options,
     loc := #caller_location,
-) -> (result: []byte, ok: bool) {
+) -> (result: Blob, ok: bool) {
+    opts := opts
+
     assert(_state != nil)
-    assert(opts.stage != .Invalid, "You must specify the shader stage")
+
+    if opts.stage == .Invalid {
+        if strings.contains(name, ".vs") {
+            opts.stage = .Vertex
+        } else if strings.contains(name, ".ps") {
+            opts.stage = .Pixel
+        } else if strings.contains(name, ".cs") {
+            opts.stage = .Compute
+        }
+    }
+
+    assert(opts.stage != .Invalid, "You must specify shader stage")
 
     switch _state.target {
     case .Invalid:
@@ -98,4 +130,11 @@ compile_source :: proc(
     }
 
     return result, ok
+}
+
+destroy_blob :: proc(blob: ^Blob) {
+    assert(blob != nil)
+    _dxbc_blob_destroy(&blob._dxbc)
+    _slang_blob_destroy(&blob._slang)
+    blob^ = {}
 }
