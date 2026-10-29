@@ -1,5 +1,6 @@
 package ravn_gpu
 
+import "base:runtime"
 // Dummy backend for testing.
 // Everything *must compile* on all targets, but won't run (by design)
 // This can be a starting point when writing a new backend from scratch.
@@ -41,6 +42,9 @@ when BACKEND == BACKEND_DUMMY {
     _destroy_bind_layout :: proc(state: Bind_Layout_State) { dummy() }
     _destroy_graphics_pipeline :: proc(state: Graphics_Pipeline_State) { dummy() }
     _destroy_compute_pipeline :: proc(state: Compute_Pipeline_State) { dummy() }
+
+    _request_texture_readback :: proc(res: ^Resource_State) -> bool { dummy() }
+    _get_texture_readback :: proc(allocator: runtime.Allocator) -> (data: []byte, ok: bool) { dummy() }
 
     _begin_graphics_pass :: proc(id: base.Debug_ID, desc: Graphics_Pass_Desc) { dummy() }
     _end_graphics_pass :: proc() { dummy() }

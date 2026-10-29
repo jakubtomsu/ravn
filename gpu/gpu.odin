@@ -66,6 +66,7 @@ State :: struct #align(4096) {
     state_allocator:                runtime.Allocator,
     // On WebGPU, the initialization is async.
     init_done:                      bool,
+    has_swapchain:                  bool,
     swapchain_size:                 [2]i32,
 
     graphics_pipelines:             base.Static_Pool(MAX_GRAPHICS_PIPELINES, Graphics_Pipeline_State, Graphics_Pipeline_Handle),
@@ -338,6 +339,14 @@ Usage :: enum u8 {
     Immutable,
     // Expects frequent data changes, every frame etc.
     Dynamic,
+    // For GPU->CPU texture readback
+    Staging,
+}
+
+Mapped_Data :: struct {
+    ptr:            rawptr,
+    row_pitch:      u32,
+    depth_pitch:    u32,
 }
 
 Topology :: enum u8 {
@@ -517,7 +526,7 @@ make_sampler_desc :: proc(
 // MARK: General
 //
 
-// window: platform-specific window pointer. You may use platform.get_native_window_ptr().
+// window: platform-specific window pointer. You may use platform.get_native_window_ptr(). Use nil for headless rendering.
 init :: proc(state: ^State = nil, window: rawptr, allocator := context.allocator) -> bool {
     state := state
 
@@ -532,6 +541,10 @@ init :: proc(state: ^State = nil, window: rawptr, allocator := context.allocator
 
     _state = state
     _state.init_context = context
+
+    if window != nil {
+        _state.has_swapchain = true // not headless rendering
+    }
 
     base.pool_clear(&_state.graphics_pipelines)
     base.pool_clear(&_state.compute_pipelines)
@@ -571,7 +584,9 @@ begin_frame :: proc() -> (ok: bool) {
     assert(_state.encoder == {})
     _state.encoder = {}
     _state.in_frame = true
-    assert(_state.swapchain_size != 0, "Swapchain must be initialized. Call resize_swapchain().")
+    if _state.has_swapchain {
+        assert(_state.swapchain_size != 0, "Swapchain must be initialized. Call resize_swapchain().")
+    }
     return _begin_frame()
 }
 
@@ -579,7 +594,9 @@ end_frame :: proc(sync: bool = true, loc := #caller_location) {
     assert(_state != nil)
     assert(_state.in_frame)
     assert(_state.encoder == {})
-    assert(_state.swapchain_size != 0, "Swapchain must be initialized. Call resize_swapchain().")
+    if _state.has_swapchain {
+        assert(_state.swapchain_size != 0, "Swapchain must be initialized. Call resize_swapchain().")
+    }
     _end_frame(sync)
     _state.in_frame = false
 }
@@ -1043,6 +1060,7 @@ create_shader :: proc(
 // Resources
 
 resize_swapchain :: proc(window: rawptr, size: [2]i32) -> (ok: bool) {
+    assert(_state.has_swapchain, "Cannot resize swapchain in headless mode")
     assert(size.x > 0, "Swapchain must be non-zero width")
     assert(size.y > 0, "Swapchain must be non-zero height")
     if size == _state.swapchain_size {
@@ -1087,6 +1105,13 @@ create_texture_2d :: proc(
 
     if usage == .Immutable {
         base.assert_id(id, data != nil)
+    }
+
+    if usage == .Staging {
+        base.assert_id(id, !render_texture)
+        base.assert_id(id, !rw_resource)
+        base.assert_id(id, data == nil)
+        base.assert_id(id, get_texture_format_pixel_size(format) != 0)
     }
 
     if is_texture_format_depth_stencil(format) {
@@ -1147,6 +1172,7 @@ create_buffer :: proc(
         size = i32(len(data))
     }
 
+    base.assert_id(id, usage != .Staging)
     base.assert_id(id, stride > 0)
     base.assert_id(id, size > 0)
     base.assert_id(id, stride >= 4)
@@ -1496,6 +1522,45 @@ dispatch_compute :: proc(size: [3]i32) {
     _dispatch_compute(size)
 }
 
+copy_texture :: proc(dst_handle: Resource_Handle, src_handle: Resource_Handle) -> bool {
+    dst_res, dst_res_ok := _get_resource(dst_handle)
+    src_res, src_res_ok := _get_resource(src_handle)
+    if !dst_res_ok || !src_res_ok {
+        return false
+    }
+
+    assert(_state.encoder.mode == .None)
+    base.assert_id(dst_res.id, dst_res.kind == .Texture2D)
+    base.assert_id(dst_res.id, dst_res.size == src_res.size)
+    base.assert_id(dst_res.id, dst_res.tex_format == src_res.tex_format)
+    base.assert_id(src_res.id, src_res.kind == .Texture2D)
+    base.assert_id(dst_res.id, dst_res.usage == .Staging)
+
+    return _copy_texture(dst = dst_res, src = src_res)
+}
+
+map_texture :: proc(handle: Resource_Handle) -> (Mapped_Data, bool) {
+    res, res_ok := _get_resource(handle)
+    if !res_ok {
+        return {}, false
+    }
+    assert(!_state.in_frame)
+    assert(_state.encoder.mode == .None)
+    base.assert_id(res.id, res.kind == .Texture2D)
+    return _map_texture(res)
+}
+
+unmap_texture :: proc(handle: Resource_Handle) -> bool {
+    res, res_ok := _get_resource(handle)
+    if !res_ok {
+        return false
+    }
+    assert(!_state.in_frame)
+    assert(_state.encoder.mode == .None)
+    base.assert_id(res.id, res.kind == .Texture2D)
+    return _unmap_texture(res)
+}
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1552,6 +1617,7 @@ arena_create_raw :: proc(
     assert(size % stride == 0, loc = loc)
     assert(stride >= 4, loc = loc)
     assert(stride % 4 == 0, loc = loc)
+    assert(usage != .Staging, loc = loc)
 
     result = {
         usage = usage,
@@ -1574,6 +1640,8 @@ arena_create_raw :: proc(
 
     case .Immutable:
         // Resource will be created on submit
+    case .Staging:
+        assert(false)
     }
 
     return result, true
@@ -1665,6 +1733,9 @@ arena_submit :: proc(arena: ^Arena, loc := #caller_location) -> bool {
             },
             loc = loc,
         )
+
+    case .Staging:
+        assert(false)
     }
 
     arena.submitted_offset += arena.upload_offset

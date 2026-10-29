@@ -217,9 +217,10 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _end_frame :: proc(sync: bool) {
-        assert(_state.swapchain != nil)
-        _state.swapchain->Present(sync ? 1 : 0, {})
-
+        if _state.has_swapchain {
+            assert(_state.swapchain != nil)
+            _state.swapchain->Present(sync ? 1 : 0, {})
+        }
         _d3d11_messages()
     }
 
@@ -593,7 +594,7 @@ when BACKEND == BACKEND_D3D11 {
 
         _d3d11_check(id, _state.swapchain->GetBuffer(0, d3d11.ITexture2D_UUID, cast(^rawptr)&_state.swapchain_tex)) or_return
         _d3d11_check(id, _state.device->CreateRenderTargetView(_state.swapchain_tex, nil, &_state.swapchain_rtv)) or_return
-        _d3d11_setlabel(_state.swapchain_tex, "Swapchain")
+        _d3d11_set_label(_state.swapchain_tex, "Swapchain")
 
         _state.device_context->RSSetViewports(1, &d3d11.VIEWPORT{
             Width  = f32(size.x),
@@ -621,7 +622,7 @@ when BACKEND == BACKEND_D3D11 {
                 ppVertexShader = &result.vs,
             )) or_return
 
-            _d3d11_setlabel(result.vs, base.get_debug_id_name(id))
+            _d3d11_set_label(result.vs, base.get_debug_id_name(id))
 
         case .Pixel:
             _d3d11_check(id, _state.device->CreatePixelShader(
@@ -631,7 +632,7 @@ when BACKEND == BACKEND_D3D11 {
                 ppPixelShader = &result.ps,
             )) or_return
 
-            _d3d11_setlabel(result.ps, base.get_debug_id_name(id))
+            _d3d11_set_label(result.ps, base.get_debug_id_name(id))
 
         case .Compute:
             _d3d11_check(id, _state.device->CreateComputeShader(
@@ -641,7 +642,7 @@ when BACKEND == BACKEND_D3D11 {
                 ppComputeShader = &result.cs,
             )) or_return
 
-            _d3d11_setlabel(result.cs, base.get_debug_id_name(id))
+            _d3d11_set_label(result.cs, base.get_debug_id_name(id))
         }
 
         _d3d11_messages()
@@ -690,12 +691,12 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(id, _state.device->CreateBuffer(&desc, initial_data_ptr, &result.buf)) or_return
 
         _d3d11_messages()
-        _d3d11_setlabel(result.buf, base.get_debug_id_name(id))
+        _d3d11_set_label(result.buf, base.get_debug_id_name(id))
 
         if kind == .Storage {
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.buf, nil, &result.srv)) or_return
             _d3d11_messages()
-            _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
         }
 
         return result, true
@@ -712,7 +713,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(id, _state.device->CreateBuffer(&desc, nil, &result.buf)) or_return
 
         _d3d11_messages()
-        _d3d11_setlabel(result.buf, base.get_debug_id_name(id))
+        _d3d11_set_label(result.buf, base.get_debug_id_name(id))
 
         return result, true
     }
@@ -730,20 +731,24 @@ when BACKEND == BACKEND_D3D11 {
     ) -> (result: _Resource_State, ok: bool) {
         bind_flags: d3d11.BIND_FLAGS
 
-        if render_texture {
-            if is_texture_format_depth_stencil(format) {
-                // SHADER_RESOURCE so the depth buffer can be sampled. This requires a
-                // typeless resource format (see _d3d11_texture_resource_format).
-                bind_flags = {.DEPTH_STENCIL, .SHADER_RESOURCE}
-            } else {
-                bind_flags = {.RENDER_TARGET, .SHADER_RESOURCE}
-            }
+        if usage == .Staging {
+            bind_flags = {}
         } else {
-            bind_flags = {.SHADER_RESOURCE}
-        }
+            if render_texture {
+                if is_texture_format_depth_stencil(format) {
+                    // SHADER_RESOURCE so the depth buffer can be sampled. This requires a
+                    // typeless resource format (see _d3d11_texture_resource_format).
+                    bind_flags = {.DEPTH_STENCIL, .SHADER_RESOURCE}
+                } else {
+                    bind_flags = {.RENDER_TARGET, .SHADER_RESOURCE}
+                }
+            } else {
+                bind_flags = {.SHADER_RESOURCE}
+            }
 
-        if rw_resource {
-            bind_flags += {.UNORDERED_ACCESS}
+            if rw_resource {
+                bind_flags += {.UNORDERED_ACCESS}
+            }
         }
 
         desc := d3d11.TEXTURE2D_DESC{
@@ -776,7 +781,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(id, _state.device->CreateTexture2D(&desc, initial_data_ptr, &result.tex2d)) or_return
 
         _d3d11_messages()
-        _d3d11_setlabel(result.tex2d, base.get_debug_id_name(id))
+        _d3d11_set_label(result.tex2d, base.get_debug_id_name(id))
 
         if is_texture_format_depth_stencil(format) {
             dsv_desc := d3d11.DEPTH_STENCIL_VIEW_DESC{
@@ -785,7 +790,7 @@ when BACKEND == BACKEND_D3D11 {
                 Texture2D = {MipSlice = 0},
             }
             _d3d11_check(id, _state.device->CreateDepthStencilView(result.tex2d, &dsv_desc, &result.dsv)) or_return
-            _d3d11_setlabel(result.dsv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.dsv, base.get_debug_id_name(id))
 
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
                 Format = _d3d11_texture_depth_srv_format(format),
@@ -796,7 +801,7 @@ when BACKEND == BACKEND_D3D11 {
                 },
             }
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
-            _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
 
         } else if render_texture {
             _d3d11_check(id, _state.device->CreateRenderTargetView(result.tex2d, nil, &result.rtv)) or_return
@@ -811,9 +816,9 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
-            _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
 
-        } else {
+        } else if usage != .Staging {
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
                 Format = _d3d11_texture_format(format),
             }
@@ -835,10 +840,8 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
-            _d3d11_setlabel(result.srv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
         }
-
-        _d3d11_messages()
 
         if rw_resource {
             uav_desc := d3d11.UNORDERED_ACCESS_VIEW_DESC{
@@ -850,7 +853,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(id, _state.device->CreateUnorderedAccessView(result.tex2d, &uav_desc, &result.uav)) or_return
-            _d3d11_setlabel(result.uav, base.get_debug_id_name(id))
+            _d3d11_set_label(result.uav, base.get_debug_id_name(id))
         }
 
         _d3d11_messages()
@@ -1298,6 +1301,9 @@ when BACKEND == BACKEND_D3D11 {
                 SrcRowPitch = 0,
                 SrcDepthPitch = 0,
             )
+
+        case .Staging:
+            assert(false)
         }
 
         _d3d11_messages()
@@ -1375,13 +1381,47 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
     }
 
+    _copy_texture :: proc(dst: ^Resource_State, src: ^Resource_State) -> bool {
+        _state.device_context->CopyResource(dst.tex2d, src.tex2d)
+        _d3d11_messages()
+        return true
+    }
+
+    _map_texture :: proc(res: ^Resource_State) -> (Mapped_Data, bool) {
+        mapped: d3d11.MAPPED_SUBRESOURCE
+        if !_d3d11_check(res.id, _state.device_context->Map(
+            pResource = res.tex2d,
+            Subresource = 0,
+            MapType = .READ,
+            MapFlags = {},
+            pMappedResource = &mapped,
+        )) {
+            _d3d11_messages()
+            return {}, false
+        }
+
+        return {
+            ptr = mapped.pData,
+            row_pitch = mapped.RowPitch,
+            depth_pitch = mapped.DepthPitch,
+        }, true
+    }
+
+    _unmap_texture :: proc(res: ^Resource_State) -> bool {
+        _state.device_context->Unmap(
+            pResource = res.tex2d,
+            Subresource = 0,
+        )
+        return true
+    }
+
 
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MARK: d3d11 utils
     //
 
-    _d3d11_setlabel :: proc(self: ^d3d11.IDeviceChild, label: string) {
+    _d3d11_set_label :: proc(self: ^d3d11.IDeviceChild, label: string) {
         buf: [128]u16
         wstr := windows.utf8_to_utf16_buf(buf[:], label)
         self->SetPrivateData(d3d11.WKPDID_D3DDebugObjectNameW_UUID, u32(size_of(u16) * len(wstr)), raw_data(wstr))
@@ -1487,9 +1527,10 @@ when BACKEND == BACKEND_D3D11 {
 
     _d3d11_usage :: proc(usage: Usage) -> d3d11.USAGE {
         switch usage {
-        case .Default:   return .DEFAULT
-        case .Immutable: return .IMMUTABLE
-        case .Dynamic:   return .DYNAMIC
+        case .Default:      return .DEFAULT
+        case .Immutable:    return .IMMUTABLE
+        case .Dynamic:      return .DYNAMIC
+        case .Staging:      return .STAGING
         }
         assert(false)
         return .DEFAULT
@@ -1531,6 +1572,8 @@ when BACKEND == BACKEND_D3D11 {
             return {.WRITE}
         case .Immutable, .Default:
             return {}
+        case .Staging:
+            return {.READ}
         }
         assert(false)
         return {}

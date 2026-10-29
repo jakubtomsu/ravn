@@ -14,6 +14,7 @@ _ :: intrinsics
 when BACKEND == BACKEND_WGPU {
 
     _WGPU_CALLBACK_MODE: wgpu.CallbackMode: .AllowProcessEvents
+    _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT :: 256
 
     _MAX_SAMPLERS :: 32
 
@@ -91,12 +92,14 @@ when BACKEND == BACKEND_WGPU {
             return false
         }
 
-        assert(native_window != nil)
-        _state.surface = _wgpu_create_native_surface(_state.instance, native_window, ptr = nil)
+        if _state.has_swapchain {
+            assert(native_window != nil)
+            _state.surface = _wgpu_create_native_surface(_state.instance, native_window, ptr = nil)
 
-        if _state.surface == nil {
-            base.log_err("Failed to get WebGPU surface")
-            return false
+            if _state.surface == nil {
+                base.log_err("Failed to get WebGPU surface")
+                return false
+            }
         }
 
         base.log_info("Requesting WebGPU adapter")
@@ -203,21 +206,29 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _shutdown :: proc() {
-        assert(_state.queue != nil)
-        assert(_state.surface != nil)
-        assert(_state.device != nil)
-        assert(_state.adapter != nil)
-        assert(_state.instance != nil)
-
         if _state.surface_texture.texture != nil {
             wgpu.TextureRelease(_state.surface_texture.texture)
         }
 
-        wgpu.QueueRelease(_state.queue)
-        wgpu.SurfaceRelease(_state.surface)
-        wgpu.DeviceRelease(_state.device)
-        wgpu.AdapterRelease(_state.adapter)
-        wgpu.InstanceRelease(_state.instance)
+        if _state.queue != nil {
+            wgpu.QueueRelease(_state.queue)
+        }
+
+        if _state.surface != nil {
+            wgpu.SurfaceRelease(_state.surface)
+        }
+
+        if _state.device != nil {
+            wgpu.DeviceRelease(_state.device)
+        }
+
+        if _state.adapter != nil {
+            wgpu.AdapterRelease(_state.adapter)
+        }
+
+        if _state.instance != nil {
+            wgpu.InstanceRelease(_state.instance)
+        }
     }
 
     _begin_frame :: proc() -> bool {
@@ -228,39 +239,44 @@ when BACKEND == BACKEND_WGPU {
         assert(_state.command_encoder == nil)
         assert(_state.render_pass_encoder == nil)
         assert(_state.compute_pass_encoder == nil)
-        assert(_state.surface != nil)
+
+        if _state.has_swapchain {
+            assert(_state.surface != nil)
+        }
 
         // The browser event loop does this for us
         if ODIN_OS != .JS {
             wgpu.InstanceProcessEvents(_state.instance)
         }
 
-        _state.surface_texture = wgpu.SurfaceGetCurrentTexture(_state.surface)
+        if _state.has_swapchain {
+            _state.surface_texture = wgpu.SurfaceGetCurrentTexture(_state.surface)
 
-        switch _state.surface_texture.status {
-        case .SuccessOptimal, .SuccessSuboptimal:
-            // All good, could handle suboptimal here.
+            switch _state.surface_texture.status {
+            case .SuccessOptimal, .SuccessSuboptimal:
+                // All good, could handle suboptimal here.
 
-        case .Timeout, .Outdated, .Lost, .Occluded:
-            base.log_info("%v", _state.surface_texture.status)
-            // Skip this frame, and re-configure surface.
-            if _state.surface_texture.texture != nil {
-                wgpu.TextureRelease(_state.surface_texture.texture)
+            case .Timeout, .Outdated, .Lost, .Occluded:
+                base.log_info("%v", _state.surface_texture.status)
+                // Skip this frame, and re-configure surface.
+                if _state.surface_texture.texture != nil {
+                    wgpu.TextureRelease(_state.surface_texture.texture)
+                }
+                return false
+
+            case .Error:
+                // Fatal error
+                base.log_err("wgpu. Error: SurfaceGetCurrentTexture status = %v", _state.surface_texture.status)
+                panic("wgpu. SurfaceGetCurrentTexture Fatal Error")
             }
-            return false
 
-        case .Error:
-            // Fatal error
-            base.log_err("wgpu. Error: SurfaceGetCurrentTexture status = %v", _state.surface_texture.status)
-            panic("wgpu. SurfaceGetCurrentTexture Fatal Error")
+            _state.surface_view = wgpu.TextureCreateView(_state.surface_texture.texture, nil)
         }
 
         // TODO
         // wgpu.DevicePushErrorScope(device, .Validation)
         // wgpu.DevicePushErrorScope(device, .OutOfMemory)
         // wgpu.DevicePushErrorScope(device, .Internal)
-
-        _state.surface_view = wgpu.TextureCreateView(_state.surface_texture.texture, nil)
 
         _state.command_encoder = wgpu.DeviceCreateCommandEncoder(_state.device, nil)
 
@@ -270,7 +286,10 @@ when BACKEND == BACKEND_WGPU {
     _end_frame :: proc(sync: bool) {
         assert(_state.command_encoder != nil)
         assert(_state.queue != nil)
-        assert(_state.surface != nil)
+
+        if _state.has_swapchain {
+            assert(_state.surface != nil)
+        }
 
         if _state.render_pass_encoder != nil {
             wgpu.RenderPassEncoderEnd(_state.render_pass_encoder)
@@ -289,12 +308,19 @@ when BACKEND == BACKEND_WGPU {
             command_buffer,
         })
 
-        wgpu.SurfacePresent(_state.surface)
+        if _state.has_swapchain {
+            wgpu.SurfacePresent(_state.surface)
+        }
 
         wgpu.CommandBufferRelease(command_buffer)
 
-        wgpu.TextureViewRelease(_state.surface_view)
-        wgpu.TextureRelease(_state.surface_texture.texture)
+        if _state.surface_view != nil {
+            wgpu.TextureViewRelease(_state.surface_view)
+        }
+
+        if _state.surface_texture.texture != nil {
+            wgpu.TextureRelease(_state.surface_texture.texture)
+        }
 
         _state.command_encoder = nil
         _state.render_pass_encoder = nil
@@ -761,95 +787,115 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_texture_2d :: proc(
-        id: base.Debug_ID,
-        format: Texture_Format,
-        size: [2]i32,
-        usage: Usage,
-        mips: i32,
-        array_depth: i32,
+        id:             base.Debug_ID,
+        format:         Texture_Format,
+        size:           [2]i32,
+        usage:          Usage,
+        mips:           i32,
+        array_depth:    i32,
         render_texture: bool,
-        rw_resource: bool,
-        data: []byte,
+        rw_resource:    bool,
+        data:           []byte,
     ) -> (result: _Resource_State, ok: bool) {
-        usage_flags: wgpu.TextureUsageFlags = {.TextureBinding}
 
-        if render_texture {
-            usage_flags += {.RenderAttachment}
+        // On WGPU we must use a buffer
+        if usage == .Staging {
+            pixel_bytes := get_texture_format_pixel_size(format)
+            aligned_size := int(size.y) * (runtime.align_forward_int(int(size.x) * int(pixel_bytes), _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT))
+
+            buf_desc := wgpu.BufferDescriptor{
+                label = base.get_debug_id_name(id),
+                usage = {.MapRead, .CopyDst},
+                size = u64(aligned_size),
+                mappedAtCreation = false,
+            }
+
+            result.buf = wgpu.DeviceCreateBuffer(_state.device, &buf_desc)
+            if result.buf == nil {
+                return {}, false
+            }
+
         } else {
-            usage_flags += {.CopyDst}
-        }
+            usage_flags: wgpu.TextureUsageFlags = {.TextureBinding}
 
-        if rw_resource {
-            usage_flags += {.StorageBinding}
-        }
+            if render_texture {
+                usage_flags += {.RenderAttachment, .CopySrc}
+            } else {
+                usage_flags += {.CopyDst}
+            }
 
-        formats := [?]wgpu.TextureFormat{
-            _wgpu_texture_format(format),
-        }
+            if rw_resource {
+                usage_flags += {.StorageBinding}
+            }
 
-        tex_desc := wgpu.TextureDescriptor{
-            label = base.get_debug_id_name(id),
-            usage = usage_flags,
-            dimension = ._2D,
-            size = {
-                width = u32(size.x),
-                height = u32(size.y),
-                depthOrArrayLayers = u32(array_depth),
-            },
-            format = _wgpu_texture_format(format),
-            mipLevelCount = u32(mips),
-            sampleCount = u32(1),
-            viewFormatCount = len(formats),
-            viewFormats = &formats[0],
-        }
+            formats := [?]wgpu.TextureFormat{
+                _wgpu_texture_format(format),
+            }
 
-        result.tex = wgpu.DeviceCreateTexture(_state.device, &tex_desc)
-
-        if result.tex == nil {
-            return {}, false
-        }
-
-        row_bytes := u32(get_texture_format_pixel_size(format) * int(size.x))
-
-        // assert(row_bytes % 256 == 0)
-
-        if data != nil {
-            wgpu.QueueWriteTexture(_state.queue,
-                &wgpu.TexelCopyTextureInfo{
-                    texture = result.tex,
-                    mipLevel = 0,
-                    origin = {0, 0, 0},
-                    aspect = .All,
-                },
-                raw_data(data),
-                dataSize = len(data),
-                dataLayout = &wgpu.TexelCopyBufferLayout{
-                    offset = 0,
-                    bytesPerRow = row_bytes,
-                    rowsPerImage = u32(size.y),
-                },
-                writeSize = &wgpu.Extent3D{
+            tex_desc := wgpu.TextureDescriptor{
+                label = base.get_debug_id_name(id),
+                usage = usage_flags,
+                dimension = ._2D,
+                size = {
                     width = u32(size.x),
                     height = u32(size.y),
                     depthOrArrayLayers = u32(array_depth),
                 },
-            )
-        }
+                format = _wgpu_texture_format(format),
+                mipLevelCount = u32(mips),
+                sampleCount = u32(1),
+                viewFormatCount = len(formats),
+                viewFormats = &formats[0],
+            }
 
-        result.tex_view = wgpu.TextureCreateView(result.tex, &wgpu.TextureViewDescriptor{
-	        label = base.get_debug_id_name(id),
-	        format = formats[0],
-	        dimension = array_depth > 1 ? ._2DArray : ._2D,
-	        baseMipLevel = 0,
-	        mipLevelCount = u32(mips),
-	        baseArrayLayer = 0,
-	        arrayLayerCount = u32(array_depth),
-	        aspect = wgpu.TextureAspect.All, // tf is this
-	        usage = usage_flags,
-        })
+            result.tex = wgpu.DeviceCreateTexture(_state.device, &tex_desc)
 
-        if result.tex_view == nil {
-            return {}, false
+            if result.tex == nil {
+                return {}, false
+            }
+
+            row_bytes := u32(get_texture_format_pixel_size(format) * int(size.x))
+
+            // assert(row_bytes % 256 == 0)
+
+            if data != nil {
+                wgpu.QueueWriteTexture(_state.queue,
+                    &wgpu.TexelCopyTextureInfo{
+                        texture = result.tex,
+                        mipLevel = 0,
+                        origin = {0, 0, 0},
+                        aspect = .All,
+                    },
+                    raw_data(data),
+                    dataSize = len(data),
+                    dataLayout = &wgpu.TexelCopyBufferLayout{
+                        offset = 0,
+                        bytesPerRow = row_bytes,
+                        rowsPerImage = u32(size.y),
+                    },
+                    writeSize = &wgpu.Extent3D{
+                        width = u32(size.x),
+                        height = u32(size.y),
+                        depthOrArrayLayers = u32(array_depth),
+                    },
+                )
+            }
+
+            result.tex_view = wgpu.TextureCreateView(result.tex, &wgpu.TextureViewDescriptor{
+                label = base.get_debug_id_name(id),
+                format = formats[0],
+                dimension = array_depth > 1 ? ._2DArray : ._2D,
+                baseMipLevel = 0,
+                mipLevelCount = u32(mips),
+                baseArrayLayer = 0,
+                arrayLayerCount = u32(array_depth),
+                aspect = wgpu.TextureAspect.All, // tf is this
+                usage = usage_flags,
+            })
+
+            if result.tex_view == nil {
+                return {}, false
+            }
         }
 
         return result, true
@@ -922,7 +968,6 @@ when BACKEND == BACKEND_WGPU {
     _destroy_compute_pipeline :: proc(state: Compute_Pipeline_State) {
         wgpu.ComputePipelineRelease(state.pip)
     }
-
 
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1159,6 +1204,127 @@ when BACKEND == BACKEND_WGPU {
         )
     }
 
+    _copy_texture :: proc(dst: ^Resource_State, src: ^Resource_State) -> bool {
+        assert(_state.command_encoder != nil)
+        assert(_state.render_pass_encoder == nil)
+        assert(_state.compute_pass_encoder == nil)
+        assert(dst.buf != nil)
+
+        source := wgpu.TexelCopyTextureInfo{
+            texture = src.tex,
+            mipLevel = 0,
+            origin = {0, 0, 0},
+            aspect = .All,
+        }
+
+        pixel_bytes := get_texture_format_pixel_size(src.tex_format)
+        bytes_per_row := (runtime.align_forward_int(int(src.size.x) * int(pixel_bytes), _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT))
+
+        destination := wgpu.TexelCopyBufferInfo{
+            buffer = dst.buf,
+            layout = {
+                offset = 0,
+                bytesPerRow = u32(bytes_per_row),
+                rowsPerImage = u32(src.size.y),
+            },
+        }
+
+        copy_size := wgpu.Extent3D{
+            width = u32(src.size.x),
+            height = u32(src.size.y),
+            depthOrArrayLayers = 1,
+        }
+
+        wgpu.CommandEncoderCopyTextureToBuffer(
+            commandEncoder = _state.command_encoder,
+            source = &source,
+            destination = &destination,
+            copySize = &copy_size,
+        )
+
+        return true
+    }
+
+    _map_texture :: proc(res: ^Resource_State) -> (Mapped_Data, bool) {
+        base.assert_id(res.id, res.buf != nil)
+
+        if ODIN_OS == .JS {
+            unimplemented()
+        }
+
+        pixel_bytes := get_texture_format_pixel_size(res.tex_format)
+        bytes_per_row := (runtime.align_forward_int(int(res.size.x) * int(pixel_bytes), _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT))
+
+        State :: struct {
+            done:   bool,
+            status: wgpu.MapAsyncStatus,
+        }
+
+        state: State
+
+        wgpu.BufferMapAsync(
+            buffer = res.buf,
+            mode = {.Read},
+            offset = 0,
+            size = uint(bytes_per_row) * uint(res.size.y),
+            callbackInfo = {
+                mode = _WGPU_CALLBACK_MODE,
+                callback = on_map_done,
+                userdata1 = res,
+                userdata2 = &state,
+            },
+        )
+
+        for !state.done {
+            wgpu.InstanceProcessEvents(_state.instance)
+        }
+
+        if state.status != .Success {
+            return {}, false
+        }
+
+        mapped := wgpu.RawBufferGetMappedRange(
+            buffer = res.buf,
+            offset = 0,
+            size = uint(bytes_per_row) * uint(res.size.y),
+        )
+
+        if mapped == nil {
+            return {}, false
+        }
+
+        return {
+            ptr = mapped,
+            row_pitch = u32(bytes_per_row),
+            depth_pitch = u32(uint(bytes_per_row) * uint(res.size.y)),
+        }, true
+
+        on_map_done :: proc "c" (
+            status:     wgpu.MapAsyncStatus,
+            message:    wgpu.StringView,
+            userdata1:  rawptr,
+            userdata2:  rawptr,
+        ) {
+            context = _state.init_context
+
+            state := cast(^State)userdata2
+
+            state.done = true
+            state.status = status
+
+            if status != .Success {
+                base.log_err("WGPU texture map failed: %v\n\t%s", status, message)
+            }
+        }
+
+    }
+
+    _unmap_texture :: proc(res: ^Resource_State) -> bool {
+        base.assert_id(res.id, res.buf != nil)
+        wgpu.BufferUnmap(res.buf)
+        return true
+    }
+
 
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1214,9 +1380,10 @@ when BACKEND == BACKEND_WGPU {
 
     _wgpu_buffer_usage :: proc(usage: Usage) -> wgpu.BufferUsageFlags {
         switch usage {
-        case .Default:   return {.CopyDst}
-        case .Immutable: return {}
-        case .Dynamic:   return {.CopyDst}
+        case .Default:      return {.CopyDst}
+        case .Immutable:    return {}
+        case .Dynamic:      return {.CopyDst}
+        case .Staging:      return {.CopyDst, .MapRead}
         }
         assert(false)
         return {.CopyDst}
@@ -1250,17 +1417,6 @@ when BACKEND == BACKEND_WGPU {
         }
         assert(false)
         return .One
-    }
-
-    _wgpu_cpu_access :: proc(usage: Usage) -> wgpu.BufferUsageFlags {
-        switch usage {
-        case .Dynamic:
-            return {.MapWrite}
-        case .Immutable, .Default:
-            return {}
-        }
-        assert(false)
-        return {}
     }
 
     _wgpu_index_format :: proc(format: Index_Format) -> wgpu.IndexFormat {
