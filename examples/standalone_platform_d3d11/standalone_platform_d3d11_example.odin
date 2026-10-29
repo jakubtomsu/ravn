@@ -100,7 +100,7 @@ main :: proc() {
     device->CreateInputLayout(raw_data(layout), u32(len(layout)), vs_cso->GetBufferPointer(), vs_cso->GetBufferSize(), &input_layout)
     device_ctx->IASetInputLayout(input_layout)
 
-    keys_down: bit_set[platform.Key]
+    buttons_down: bit_set[platform.Button]
 
     mouse: [2]f32
 
@@ -109,7 +109,7 @@ main :: proc() {
     frame := 0
     main_loop: for {
         for event in platform.poll_window_events(window) {
-            fmt.println("EVENT:", event)
+            // fmt.println("EVENT:", event)
             #partial switch v in event {
             case platform.Event_Exit:
                 break main_loop
@@ -117,17 +117,17 @@ main :: proc() {
             case platform.Event_Button:
                 pressed := false
                 if v.pressed {
-                    if v.key not_in keys_down {
+                    if v.button not_in buttons_down {
                         pressed = true
                     }
 
-                    keys_down += {v.key}
+                    buttons_down += {v.button}
                 } else {
-                    keys_down -= {v.key}
+                    buttons_down -= {v.button}
                 }
 
                 if pressed {
-                    #partial switch v.key {
+                    #partial switch v.button {
                     case .Escape:
                         break main_loop
 
@@ -146,10 +146,11 @@ main :: proc() {
                     }
                 }
 
+            case platform.Event_Char:
+                fmt.println("char:", v.char)
+
             case platform.Event_Mouse:
                 mouse = {f32(v.pos.x), f32(v.pos.y)}
-
-            case platform.Event_Mouse_Button:
 
             case platform.Event_Scroll:
             }
@@ -188,8 +189,6 @@ main :: proc() {
                 {mouse, mouse + {20, 10}, mouse + {10, 20}},
                 {1, {1, 1, 1, 0}, {1, 1, 1, 0}},
             )
-
-
 
             for i in 0..<platform.MAX_GAMEPADS {
                 gp := platform.get_gamepad_state(i) or_continue

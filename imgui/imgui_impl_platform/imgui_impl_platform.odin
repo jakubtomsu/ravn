@@ -106,6 +106,9 @@ process_event :: proc(event: platform.Event) {
     case platform.Event_Scroll:
         imgui.IO_AddMouseSourceEvent(io, .Mouse)
         imgui.IO_AddMouseWheelEvent(io, v.delta.x, v.delta.y)
+
+    case platform.Event_Char:
+        imgui.IO_AddInputCharacter(io, cast(u32)v.char)
     }
 }
 
