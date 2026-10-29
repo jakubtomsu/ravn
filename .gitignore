@@ -18,10 +18,12 @@
 *.blend
 *.blend1
 *.dot
+*.png~
 
 !data/default.rscn
 !data/default.rscn.bin
 
+imgui.ini
 ols.json
 odinfmt.json
 *.odin-doc
