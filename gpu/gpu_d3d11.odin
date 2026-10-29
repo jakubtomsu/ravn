@@ -1175,13 +1175,11 @@ when BACKEND == BACKEND_D3D11 {
 
             index := 0
             for _, i in bind_group.consts {
-                if i not_in bind_group.consts_dyn {
-                    continue
-                }
-
-                assert(offsets[index] % 4 == 0)
-                offset_starts[index] = offsets[index] / 4
                 offset_nums[index] = u32(bind_group.consts_sizes[i]) / 4
+                if i in bind_group.consts_dyn {
+                    assert(offsets[index] % 4 == 0)
+                    offset_starts[index] = offsets[index] / 4
+                }
                 index += 1
             }
 
@@ -1516,10 +1514,6 @@ when BACKEND == BACKEND_D3D11 {
 
                 if msg.Severity == .CORRUPTION || msg.Severity == .ERROR {
                     panic("Error")
-                }
-
-                if VALIDATION && msg.Severity == .WARNING {
-                    panic("Warning")
                 }
             }
         }

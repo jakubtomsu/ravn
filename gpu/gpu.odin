@@ -5,7 +5,6 @@ import "../base"
 import "base:runtime"
 
 RELEASE :: #config(GPU_RELEASE, base.RELEASE)
-VALIDATION :: #config(GPU_VALIDATION, !RELEASE)
 
 BACKEND :: #config(GPU_BACKEND, DEFAULT_BACKEND)
 
@@ -1162,7 +1161,6 @@ create_buffer :: proc(
     name                := #caller_expression(handle),
     loc                 := #caller_location,
 ) -> (ok: bool) {
-    base.log_debug("Creating buffer: %s", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
@@ -1172,14 +1170,18 @@ create_buffer :: proc(
         size = i32(len(data))
     }
 
+    base.log_debug("Creating buffer %s of size %i bytes", name, size)
+
     base.assert_id(id, usage != .Staging)
     base.assert_id(id, stride > 0)
     base.assert_id(id, size > 0)
-    base.assert_id(id, stride >= 4)
-    base.assert_id(id, stride % 4 == 0)
     base.assert_id(id, stride < 1024)
     base.assert_id(id, size < 1024 * 1024 * 256)
     base.assert_id(id, (size % stride) == 0)
+    if kind != .Index {
+        base.assert_id(id, stride >= 4)
+        base.assert_id(id, stride % 4 == 0)
+    }
 
     if usage == .Immutable {
         base.assert_id(id, data != nil)
