@@ -121,7 +121,7 @@ _get_user_data_dir :: proc(allocator := context.allocator) -> string {
 _set_mouse_relative :: proc(window: Window, relative: bool) {
 }
 
-_set_mouse_visible :: proc(visible: bool) {
+_set_cursor_visible :: proc(visible: bool) {
 }
 
 @(require_results)

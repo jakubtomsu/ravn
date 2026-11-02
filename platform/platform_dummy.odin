@@ -8,12 +8,7 @@ import "base:runtime"
 when BACKEND == BACKEND_DUMMY {
 
     _State :: struct { _: u8 }
-
-    _File_Handle :: struct { _: u8 }
-    _Directory_Iter :: struct { _: u8 }
-    _Thread :: struct { _: u8 }
     _Window :: struct { _: u8 }
-    _Module :: struct { _: u8 }
 
     dummy :: proc "contextless" () -> ! {
         panic_contextless("Error: trying to call platform procedures with the dummy backend")
@@ -36,7 +31,7 @@ when BACKEND == BACKEND_DUMMY {
 
     @(require_results) _get_user_data_dir :: proc(allocator := context.allocator) -> string { dummy() }
     _set_mouse_relative :: proc(window: Window, relative: bool) { dummy() }
-    _set_mouse_visible :: proc(visible: bool) { dummy() }
+    _set_cursor_visible :: proc(visible: bool) { dummy() }
     @(require_results) _get_main_monitor_rect :: proc() -> Rect { dummy() }
     @(require_results) _get_executable_path :: proc(allocator := context.temp_allocator) -> string { dummy() }
 

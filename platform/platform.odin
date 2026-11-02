@@ -1,6 +1,7 @@
 #+vet explicit-allocators shadowing unused
 package ravn_platform
 
+import "core:strings"
 import "base:runtime"
 
 BACKEND :: #config(PLATFORM_BACKEND, DEFAULT_BACKEND)
@@ -31,15 +32,16 @@ MAX_GAMEPADS :: 4
 _state: ^State
 
 State :: struct {
-    using native:       _State,
-    state_allocator:    runtime.Allocator,
+    using native:           _State,
+    state_allocator:        runtime.Allocator,
+    current_cursor_icon:    Cursor_Icon,
 
-    mouse_pos:          [2]i32,
-    mouse_relative:     bool,
-    mouse_visible:      bool,
+    mouse_pos:              [2]i32,
+    mouse_relative:         bool,
+    mouse_visible:          bool,
 
-    event_queue:        _Event_Queue,
-    event_counter:      i32,
+    event_queue:            _Event_Queue,
+    event_counter:          i32,
 }
 
 Rect :: struct {
@@ -224,6 +226,21 @@ Button :: enum u8 {
     Mouse_Extra_2,
 }
 
+Cursor_Icon :: enum u8 {
+    Default = 0,
+    Text_Input,
+    Wait,
+    Crosshair,
+    Progress,
+    Move,
+    Not_Allowed,
+    Link_Pointer,
+    Resize_NS,
+    Resize_EW,
+    Resize_NE_SW,
+    Resize_NW_SE,
+}
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: General
@@ -294,18 +311,34 @@ set_mouse_relative :: proc(window: Window, relative: bool) {
     _set_mouse_relative(window, relative)
 }
 
-set_mouse_visible :: proc(visible: bool) {
-    if _state.mouse_visible == visible {
-        return
-    }
-    _state.mouse_visible = visible
-    _set_mouse_visible(visible)
-}
-
 register_default_exception_handler :: proc() {
     _register_default_exception_handler()
 }
 
+open_url :: proc(url: string) {
+    if
+        strings.has_prefix(url, "http://") ||
+        strings.has_prefix(url, "https://")
+    {
+        _open_url(url)
+    }
+}
+
+set_cursor_visible :: proc(visible: bool) {
+    if _state.mouse_visible == visible {
+        return
+    }
+    _set_cursor_visible(visible)
+    _state.mouse_visible = visible
+}
+
+set_cursor_icon :: proc(icon: Cursor_Icon) {
+    if icon == _state.current_cursor_icon {
+        return
+    }
+    _set_cursor_icon(icon)
+    _state.current_cursor_icon = icon
+}
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

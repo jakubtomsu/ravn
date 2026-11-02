@@ -71,6 +71,7 @@ when BACKEND == BACKEND_WINDOWS {
         perf_counter_freq:      windows.LARGE_INTEGER,
         perf_counter_start:     windows.LARGE_INTEGER,
         prev_wm_char:           windows.wchar_t,
+        cursor_icons:           [Cursor_Icon]windows.HCURSOR,
     }
 
     _Window :: struct {
@@ -100,6 +101,21 @@ when BACKEND == BACKEND_WINDOWS {
 
         ATTACH_PARENT_PROCESS :: transmute(windows.DWORD)i32(-1)
         windows.AttachConsole(ATTACH_PARENT_PROCESS)
+
+        _state.cursor_icons = {
+            .Default        = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_ARROW),
+            .Text_Input     = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_IBEAM),
+            .Wait           = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_WAIT),
+            .Crosshair      = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_CROSS),
+            .Progress       = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_APPSTARTING),
+            .Move           = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_SIZEALL),
+            .Not_Allowed    = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_NO),
+            .Link_Pointer   = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_HAND),
+            .Resize_NS      = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_SIZENS),
+            .Resize_EW      = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_SIZEWE),
+            .Resize_NE_SW   = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_SIZENESW),
+            .Resize_NW_SE   = windows.LoadCursorW(nil, transmute(cstring16)windows.IDC_SIZENWSE),
+        }
     }
 
     _shutdown :: proc() {
@@ -253,7 +269,7 @@ when BACKEND == BACKEND_WINDOWS {
         }
     }
 
-    _set_mouse_visible :: proc(visible: bool) {
+    _set_cursor_visible :: proc(visible: bool) {
         if visible {
             for {
                 if windows.ShowCursor(true) > 0 {
@@ -267,6 +283,22 @@ when BACKEND == BACKEND_WINDOWS {
                 }
             }
         }
+    }
+
+    _open_url :: proc(url: string) {
+        urlw := windows.utf8_to_wstring_alloc(url, context.temp_allocator)
+        windows.ShellExecuteW(
+            hwnd = nil,
+            lpOperation = "open",
+            lpFile = urlw,
+            lpParameters = "",
+            lpDirectory = "",
+            nShowCmd = windows.SW_SHOWNORMAL,
+        )
+    }
+
+    _set_cursor_icon :: proc(icon: Cursor_Icon) {
+        // no op
     }
 
 
@@ -556,7 +588,7 @@ when BACKEND == BACKEND_WINDOWS {
 
         case windows.WM_SETCURSOR:
             if windows.LOWORD(lparam) == windows.HTCLIENT {
-                windows.SetCursor(windows.LoadCursorA(nil, windows.IDC_ARROW))
+                windows.SetCursor(_state.cursor_icons[_state.current_cursor_icon])
                 result = 0
             }
 
@@ -1054,7 +1086,6 @@ when BACKEND == BACKEND_WINDOWS {
             base.log_err("%s : %s", text, str, loc = loc)
         }
     }
-
 
     // from sdl/scancodes_windows.h
     @(rodata)

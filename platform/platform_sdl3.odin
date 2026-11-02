@@ -28,12 +28,8 @@ BACKEND_SDL3 :: "SDL3"
 
 when BACKEND == BACKEND_SDL3 {
 
-    _State :: struct { _: u8 }
-
-    _Directory_Iter :: struct {
-        index: i32,
-        count: i32,
-        matches: [^]cstring, // allocated by sdl.GlobDirectory
+    _State :: struct {
+        cursor_icons:   [Cursor_Icon]sdl3.Cursor,
     }
 
     _Window :: struct {
@@ -47,6 +43,21 @@ when BACKEND == BACKEND_SDL3 {
         base.log_info("Initialized SDL3")
 
         // sdl3.SetHint(sdl3.HINT_MOUSE_FOCUS_CLICKTHROUGH, "1")
+
+        _state.cursor_icons = {
+            .Default        = sdl3.CreateSystemCursor(.DEFAULT),
+            .Text_Input     = sdl3.CreateSystemCursor(.INPUT),
+            .Wait           = sdl3.CreateSystemCursor(.WAIT),
+            .Crosshair      = sdl3.CreateSystemCursor(.CROSSHAIR),
+            .Progress       = sdl3.CreateSystemCursor(.PROGRESS),
+            .Move           = sdl3.CreateSystemCursor(.MOVE),
+            .Not_Allowed    = sdl3.CreateSystemCursor(.NOT_ALLOWED),
+            .Link_Pointer   = sdl3.CreateSystemCursor(.LINK_POINTER),
+            .Resize_NS      = sdl3.CreateSystemCursor(.NS_RESIZE),
+            .Resize_EW      = sdl3.CreateSystemCursor(.EW_RESIZE),
+            .Resize_NE_SW   = sdl3.CreateSystemCursor(.NESW_RESIZE),
+            .Resize_NW_SE   = sdl3.CreateSystemCursor(.NWSE_RESIZE),
+        }
     }
 
     _shutdown :: proc() {
@@ -129,7 +140,7 @@ when BACKEND == BACKEND_SDL3 {
         _ = sdl3.SetWindowMouseGrab(window.window, relative)
     }
 
-    _set_mouse_visible :: proc(visible: bool) {
+    _set_cursor_visible :: proc(visible: bool) {
         if visible {
             _ = sdl3.ShowCursor()
         } else {
@@ -155,7 +166,13 @@ when BACKEND == BACKEND_SDL3 {
         }
     }
 
+    _open_url :: proc(url: string) {
+        _ = sdl3.OpenURL(strings.clone_to_cstring(url, context.temp_allocator))
+    }
 
+    _set_cursor_icon :: proc(icon: Cursor_Icon) {
+        sdl3.SetCursor(_state.cursor_icons[icon])
+    }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MARK: Window
