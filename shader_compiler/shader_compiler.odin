@@ -32,6 +32,7 @@ Options :: struct {
     defines:        [][2]string,
     release:        bool,
     include_proc:   Include_Proc,
+    include_dirs:   []string,
     user:           rawptr,
 }
 
@@ -41,7 +42,7 @@ Blob :: struct {
     data:   []byte,
 }
 
-Include_Proc :: #type proc (path: string, user: rawptr) -> (string, bool)
+Include_Proc :: #type proc (path: string, opts: Options) -> (string, bool)
 
 // If this returns false the shader compiler is not available. Do not call any other procedures.
 @(require_results)
@@ -137,4 +138,16 @@ destroy_blob :: proc(blob: ^Blob) {
     _dxbc_blob_destroy(&blob._dxbc)
     _slang_blob_destroy(&blob._slang)
     blob^ = {}
+}
+
+file_system_include_proc : Include_Proc : proc(path: string, opts: Options) -> (string, bool) {
+    for dir in opts.include_dirs {
+        actual_path := os.join_path({dir, path}, context.temp_allocator) or_continue
+        log.debug(actual_path, path)
+        data, err := os.read_entire_file_from_path(actual_path, allocator = context.temp_allocator)
+        if err == nil {
+            return string(data), true
+        }
+    }
+    return "", false
 }

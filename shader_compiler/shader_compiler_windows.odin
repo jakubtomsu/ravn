@@ -97,7 +97,7 @@ _compile_dxbc :: proc(
     if res != 0 {
         if errors != nil {
             str := string((cast([^]u8)errors->GetBufferPointer())[:errors->GetBufferSize()])
-            log.error("Shader compile error:\n\t%s", str)
+            log.errorf("Shader compile error:\n\t%s", str)
         }
         return {}, false
     }
@@ -138,9 +138,11 @@ _d3dcompiler_include_open ::  proc "system" (
         return transmute(d3d_compiler.HRESULT)u32(windows.E_FAIL)
     }
 
+    str := string(pFileName)
+
     result, ok := this.opts.include_proc(
-        path = string(pFileName),
-        user = this.opts.user,
+        path = str,
+        opts = this.opts,
     )
 
     if !ok {

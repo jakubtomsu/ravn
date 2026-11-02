@@ -277,7 +277,7 @@ _slang_ifilesystem_loadfile :: proc "system" (
 
     result, ok := this.opts.include_proc(
         path = string(path),
-        user = this.opts.user,
+        opts = this.opts,
     )
 
     if !ok {
