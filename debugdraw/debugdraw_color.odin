@@ -2,6 +2,9 @@ package ravn_debugdraw
 
 // color utils
 
+// Based Sweetie 16 palette:
+// https://lospec.com/palette-list/sweetie-16
+
 BLACK       :: [4]u8{0x1a, 0x1c, 0x2c, 0xff}// #1a1c2c
 PURPLE      :: [4]u8{0x5d, 0x27, 0x5d, 0xff}// #5d275d
 RED         :: [4]u8{0xb1, 0x3e, 0x53, 0xff}// #b13e53

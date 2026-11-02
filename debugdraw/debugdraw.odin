@@ -53,8 +53,8 @@ VERTEX_BUFFER_LINE_KINDS :: bit_set[Vertex_Buffer_Kind]{
 Shape_Buffer_Kind :: enum u8 {
     Line_Box,
     Line_Circle,
-    Line_Half_Circle,
     Line_Sphere,
+    Line_Hemisphere,
     Line_Cone,
     Line_Cylinder,
     Solid_Box,
@@ -68,7 +68,6 @@ Shape_Buffer_Kind :: enum u8 {
 SHAPE_BUFFER_LINE_KINDS :: bit_set[Shape_Buffer_Kind]{
     .Line_Box,
     .Line_Circle,
-    .Line_Half_Circle,
     .Line_Sphere,
     .Line_Cone,
     .Line_Cylinder,
@@ -506,25 +505,9 @@ circle :: proc(
 
 half_circle :: proc()
 sphere :: proc()
+cone :: proc()
 cylinder :: proc()
 
-make_shape_inst :: proc(
-    pos:    [3]f32,
-    mat:    matrix[3, 3]f32,
-    col:    [4]u8,
-) -> Shape_Instance {
-    cols: [3][4]f32
-    cols[0].xyz = mat[0]
-    cols[1].xyz = mat[1]
-    cols[2].xyz = mat[2]
-    return {
-        pos = pos,
-        col = col,
-        mat_x = cast([4]f16)cols[0],
-        mat_y = cast([4]f16)cols[1],
-        mat_z = cast([4]f16)cols[2],
-    }
-}
 
 // MARK: triangle drawing
 
@@ -548,7 +531,23 @@ solid_cylinder :: proc()
 capsule :: proc()
 aabb :: proc()
 
-
+make_shape_inst :: proc(
+    pos:    [3]f32,
+    mat:    matrix[3, 3]f32,
+    col:    [4]u8,
+) -> Shape_Instance {
+    cols: [3][4]f32
+    cols[0].xyz = mat[0]
+    cols[1].xyz = mat[1]
+    cols[2].xyz = mat[2]
+    return {
+        pos = pos,
+        col = col,
+        mat_x = cast([4]f16)cols[0],
+        mat_y = cast([4]f16)cols[1],
+        mat_z = cast([4]f16)cols[2],
+    }
+}
 
 // MARK: Buffer
 
