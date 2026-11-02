@@ -678,11 +678,11 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
 
     result.mode = mode
 
-    #patial switch _ in ti_base {
+    #partial switch _ in ti_base.variant {
     case runtime.Type_Info_Float,
          runtime.Type_Info_Integer,
          runtime.Type_Info_Array:
-        format, ok := _vertex_format_from_type(ti_base)
+        format, ok := _vertex_format_from_type(ti_base, loc = loc)
         if !ok {
             return {}
         }
@@ -718,14 +718,14 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
             if tag_val == "-" {
                 continue
             }
-            slot_format, ok = _vertex_format_from_name(tag_val, T, name, loc)
+            slot_format, ok = _vertex_format_from_name(tag_val, loc)
             if !ok {
                 base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, tag_val, loc = loc)
                 panic("no matching Vertex_Format", loc)
             }
         } else {
             field_ti := runtime.type_info_core(st.types[field_index])
-            slot_format, ok = _vertex_format_from_type(field_ti)
+            slot_format, ok = _vertex_format_from_type(field_ti, loc = loc)
             if !ok {
                 panic("Invalid vertex format type")
             }
@@ -738,7 +738,7 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
     return result
 }
 
-_vertex_format_from_type :: proc(ti: ^runtime.Type_Info) -> (Vertex_Format, bool) {
+_vertex_format_from_type :: proc(ti: ^runtime.Type_Info, loc: runtime.Source_Code_Location) -> (Vertex_Format, bool) {
     elem_ti := ti
     num_components := 1
     if arr, is_arr := ti.variant.(runtime.Type_Info_Array); is_arr {
@@ -751,7 +751,7 @@ _vertex_format_from_type :: proc(ti: ^runtime.Type_Info) -> (Vertex_Format, bool
     case runtime.Type_Info_Float:   prefix = "F"
     case runtime.Type_Info_Integer: prefix = v.signed ? "I" : "U"
     case:
-        base.log_err("field '%v.%s' has unsupported type '%v'", typeid_of(T), name, st.types[field_index].id, loc = loc)
+        base.log_err("Array '%v' has unsupported type '%v'", ti.id, elem_ti, loc = loc)
         return .Invalid, false
     }
 
@@ -760,16 +760,16 @@ _vertex_format_from_type :: proc(ti: ^runtime.Type_Info) -> (Vertex_Format, bool
         format_name = base.tprintf("%sx%i", format_name, num_components)
     }
 
-    result, ok := _vertex_format_from_name(format_name, T, name, loc)
+    result, ok := _vertex_format_from_name(format_name, loc)
     if !ok {
-        base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, format_name, loc = loc)
+        base.log_err("Type '%v' maps to '%s', which is not a valid Vertex_Format", ti.id, format_name, loc = loc)
         return .Invalid, false
     }
 
     return result, true
 }
 
-_vertex_format_from_name :: proc(name: string, $T: typeid, field: string, loc: runtime.Source_Code_Location) -> (Vertex_Format, bool) {
+_vertex_format_from_name :: proc(name: string, loc: runtime.Source_Code_Location) -> (Vertex_Format, bool) {
     enum_ti := runtime.type_info_base(type_info_of(Vertex_Format)).variant.(runtime.Type_Info_Enum)
     for n, i in enum_ti.names {
         format := Vertex_Format(i64(enum_ti.values[i]))
@@ -1833,7 +1833,7 @@ _arena_allocator_proc :: proc(
 
 get_resource_kind :: proc(handle: Resource_Handle) -> (result: Resource_Kind, ok: bool) #optional_ok {
     res := _get_resource(handle) or_return
-    return res.kind
+    return res.kind, true
 }
 
 get_texture_format :: proc(handle: Resource_Handle) -> (result: Texture_Format, ok: bool) #optional_ok {
