@@ -83,6 +83,20 @@ new_frame :: proc() {
     delta := f32(time.duration_seconds(time.tick_diff(state.prev_tick, curr_tick)))
     io.DeltaTime = state.prev_tick._nsec > 0 ? delta : 0
     state.prev_tick = curr_tick
+
+    update_mouse_cursor()
+}
+
+update_mouse_cursor :: proc() {
+    io := imgui.GetIO()
+    cursor := imgui.GetMouseCursor()
+
+    if io.MouseDrawCursor || cursor == .None {
+        platform.set_cursor_visible(false)
+    } else {
+        platform.set_cursor_visible(true)
+        platform.set_cursor_icon(_imgui_cursor_icon(cursor))
+    }
 }
 
 process_event :: proc(event: platform.Event) {
@@ -143,9 +157,27 @@ _open_in_shell :: proc "c" (ctx: ^imgui.Context, path: cstring) -> bool {
     state := cast(^State)io.BackendPlatformUserData
     context = state.init_context
 
-    // TODO
+    platform.open_url(string(path))
 
-    return false
+    return true
+}
+
+_imgui_cursor_icon :: proc(cursor: imgui.MouseCursor) -> platform.Cursor_Icon {
+    switch cursor {
+	case .None:         return .Default
+	case .Arrow:        return .Default
+	case .TextInput:    return .Text_Input
+	case .ResizeAll:    return .Move
+	case .ResizeNS:     return .Resize_NS
+	case .ResizeEW:     return .Resize_EW
+	case .ResizeNESW:   return .Resize_NE_SW
+	case .ResizeNWSE:   return .Resize_NW_SE
+	case .Hand:         return .Link_Pointer
+	case .Wait:         return .Wait
+	case .Progress:     return .Progress
+	case .NotAllowed:   return .Not_Allowed
+    }
+    return .Default
 }
 
 _imgui_mouse_button_index_from_button :: proc(button: platform.Button) -> (i32, bool) {
