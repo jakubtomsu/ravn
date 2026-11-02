@@ -176,6 +176,9 @@ render_draw_data :: proc(data: ^imgui.DrawData) {
     global_index_offset := 0
     global_vertex_offset := 0
 
+    clip_offset := data.DisplayPos
+    clip_scale := data.FramebufferScale
+
     // Render command lists
     for &list in data.CmdLists.Data[:data.CmdLists.Size] {
         for &cmd in list.CmdBuffer.Data[:list.CmdBuffer.Size] {
@@ -184,7 +187,14 @@ render_draw_data :: proc(data: ^imgui.DrawData) {
                 continue
             }
 
-            // TODO: set scissor
+            // Project scissor/clipping rectangles into framebuffer space
+            clip_min := (cmd.ClipRect.xy - clip_offset) * clip_scale
+            clip_max := (cmd.ClipRect.zw - clip_offset) * clip_scale
+            if clip_max.x <= clip_min.x || clip_max.y <= clip_min.y {
+                continue
+            }
+
+            gpu.set_scissor(cast([2]i32)clip_min, cast([2]i32)clip_max)
 
             tex := _rawptr_as_handle(gpu.Resource_Handle, cast(rawptr)cast(uintptr)imgui.DrawCmd_GetTexID(&cmd))
             binds := _get_bind_group(state, tex)
