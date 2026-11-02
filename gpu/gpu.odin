@@ -674,7 +674,23 @@ make_compute_pipeline_desc :: proc(
 //      color: [4]u8 `gpu:"U8x4_Norm"`,
 //  }
 make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_location) -> (result: Vertex_Layout_Desc) {
-    st, is_struct := runtime.type_info_base(type_info_of(T)).variant.(runtime.Type_Info_Struct)
+    ti_base := runtime.type_info_base(type_info_of(T))
+
+    result.mode = mode
+
+    #patial switch _ in ti_base {
+    case runtime.Type_Info_Float,
+         runtime.Type_Info_Integer,
+         runtime.Type_Info_Array:
+        format, ok := _vertex_format_from_type(ti_base)
+        if !ok {
+            return {}
+        }
+        result.slots[0] = format
+        return result
+    }
+
+    st, is_struct := ti_base.variant.(runtime.Type_Info_Struct)
     if !is_struct {
         base.log_err("'%v' is not a struct", typeid_of(T), loc = loc)
         panic("type must be a struct", loc)
@@ -685,6 +701,7 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
         panic("too many vertex fields", loc)
     }
 
+    slot_index := 0
     for field_index in 0 ..< st.field_count {
         name := st.names[field_index]
         offset := st.offsets[field_index]
@@ -694,47 +711,62 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
             panic("field is not 4-byte aligned", loc)
         }
 
+        slot_format: Vertex_Format
+
         ok: bool
         if tag_val, has_tag := _struct_tag_lookup(st.tags[field_index], "gpu"); has_tag {
-            result.slots[field_index], ok = _vertex_format_from_name(tag_val, T, name, loc)
+            if tag_val == "-" {
+                continue
+            }
+            slot_format, ok = _vertex_format_from_name(tag_val, T, name, loc)
             if !ok {
                 base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, tag_val, loc = loc)
                 panic("no matching Vertex_Format", loc)
             }
-            continue
+        } else {
+            field_ti := runtime.type_info_core(st.types[field_index])
+            slot_format, ok = _vertex_format_from_type(field_ti)
+            if !ok {
+                panic("Invalid vertex format type")
+            }
         }
 
-        field_ti := runtime.type_info_core(st.types[field_index])
-        elem_ti := field_ti
-        num_components := 1
-        if arr, is_arr := field_ti.variant.(runtime.Type_Info_Array); is_arr {
-            num_components = arr.count
-            elem_ti = runtime.type_info_core(arr.elem)
-        }
-
-        prefix: string
-        #partial switch v in elem_ti.variant {
-        case runtime.Type_Info_Float:   prefix = "F"
-        case runtime.Type_Info_Integer: prefix = v.signed ? "I" : "U"
-        case:
-            base.log_err("field '%v.%s' has unsupported type '%v'", typeid_of(T), name, st.types[field_index].id, loc = loc)
-            panic("unsupported field type", loc)
-        }
-
-        format_name := base.tprintf("%s%i", prefix, elem_ti.size * 8)
-        if num_components > 1 {
-            format_name = base.tprintf("%sx%i", format_name, num_components)
-        }
-
-        result.slots[field_index], ok = _vertex_format_from_name(format_name, T, name, loc)
-        if !ok {
-            base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, format_name, loc = loc)
-            panic("no matching Vertex_Format", loc)
-        }
+        result.slots[slot_index] = slot_format
+        slot_index += 1
     }
 
-    result.mode = mode
     return result
+}
+
+_vertex_format_from_type :: proc(ti: ^runtime.Type_Info) -> (Vertex_Format, bool) {
+    elem_ti := ti
+    num_components := 1
+    if arr, is_arr := ti.variant.(runtime.Type_Info_Array); is_arr {
+        num_components = arr.count
+        elem_ti = runtime.type_info_core(arr.elem)
+    }
+
+    prefix: string
+    #partial switch v in elem_ti.variant {
+    case runtime.Type_Info_Float:   prefix = "F"
+    case runtime.Type_Info_Integer: prefix = v.signed ? "I" : "U"
+    case:
+        base.log_err("field '%v.%s' has unsupported type '%v'", typeid_of(T), name, st.types[field_index].id, loc = loc)
+        return .Invalid, false
+    }
+
+    format_name := base.tprintf("%s%i", prefix, elem_ti.size * 8)
+    if num_components > 1 {
+        format_name = base.tprintf("%sx%i", format_name, num_components)
+    }
+
+    result, ok := _vertex_format_from_name(format_name, T, name, loc)
+    if !ok {
+        base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, format_name, loc = loc)
+        return .Invalid, false
+    }
+
+    return result, true
 }
 
 _vertex_format_from_name :: proc(name: string, $T: typeid, field: string, loc: runtime.Source_Code_Location) -> (Vertex_Format, bool) {
@@ -1791,6 +1823,25 @@ _arena_allocator_proc :: proc(
     }
 
     return nil, .Invalid_Argument
+}
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// MARK: Getters
+//
+
+get_resource_kind :: proc(handle: Resource_Handle) -> (result: Resource_Kind, ok: bool) #optional_ok {
+    res := _get_resource(handle) or_return
+    return res.kind
+}
+
+get_texture_format :: proc(handle: Resource_Handle) -> (result: Texture_Format, ok: bool) #optional_ok {
+    res := _get_resource(handle) or_return
+    if res.kind != .Texture2D || res.kind != .Texture3D {
+        return .Invalid, false
+    }
+    return res.tex_format, true
 }
 
 

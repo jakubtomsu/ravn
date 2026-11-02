@@ -1,5 +1,6 @@
 #+test
 #+vet shadowing
+#+private file
 package ravn_gpu
 
 // import "core:slice"
