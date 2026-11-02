@@ -1844,7 +1844,7 @@ get_resource_kind :: proc(handle: Resource_Handle) -> (result: Resource_Kind, ok
 
 get_texture_format :: proc(handle: Resource_Handle) -> (result: Texture_Format, ok: bool) #optional_ok {
     res := _get_resource(handle) or_return
-    if res.kind != .Texture2D || res.kind != .Texture3D {
+    if res.kind != .Texture2D && res.kind != .Texture3D {
         return .Invalid, false
     }
     return res.tex_format, true
