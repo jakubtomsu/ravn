@@ -129,6 +129,14 @@ _get_main_monitor_rect :: proc() -> Rect {
     return _get_window_rect({})
 }
 
+_open_url :: proc(url: string) {
+
+}
+
+_set_cursor_icon :: proc(icon: Cursor_Icon) {
+
+}
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Window

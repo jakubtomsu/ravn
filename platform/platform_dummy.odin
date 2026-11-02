@@ -39,6 +39,10 @@ when BACKEND == BACKEND_DUMMY {
     _pin_thread_to_cpu_core :: proc(thread: Thread, core_index: int) -> bool { return false }
     @(require_results) _file_dialog :: proc(mode: File_Dialog_Mode, default_path: string, patterns: []File_Pattern, title := "") -> (string, bool) { dummy() }
 
+    _open_url :: proc(url: string) { dummy() }
+    _set_cursor_icon :: proc(icon: Cursor_Icon) { dummy() }
+
+
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MARK: Window
