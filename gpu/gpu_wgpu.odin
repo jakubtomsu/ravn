@@ -1325,6 +1325,14 @@ when BACKEND == BACKEND_WGPU {
         return true
     }
 
+    _set_scissor :: proc(min: [2]i32, max: [2]i32) {
+        wgpu.RenderPassEncoderSetScissorRect(_state.render_pass_encoder,
+            x = u32(min.x),
+            y = u32(min.y),
+            width = u32(max.x - min.x),
+            height = u32(max.y - min.y),
+        )
+    }
 
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////

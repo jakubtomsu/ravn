@@ -65,4 +65,6 @@ when BACKEND == BACKEND_DUMMY {
     _draw_indexed :: proc(index_num: int, instance_num: int, index_offset: int, vertex_offset: int, instance_offset: int) { dummy() }
     _dispatch_compute :: proc(size: [3]i32) { dummy() }
 
+    _set_scissor :: proc(min: [2]i32, max: [2]i32) { dummy() }
+
 }

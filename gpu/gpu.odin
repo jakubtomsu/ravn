@@ -1348,6 +1348,7 @@ begin_graphics_pass :: proc(name: string, desc: Graphics_Pass_Desc, loc := #call
         graphics_pipeline_desc = {},
         graphics_pass_desc = desc,
     }
+    set_scissor({0, 0}, _state.swapchain_size)
 }
 
 end_graphics_pass :: proc() {
@@ -1595,6 +1596,11 @@ unmap_texture :: proc(handle: Resource_Handle) -> bool {
     return _unmap_texture(res)
 }
 
+set_scissor :: proc(min: [2]i32, max: [2]i32) {
+    assert(_state.in_frame)
+    assert(_state.encoder.mode == .Graphics)
+    _set_scissor(min, max)
+}
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

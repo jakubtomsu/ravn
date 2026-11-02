@@ -410,7 +410,7 @@ when BACKEND == BACKEND_D3D11 {
             DepthBiasClamp          = 0,
             SlopeScaledDepthBias    = 0,
             DepthClipEnable         = true,
-            ScissorEnable           = false,
+            ScissorEnable           = true,
             MultisampleEnable       = false,
             AntialiasedLineEnable   = false,
         }
@@ -1411,6 +1411,16 @@ when BACKEND == BACKEND_D3D11 {
             Subresource = 0,
         )
         return true
+    }
+
+    _set_scissor :: proc(min: [2]i32, max: [2]i32) {
+        rect := d3d11.RECT{
+            left = min.x,
+            top = min.y,
+            right = max.x,
+            bottom = max.y,
+        }
+        _state.device_context->RSSetScissorRects(1, &rect)
     }
 
 
