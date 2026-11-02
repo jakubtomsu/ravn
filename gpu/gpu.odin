@@ -1122,6 +1122,7 @@ create_texture_2d :: proc(
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
     base.assert_id(id, format != .Invalid)
+    base.assert_id(id, format != .Swapchain)
     base.assert_id(id, size.x > 0)
     base.assert_id(id, size.x <= MAX_TEXTURE_2D_SIZE)
     base.assert_id(id, size.y > 0)
@@ -1477,7 +1478,6 @@ update_buffer :: proc(handle: Resource_Handle, offset: int, buffers: ..[]byte, l
     }
 
     res, res_ok := _get_resource(handle)
-    assert(res_ok, loc = loc)
     if !res_ok {
         return false
     }
@@ -1838,11 +1838,17 @@ _arena_allocator_proc :: proc(
 //
 
 get_resource_kind :: proc(handle: Resource_Handle) -> (result: Resource_Kind, ok: bool) #optional_ok {
+    if handle == SWAPCHAIN_HANDLE {
+        return .Texture2D, true
+    }
     res := _get_resource(handle) or_return
     return res.kind, true
 }
 
 get_texture_format :: proc(handle: Resource_Handle) -> (result: Texture_Format, ok: bool) #optional_ok {
+    if handle == SWAPCHAIN_HANDLE {
+        return .Swapchain, true
+    }
     res := _get_resource(handle) or_return
     if res.kind != .Texture2D && res.kind != .Texture3D {
         return .Invalid, false
