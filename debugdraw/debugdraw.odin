@@ -32,7 +32,8 @@ State :: struct {
 
     line_pip:           gpu.Graphics_Pipeline_Handle,
     tri_pip:            gpu.Graphics_Pipeline_Handle,
-    shape_pip:          gpu.Graphics_Pipeline_Handle,
+    line_shape_pip:     gpu.Graphics_Pipeline_Handle,
+    tri_shape_pip:      gpu.Graphics_Pipeline_Handle,
     binds:              gpu.Bind_Group_Handle,
     bind_layout:        gpu.Bind_Layout_Handle,
 
@@ -43,6 +44,10 @@ State :: struct {
 Vertex_Buffer_Kind :: enum u8 {
     Line,
     Solid_Tri,
+}
+
+VERTEX_BUFFER_LINE_KINDS :: bit_set[Vertex_Buffer_Kind]{
+    .Line,
 }
 
 Shape_Buffer_Kind :: enum u8 {
@@ -58,6 +63,15 @@ Shape_Buffer_Kind :: enum u8 {
     Solid_Hemisphere,
     Solid_Cone,
     Solid_Cylinder,
+}
+
+SHAPE_BUFFER_LINE_KINDS :: bit_set[Shape_Buffer_Kind]{
+    .Line_Box,
+    .Line_Circle,
+    .Line_Half_Circle,
+    .Line_Sphere,
+    .Line_Cone,
+    .Line_Cylinder,
 }
 
 BUFFER_PERSISTENT_FILTER_PER_FRAME :: 1024
@@ -80,13 +94,13 @@ Constants :: struct {
     proj:   matrix[4, 4]f32,
 }
 
-Shape_Instance :: struct {
+Shape_Instance :: struct #all_or_none {
     pos:    [3]f32,
     col:    [4]u8 `gpu:"U8x4_Norm"`,
     mat_x:  [4]f16,
     mat_y:  [4]f16,
     mat_z:  [4]f16,
-    _pad:   [4]f16,
+    _:      [4]f16,
 }
 
 Shape_Vertex :: [4]f32
@@ -188,17 +202,31 @@ init :: proc(
     }
 
 
+    if !gpu.create_constants(&_state.consts, size_of(Constants)) {
+        return false
+    }
+
+    if !gpu.create_bind_layout(&_state.bind_layout, gpu.Bind_Layout_Desc{{
+        {0, .Constants, {.Vertex}, {}},
+    }}) {
+        return false
+    }
+
+    if !gpu.create_bind_group(&_state.binds, gpu.Bind_Group_Desc{
+        layout = _state.bind_layout,
+        slots = {{0, _state.consts, {}}},
+    }) {
+        return false
+    }
+
     base_pip_desc := gpu.make_graphics_pipeline_desc(
         vs = {},
         ps = _state.ps,
+        bind_layouts = { 0 = _state.bind_layout },
         vertex_layouts = {},
-        out_colors = {
-            0 = gpu.get_texture_format(_state.target_color),
-        },
+        out_colors = { 0 = gpu.get_texture_format(_state.target_color) },
         out_depth = gpu.get_texture_format(_state.target_depth) or_else .Invalid,
-        blends = {
-            0 = gpu.BLEND_ALPHA,
-        },
+        blends = { 0 = gpu.BLEND_ALPHA, },
         topo = .Invalid,
     )
 
@@ -230,6 +258,21 @@ init :: proc(
 
     {
         pip_desc := base_pip_desc
+        pip_desc.topo = .Lines
+        pip_desc.vs = _state.shape_vs
+        pip_desc.cull = .Back
+        pip_desc.vertex_layouts = {
+            0 = gpu.make_vertex_layout(Shape_Vertex, .Vertex),
+            1 = gpu.make_vertex_layout(Shape_Instance, .Instance),
+        }
+
+        if !gpu.create_graphics_pipeline(&_state.line_shape_pip, pip_desc) {
+            return false
+        }
+    }
+
+    {
+        pip_desc := base_pip_desc
         pip_desc.topo = .Triangles
         pip_desc.vs = _state.shape_vs
         pip_desc.cull = .Back
@@ -238,7 +281,7 @@ init :: proc(
             1 = gpu.make_vertex_layout(Shape_Instance, .Instance),
         }
 
-        if !gpu.create_graphics_pipeline(&_state.shape_pip, pip_desc) {
+        if !gpu.create_graphics_pipeline(&_state.tri_shape_pip, pip_desc) {
             return false
         }
     }
@@ -265,8 +308,8 @@ init :: proc(
 
     if !gpu.create_buffer(&_state.vert_buf,
         kind = .Vertex,
-        stride = size_of(Shape_Instance),
-        size = size_of(Shape_Instance) * int(total_vert_cap),
+        stride = size_of(Vertex),
+        size = size_of(Vertex) * int(total_vert_cap),
         usage = .Dynamic,
     ) {
         log.error("Failed to create vert buffer")
@@ -339,27 +382,52 @@ render_frame :: proc(camera_proj: matrix[4, 4]f32, delta: f32) {
         depth = { resource = _state.target_depth, clear_mode = .Keep },
     })
 
+    gpu.set_bind_group(0, _state.binds)
+
     {
         gpu.set_graphics_pipeline(_state.line_pip)
         gpu.set_vertex_buffer(0, _state.vert_buf)
-        draw_vert_buffer(_state.vert_buffers[.Line])
+        for buf, kind in _state.vert_buffers {
+            if kind in VERTEX_BUFFER_LINE_KINDS {
+                draw_vert_buffer(buf)
+            }
+        }
     }
 
     {
         gpu.set_graphics_pipeline(_state.tri_pip)
         gpu.set_vertex_buffer(0, _state.vert_buf)
-        draw_vert_buffer(_state.vert_buffers[.Solid_Tri])
+        for buf, kind in _state.vert_buffers {
+            if kind not_in VERTEX_BUFFER_LINE_KINDS {
+                draw_vert_buffer(buf)
+            }
+        }
     }
 
     {
-        gpu.set_graphics_pipeline(_state.shape_pip)
+        gpu.set_graphics_pipeline(_state.line_shape_pip)
         gpu.set_vertex_buffer(0, _state.shape_model_vbuf)
         gpu.set_vertex_buffer(1, _state.shape_inst_buf)
 
         for buf, kind in _state.shape_buffers {
-            draw_inst_buffer(buf, len(_buffer_shape_verts[kind]))
+            if kind in SHAPE_BUFFER_LINE_KINDS {
+                draw_inst_buffer(buf, len(_buffer_shape_verts[kind]), vert_offset = int(_state.shape_offsets[kind]))
+            }
         }
     }
+
+    {
+        gpu.set_graphics_pipeline(_state.tri_shape_pip)
+        gpu.set_vertex_buffer(0, _state.shape_model_vbuf)
+        gpu.set_vertex_buffer(1, _state.shape_inst_buf)
+
+        for buf, kind in _state.shape_buffers {
+            if kind in SHAPE_BUFFER_LINE_KINDS {
+                draw_inst_buffer(buf, len(_buffer_shape_verts[kind]), vert_offset = int(_state.shape_offsets[kind]))
+            }
+        }
+    }
+
 
     gpu.end_graphics_pass()
 
@@ -396,11 +464,11 @@ draw_vert_buffer :: proc(buf: $T/Buffer($E)) {
     )
 }
 
-draw_inst_buffer :: proc(buf: $T/Buffer($E), vert_num: int) {
+draw_inst_buffer :: proc(buf: $T/Buffer($E), vert_num: int, vert_offset: int) {
     gpu.draw_non_indexed(
         vertex_num = vert_num,
         instance_num = int(buf.immediate_offs + buf.persistent_offs),
-        vertex_offset = 0,
+        vertex_offset = vert_offset,
         instance_offset = int(buf.upload_offset),
     )
 }
@@ -412,19 +480,51 @@ draw_inst_buffer :: proc(buf: $T/Buffer($E), vert_num: int) {
 line :: proc(
     pos0:   [3]f32,
     pos1:   [3]f32,
-    col:    [2][4]f32 = 1,
+    col:    [2][4]u8 = 255,
     time:   f32 = 0,
 ) {
-    #force_inline buffer_push(&_state.vert_buffers[.Line], Vertex{ pos = pos0, col = cast([4]u8)(col[0] * 255) }, time = time)
-    #force_inline buffer_push(&_state.vert_buffers[.Line], Vertex{ pos = pos1, col = cast([4]u8)(col[1] * 255) }, time = time)
+    #force_inline buffer_push(&_state.vert_buffers[.Line], Vertex{ pos = pos0, col = col[0] }, time = time)
+    #force_inline buffer_push(&_state.vert_buffers[.Line], Vertex{ pos = pos1, col = col[1] }, time = time)
 }
 
 tri :: proc()
 box :: proc()
-circle :: proc()
+
+circle :: proc(
+    pos:    [3]f32,
+    mat:    matrix[3, 3]f32 = 1,
+    col:    [4]u8 = 255,
+    time:   f32 = 0,
+) {
+    buffer_push(&_state.shape_buffers[.Line_Circle], make_shape_inst(
+        pos = pos,
+        mat = mat,
+        col = col,
+    ), time = time)
+}
+
+
 half_circle :: proc()
 sphere :: proc()
 cylinder :: proc()
+
+make_shape_inst :: proc(
+    pos:    [3]f32,
+    mat:    matrix[3, 3]f32,
+    col:    [4]u8,
+) -> Shape_Instance {
+    cols: [3][4]f32
+    cols[0].xyz = mat[0]
+    cols[1].xyz = mat[1]
+    cols[2].xyz = mat[2]
+    return {
+        pos = pos,
+        col = col,
+        mat_x = cast([4]f16)cols[0],
+        mat_y = cast([4]f16)cols[1],
+        mat_z = cast([4]f16)cols[2],
+    }
+}
 
 // MARK: triangle drawing
 
