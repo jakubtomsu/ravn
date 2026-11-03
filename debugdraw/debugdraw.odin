@@ -23,7 +23,7 @@ State :: struct {
     vert_buf:           gpu.Resource_Handle,
     shape_inst_buf:     gpu.Resource_Handle,
     shape_model_vbuf:   gpu.Resource_Handle,
-    shape_offsets:      [Shape_Buffer_Kind]u32,
+    shape_offsets:      [Shape_Kind]u32,
     consts:             gpu.Resource_Handle,
 
     ps:                 gpu.Shader_Handle,
@@ -37,35 +37,27 @@ State :: struct {
     binds:              gpu.Bind_Group_Handle,
     bind_layout:        gpu.Bind_Layout_Handle,
 
-    vert_buffers:       [Vertex_Buffer_Kind]Buffer(Vertex),
-    shape_buffers:      [Shape_Buffer_Kind] Buffer(Shape_Instance),
+    line_buffer:        Buffer([2]Vertex),
+    tri_buffer:         Buffer([3]Vertex),
+    shape_buffers:      [Shape_Kind]Buffer(Shape_Instance),
 }
 
-Vertex_Buffer_Kind :: enum u8 {
-    Line,
-    Solid_Tri,
-}
-
-VERTEX_BUFFER_LINE_KINDS :: bit_set[Vertex_Buffer_Kind]{
-    .Line,
-}
-
-Shape_Buffer_Kind :: enum u8 {
+Shape_Kind :: enum u8 {
     Line_Box,
     Line_Circle,
     Line_Sphere,
     Line_Hemisphere,
     Line_Cone,
     Line_Cylinder,
-    Solid_Box,
-    Solid_Circle,
-    Solid_Sphere,
-    Solid_Hemisphere,
-    Solid_Cone,
-    Solid_Cylinder,
+    Filled_Box,
+    Filled_Circle,
+    Filled_Sphere,
+    Filled_Hemisphere,
+    Filled_Cone,
+    Filled_Cylinder,
 }
 
-SHAPE_BUFFER_LINE_KINDS :: bit_set[Shape_Buffer_Kind]{
+SHAPE_BUFFER_LINE_KINDS :: bit_set[Shape_Kind]{
     .Line_Box,
     .Line_Circle,
     .Line_Sphere,
@@ -109,24 +101,19 @@ Vertex :: struct {
     col:    [4]u8 `gpu:"U8x4_Norm"`,
 }
 
-DEFAULT_VERTEX_BUFFER_CAPS :: [Vertex_Buffer_Kind]int{
-    .Line       = 1024 * 16,
-    .Solid_Tri  = 1024 * 16,
-}
-
-DEFAULT_SHAPE_BUFFER_CAPS :: [Shape_Buffer_Kind]int{
+DEFAULT_SHAPE_BUFFER_CAPS :: [Shape_Kind]int{
     .Line_Box           = 1024 * 16,
     .Line_Circle        = 1024 * 8,
-    .Line_Half_Circle   = 1024 * 8,
+    .Line_Hemisphere    = 1024 * 8,
     .Line_Sphere        = 1024 * 16,
     .Line_Cone          = 1024 * 8,
     .Line_Cylinder      = 1024 * 8,
-    .Solid_Box          = 1024 * 16,
-    .Solid_Circle       = 1024 * 8,
-    .Solid_Sphere       = 1024 * 16,
-    .Solid_Hemisphere   = 1024 * 8,
-    .Solid_Cone         = 1024 * 8,
-    .Solid_Cylinder     = 1024 * 8,
+    .Filled_Box          = 1024 * 16,
+    .Filled_Circle       = 1024 * 8,
+    .Filled_Sphere       = 1024 * 16,
+    .Filled_Hemisphere   = 1024 * 8,
+    .Filled_Cone         = 1024 * 8,
+    .Filled_Cylinder     = 1024 * 8,
 }
 
 
@@ -137,7 +124,8 @@ init :: proc(
     state:              ^State = nil,
     target_color:       gpu.Resource_Handle,
     target_depth:       gpu.Resource_Handle = {},
-    vert_buffer_caps    := DEFAULT_VERTEX_BUFFER_CAPS,
+    line_cap            := 1024 * 16,
+    tri_cap             := 1024 * 16,
     shape_buffer_caps   := DEFAULT_SHAPE_BUFFER_CAPS,
     allocator           := context.allocator,
 ) -> bool {
@@ -285,11 +273,7 @@ init :: proc(
         }
     }
 
-    total_vert_cap: int
-    for cap in vert_buffer_caps {
-        total_vert_cap += cap
-    }
-
+    total_vert_cap := tri_cap * 3 + line_cap * 2
     total_shape_cap: int
     for cap in shape_buffer_caps {
         total_shape_cap += cap
@@ -332,9 +316,8 @@ init :: proc(
         return false
     }
 
-    for &buf, kind in _state.vert_buffers {
-        buffer_init(&buf, vert_buffer_caps[kind], allocator = allocator)
-    }
+    buffer_init(&_state.line_buffer, line_cap, allocator = allocator)
+    buffer_init(&_state.tri_buffer, tri_cap, allocator = allocator)
 
     for &buf, kind in _state.shape_buffers {
         buffer_init(&buf, shape_buffer_caps[kind], allocator = allocator)
@@ -348,9 +331,8 @@ shutdown :: proc() {
         return
     }
 
-    for &buf in _state.vert_buffers {
-        buffer_destroy(&buf, allocator = _state.allocator)
-    }
+    buffer_destroy(&_state.line_buffer, allocator = _state.allocator)
+    buffer_destroy(&_state.tri_buffer, allocator = _state.allocator)
 
     for &buf in _state.shape_buffers {
         buffer_destroy(&buf, allocator = _state.allocator)
@@ -368,8 +350,21 @@ shutdown :: proc() {
 render_frame :: proc(camera_proj: matrix[4, 4]f32, delta: f32) {
     context.allocator = runtime.panic_allocator()
 
-    upload_buffers(&_state.vert_buffers, _state.vert_buf)
-    upload_buffers(&_state.shape_buffers, _state.shape_inst_buf)
+    {
+        buf := upload_buffers_make(context.temp_allocator)
+        upload_buffers_push(&buf, &_state.line_buffer, elem_verts = 2)
+        upload_buffers_push(&buf, &_state.tri_buffer, elem_verts = 3)
+        gpu.update_buffer(_state.vert_buf, buffers = buf.bufs[:]) or_else panic("upload")
+    }
+
+    {
+        buf := upload_buffers_make(context.temp_allocator)
+        for &b in _state.shape_buffers {
+            upload_buffers_push(&buf, &b)
+        }
+        gpu.update_buffer(_state.shape_inst_buf, buffers = buf.bufs[:]) or_else panic("upload")
+    }
+
     gpu.update_constants(_state.consts, mem.ptr_to_bytes(&Constants{
         proj = camera_proj,
     }))
@@ -386,21 +381,13 @@ render_frame :: proc(camera_proj: matrix[4, 4]f32, delta: f32) {
     {
         gpu.set_graphics_pipeline(_state.line_pip)
         gpu.set_vertex_buffer(0, _state.vert_buf)
-        for buf, kind in _state.vert_buffers {
-            if kind in VERTEX_BUFFER_LINE_KINDS {
-                draw_vert_buffer(buf)
-            }
-        }
+        draw_vert_buffer(_state.line_buffer, vert_num = 2)
     }
 
     {
         gpu.set_graphics_pipeline(_state.tri_pip)
         gpu.set_vertex_buffer(0, _state.vert_buf)
-        for buf, kind in _state.vert_buffers {
-            if kind not_in VERTEX_BUFFER_LINE_KINDS {
-                draw_vert_buffer(buf)
-            }
-        }
+        draw_vert_buffer(_state.tri_buffer, vert_num = 3)
     }
 
     {
@@ -421,7 +408,7 @@ render_frame :: proc(camera_proj: matrix[4, 4]f32, delta: f32) {
         gpu.set_vertex_buffer(1, _state.shape_inst_buf)
 
         for buf, kind in _state.shape_buffers {
-            if kind in SHAPE_BUFFER_LINE_KINDS {
+            if kind not_in SHAPE_BUFFER_LINE_KINDS {
                 draw_inst_buffer(buf, len(_buffer_shape_verts[kind]), vert_offset = int(_state.shape_offsets[kind]))
             }
         }
@@ -430,33 +417,17 @@ render_frame :: proc(camera_proj: matrix[4, 4]f32, delta: f32) {
 
     gpu.end_graphics_pass()
 
-    for &b in _state.vert_buffers {
-        buffer_flush(&b, delta)
-    }
+    buffer_flush(&_state.line_buffer, delta)
+    buffer_flush(&_state.tri_buffer, delta)
 
     for &b in _state.shape_buffers {
         buffer_flush(&b, delta)
     }
 }
 
-upload_buffers :: proc(bufs: ^$Arr/[$K]Buffer($E), res: gpu.Resource_Handle) {
-    upload_offset: u32
-    upload_bufs: [dynamic][]byte
-    upload_bufs.allocator = context.temp_allocator
-
-    for &buf in bufs {
-        buf.upload_offset = upload_offset
-        upload_offset += buf.immediate_offs + buf.persistent_offs
-        append(&upload_bufs, slice.to_bytes(buf.immediate_buf[:buf.immediate_offs]))
-        append(&upload_bufs, slice.to_bytes(buf.persistent_buf[:buf.persistent_offs]))
-    }
-
-    gpu.update_buffer(res, offset = 0, buffers = upload_bufs[:]) or_else panic("upload")
-}
-
-draw_vert_buffer :: proc(buf: $T/Buffer($E)) {
+draw_vert_buffer :: proc(buf: $T/Buffer($E), vert_num: int) {
     gpu.draw_non_indexed(
-        vertex_num = int(buf.immediate_offs + buf.persistent_offs),
+        vertex_num = int(buf.immediate_offs + buf.persistent_offs) * vert_num,
         instance_num = 1,
         vertex_offset = int(buf.upload_offset),
         instance_offset = 0,
@@ -473,81 +444,6 @@ draw_inst_buffer :: proc(buf: $T/Buffer($E), vert_num: int, vert_offset: int) {
 }
 
 
-
-// MARK: line drawing
-
-line :: proc(
-    pos0:   [3]f32,
-    pos1:   [3]f32,
-    col:    [2][4]u8 = 255,
-    time:   f32 = 0,
-) {
-    #force_inline buffer_push(&_state.vert_buffers[.Line], Vertex{ pos = pos0, col = col[0] }, time = time)
-    #force_inline buffer_push(&_state.vert_buffers[.Line], Vertex{ pos = pos1, col = col[1] }, time = time)
-}
-
-tri :: proc()
-box :: proc()
-
-circle :: proc(
-    pos:    [3]f32,
-    mat:    matrix[3, 3]f32 = 1,
-    col:    [4]u8 = 255,
-    time:   f32 = 0,
-) {
-    buffer_push(&_state.shape_buffers[.Line_Circle], make_shape_inst(
-        pos = pos,
-        mat = mat,
-        col = col,
-    ), time = time)
-}
-
-
-half_circle :: proc()
-sphere :: proc()
-cone :: proc()
-cylinder :: proc()
-
-
-// MARK: triangle drawing
-
-solid_tri :: proc()
-
-solid_box :: proc(
-    pos:    [3]f32,
-    col:    [4]f32,
-    time:   f32 = 0,
-) {
-    // buffer_push(&_state.shape_buffers[.Solid_Box], inst, time = time)
-}
-
-solid_circle :: proc()
-solid_sphere :: proc()
-solid_hemisphere :: proc()
-solid_cylinder :: proc()
-
-// MARK: Util
-
-capsule :: proc()
-aabb :: proc()
-
-make_shape_inst :: proc(
-    pos:    [3]f32,
-    mat:    matrix[3, 3]f32,
-    col:    [4]u8,
-) -> Shape_Instance {
-    cols: [3][4]f32
-    cols[0].xyz = mat[0]
-    cols[1].xyz = mat[1]
-    cols[2].xyz = mat[2]
-    return {
-        pos = pos,
-        col = col,
-        mat_x = cast([4]f16)cols[0],
-        mat_y = cast([4]f16)cols[1],
-        mat_z = cast([4]f16)cols[2],
-    }
-}
 
 // MARK: Buffer
 
@@ -614,137 +510,25 @@ buffer_flush :: proc(buf: ^$T/Buffer($E), delta: f32) {
     }
 }
 
+// MARK: Upload buffers
 
-// MARK: Data
+Upload_Buffers :: struct {
+    offset: u32,
+    bufs:   [dynamic][]byte,
+}
 
+upload_buffers_make :: proc(allocator := context.temp_allocator) -> (result: Upload_Buffers) {
+    result = {
+        offset = 0,
+    }
+    result.bufs.allocator = allocator
+    return result
+}
 
-@(rodata)
-_buffer_shape_verts := [Shape_Buffer_Kind][]Shape_Vertex{
-    .Line_Box = {
-        {-1, -1, -1, 0}, { 1, -1, -1, 0},
-        {-1, -1,  1, 0}, { 1, -1,  1, 0},
-        {-1,  1, -1, 0}, { 1,  1, -1, 0},
-        {-1,  1,  1, 0}, { 1,  1,  1, 0},
-
-        {-1, -1, -1, 0}, {-1,  1, -1, 0},
-        {-1, -1,  1, 0}, {-1,  1,  1, 0},
-        { 1, -1, -1, 0}, { 1,  1, -1, 0},
-        { 1, -1,  1, 0}, { 1,  1,  1, 0},
-
-        {-1, -1, -1, 0}, {-1, -1,  1, 0},
-        {-1,  1, -1, 0}, {-1,  1,  1, 0},
-        { 1, -1, -1, 0}, { 1, -1,  1, 0},
-        { 1,  1, -1, 0}, { 1,  1,  1, 0},
-    },
-
-    .Line_Circle = {
-        {                       1,                        0, 0, 0}, {      0.9238795325112867,       0.3826834323650898, 0, 0},
-        {      0.9238795325112867,       0.3826834323650898, 0, 0}, {      0.7071067811865476,       0.7071067811865476, 0, 0},
-        {      0.7071067811865476,       0.7071067811865476, 0, 0}, {     0.38268343236508984,       0.9238795325112867, 0, 0},
-        {     0.38268343236508984,       0.9238795325112867, 0, 0}, {   6.123233995736766e-17,                        1, 0, 0},
-        {   6.123233995736766e-17,                        1, 0, 0}, {     -0.3826834323650897,       0.9238795325112867, 0, 0},
-        {     -0.3826834323650897,       0.9238795325112867, 0, 0}, {     -0.7071067811865475,       0.7071067811865476, 0, 0},
-        {     -0.7071067811865475,       0.7071067811865476, 0, 0}, {     -0.9238795325112867,       0.3826834323650899, 0, 0},
-        {     -0.9238795325112867,       0.3826834323650899, 0, 0}, {                      -1,   1.2246467991473532e-16, 0, 0},
-        {                      -1,   1.2246467991473532e-16, 0, 0}, {     -0.9238795325112868,     -0.38268343236508967, 0, 0},
-        {     -0.9238795325112868,     -0.38268343236508967, 0, 0}, {     -0.7071067811865477,      -0.7071067811865475, 0, 0},
-        {     -0.7071067811865477,      -0.7071067811865475, 0, 0}, {    -0.38268343236509034,      -0.9238795325112865, 0, 0},
-        {    -0.38268343236509034,      -0.9238795325112865, 0, 0}, { -1.8369701987210297e-16,                       -1, 0, 0},
-        { -1.8369701987210297e-16,                       -1, 0, 0}, {        0.38268343236509,      -0.9238795325112866, 0, 0},
-        {        0.38268343236509,      -0.9238795325112866, 0, 0}, {      0.7071067811865474,      -0.7071067811865477, 0, 0},
-        {      0.7071067811865474,      -0.7071067811865477, 0, 0}, {      0.9238795325112865,      -0.3826834323650904, 0, 0},
-        {      0.9238795325112865,      -0.3826834323650904, 0, 0}, {                       1,                        0, 0, 0},
-    },
-
-    .Line_Half_Circle = {
-        {                       1,                        0, 0, 0}, {      0.9238795325112867,       0.3826834323650898, 0, 0},
-        {      0.9238795325112867,       0.3826834323650898, 0, 0}, {      0.7071067811865476,       0.7071067811865476, 0, 0},
-        {      0.7071067811865476,       0.7071067811865476, 0, 0}, {     0.38268343236508984,       0.9238795325112867, 0, 0},
-        {     0.38268343236508984,       0.9238795325112867, 0, 0}, {   6.123233995736766e-17,                        1, 0, 0},
-        {   6.123233995736766e-17,                        1, 0, 0}, {     -0.3826834323650897,       0.9238795325112867, 0, 0},
-        {     -0.3826834323650897,       0.9238795325112867, 0, 0}, {     -0.7071067811865475,       0.7071067811865476, 0, 0},
-        {     -0.7071067811865475,       0.7071067811865476, 0, 0}, {     -0.9238795325112867,       0.3826834323650899, 0, 0},
-        {     -0.9238795325112867,       0.3826834323650899, 0, 0}, {                      -1,   1.2246467991473532e-16, 0, 0},
-    },
-
-    .Line_Sphere = {
-        {                       1,                        0, 0, 0}, {      0.9238795325112867,       0.3826834323650898, 0, 0},
-        {      0.9238795325112867,       0.3826834323650898, 0, 0}, {      0.7071067811865476,       0.7071067811865476, 0, 0},
-        {      0.7071067811865476,       0.7071067811865476, 0, 0}, {     0.38268343236508984,       0.9238795325112867, 0, 0},
-        {     0.38268343236508984,       0.9238795325112867, 0, 0}, {   6.123233995736766e-17,                        1, 0, 0},
-        {   6.123233995736766e-17,                        1, 0, 0}, {     -0.3826834323650897,       0.9238795325112867, 0, 0},
-        {     -0.3826834323650897,       0.9238795325112867, 0, 0}, {     -0.7071067811865475,       0.7071067811865476, 0, 0},
-        {     -0.7071067811865475,       0.7071067811865476, 0, 0}, {     -0.9238795325112867,       0.3826834323650899, 0, 0},
-        {     -0.9238795325112867,       0.3826834323650899, 0, 0}, {                      -1,   1.2246467991473532e-16, 0, 0},
-        {                      -1,   1.2246467991473532e-16, 0, 0}, {     -0.9238795325112868,     -0.38268343236508967, 0, 0},
-        {     -0.9238795325112868,     -0.38268343236508967, 0, 0}, {     -0.7071067811865477,      -0.7071067811865475, 0, 0},
-        {     -0.7071067811865477,      -0.7071067811865475, 0, 0}, {    -0.38268343236509034,      -0.9238795325112865, 0, 0},
-        {    -0.38268343236509034,      -0.9238795325112865, 0, 0}, { -1.8369701987210297e-16,                       -1, 0, 0},
-        { -1.8369701987210297e-16,                       -1, 0, 0}, {        0.38268343236509,      -0.9238795325112866, 0, 0},
-        {        0.38268343236509,      -0.9238795325112866, 0, 0}, {      0.7071067811865474,      -0.7071067811865477, 0, 0},
-        {      0.7071067811865474,      -0.7071067811865477, 0, 0}, {      0.9238795325112865,      -0.3826834323650904, 0, 0},
-        {      0.9238795325112865,      -0.3826834323650904, 0, 0}, {                       1,                        0, 0, 0},
-
-        {                       1, 0,                       0, 0}, {      0.9238795325112867, 0,       0.3826834323650898, 0},
-        {      0.9238795325112867, 0,      0.3826834323650898, 0}, {      0.7071067811865476, 0,       0.7071067811865476, 0},
-        {      0.7071067811865476, 0,      0.7071067811865476, 0}, {     0.38268343236508984, 0,       0.9238795325112867, 0},
-        {     0.38268343236508984, 0,      0.9238795325112867, 0}, {   6.123233995736766e-17, 0,                        1, 0},
-        {   6.123233995736766e-17, 0,                       1, 0}, {     -0.3826834323650897, 0,       0.9238795325112867, 0},
-        {     -0.3826834323650897, 0,      0.9238795325112867, 0}, {     -0.7071067811865475, 0,       0.7071067811865476, 0},
-        {     -0.7071067811865475, 0,      0.7071067811865476, 0}, {     -0.9238795325112867, 0,       0.3826834323650899, 0},
-        {     -0.9238795325112867, 0,      0.3826834323650899, 0}, {                      -1, 0,   1.2246467991473532e-16, 0},
-        {                      -1, 0,  1.2246467991473532e-16, 0}, {     -0.9238795325112868, 0,     -0.38268343236508967, 0},
-        {     -0.9238795325112868, 0,    -0.38268343236508967, 0}, {     -0.7071067811865477, 0,      -0.7071067811865475, 0},
-        {     -0.7071067811865477, 0,     -0.7071067811865475, 0}, {    -0.38268343236509034, 0,      -0.9238795325112865, 0},
-        {    -0.38268343236509034, 0,     -0.9238795325112865, 0}, { -1.8369701987210297e-16, 0,                       -1, 0},
-        { -1.8369701987210297e-16, 0,                      -1, 0}, {        0.38268343236509, 0,      -0.9238795325112866, 0},
-        {        0.38268343236509, 0,     -0.9238795325112866, 0}, {      0.7071067811865474, 0,      -0.7071067811865477, 0},
-        {      0.7071067811865474, 0,     -0.7071067811865477, 0}, {      0.9238795325112865, 0,      -0.3826834323650904, 0},
-        {      0.9238795325112865, 0,     -0.3826834323650904, 0}, {                       1, 0,                        0, 0},
-
-        {0,                       1,                        0, 0}, {0,       0.9238795325112867,       0.3826834323650898, 0},
-        {0,      0.9238795325112867,       0.3826834323650898, 0}, {0,       0.7071067811865476,       0.7071067811865476, 0},
-        {0,      0.7071067811865476,       0.7071067811865476, 0}, {0,      0.38268343236508984,       0.9238795325112867, 0},
-        {0,     0.38268343236508984,       0.9238795325112867, 0}, {0,    6.123233995736766e-17,                        1, 0},
-        {0,   6.123233995736766e-17,                        1, 0}, {0,      -0.3826834323650897,       0.9238795325112867, 0},
-        {0,     -0.3826834323650897,       0.9238795325112867, 0}, {0,      -0.7071067811865475,       0.7071067811865476, 0},
-        {0,     -0.7071067811865475,       0.7071067811865476, 0}, {0,      -0.9238795325112867,       0.3826834323650899, 0},
-        {0,     -0.9238795325112867,       0.3826834323650899, 0}, {0,                       -1,   1.2246467991473532e-16, 0},
-        {0,                      -1,   1.2246467991473532e-16, 0}, {0,      -0.9238795325112868,     -0.38268343236508967, 0},
-        {0,     -0.9238795325112868,     -0.38268343236508967, 0}, {0,      -0.7071067811865477,      -0.7071067811865475, 0},
-        {0,     -0.7071067811865477,      -0.7071067811865475, 0}, {0,     -0.38268343236509034,      -0.9238795325112865, 0},
-        {0,    -0.38268343236509034,      -0.9238795325112865, 0}, {0,  -1.8369701987210297e-16,                       -1, 0},
-        {0, -1.8369701987210297e-16,                       -1, 0}, {0,         0.38268343236509,      -0.9238795325112866, 0},
-        {0,        0.38268343236509,      -0.9238795325112866, 0}, {0,       0.7071067811865474,      -0.7071067811865477, 0},
-        {0,      0.7071067811865474,      -0.7071067811865477, 0}, {0,       0.9238795325112865,      -0.3826834323650904, 0},
-        {0,      0.9238795325112865,      -0.3826834323650904, 0}, {0,                        1,                        0, 0},
-    },
-
-    .Line_Cone = {
-
-    },
-
-    .Line_Cylinder = {
-
-    },
-
-    .Solid_Box = {
-
-    },
-
-    .Solid_Circle = {
-
-    },
-    .Solid_Sphere = {
-
-    },
-    .Solid_Hemisphere = {
-
-    },
-    .Solid_Cone = {
-
-    },
-    .Solid_Cylinder = {
-
-    },
+upload_buffers_push :: proc(upload: ^Upload_Buffers, buf: ^$T/Buffer($E), elem_verts: u32 = 1) {
+    assert(upload.bufs.allocator != {}, "Forgot to call init")
+    buf.upload_offset = upload.offset
+    upload.offset += u32(buf.immediate_offs + buf.persistent_offs) * elem_verts
+    append(&upload.bufs, slice.to_bytes(buf.persistent_buf[:buf.persistent_offs]))
+    append(&upload.bufs, slice.to_bytes(buf.immediate_buf[:buf.immediate_offs]))
 }

@@ -22,6 +22,8 @@ LIGHT_GRAY  :: [4]u8{0x94, 0xb0, 0xc2, 0xff}// #94b0c2
 GRAY        :: [4]u8{0x56, 0x6c, 0x86, 0xff}// #566c86
 DARK_GRAY   :: [4]u8{0x33, 0x3c, 0x57, 0xff}// #333c57
 
+CLEAR_ALPHA :: [4]u8{1, 1, 1, 0}
+
 pack_color :: proc(col: [4]f32) -> [4]u8 {
     return {
         u8(clamp(col[0], 0, 1) * 255),
