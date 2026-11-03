@@ -1,5 +1,5 @@
 #+test
-#+vet shadowing
+#+vet explicit-allocators shadowing style unused
 #+private file
 package ravn_gpu
 

@@ -1,11 +1,9 @@
+#+vet explicit-allocators shadowing style unused
 package ravn_gpu
 
-import "base:runtime"
 // Dummy backend for testing.
 // Everything *must compile* on all targets, but won't run (by design)
 // This can be a starting point when writing a new backend from scratch.
-
-import "../base"
 
 when BACKEND == BACKEND_DUMMY {
 

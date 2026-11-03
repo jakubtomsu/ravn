@@ -1,3 +1,4 @@
+#+vet explicit-allocators shadowing style unused
 package ravn_gpu
 
 import "vendor:wgpu"

@@ -1,4 +1,4 @@
-#+vet explicit-allocators style shadowing unused
+#+vet explicit-allocators shadowing style unused
 #+build windows
 package ravn_gpu
 
