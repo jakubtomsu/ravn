@@ -73,9 +73,10 @@ pool_next :: proc{
 
 // MARK: Dynamic
 
-dynamic_pool_create :: proc(pool: ^$T/Dynamic_Pool($D, $H), size: int, allocator := context.allocator, loc := #caller_location) -> bool {
+dynamic_pool_init :: proc(pool: ^$T/Dynamic_Pool($D, $H), size: int, allocator := context.allocator, loc := #caller_location) -> bool {
     assert(size > 0)
-    if !dynamic_bit_pool_create(size, allocator = allocator, loc = loc) {
+
+    if !dynamic_bit_pool_init(&pool.used, size, allocator = allocator, loc = loc) {
         return false
     }
 
@@ -91,36 +92,38 @@ dynamic_pool_create :: proc(pool: ^$T/Dynamic_Pool($D, $H), size: int, allocator
         return false
     }
 
+    dynamic_pool_clear(pool)
+
     return true
 }
 
 dynamic_pool_destroy :: proc(pool: ^$T/Dynamic_Pool($D, $H), allocator := context.allocator) {
     dynamic_bit_pool_destroy(&pool.used, allocator = allocator)
     if pool.gen != nil {
-        destroy(pool.gen, allocator = allocator)
+        delete(pool.gen, allocator = allocator)
     }
     if pool.data != nil {
-        destroy(pool.data, allocator = allocator)
+        delete(pool.data, allocator = allocator)
     }
     pool^ = {}
 }
 
 dynamic_pool_clear :: proc(pool: ^$T/Dynamic_Pool($D, $H)) {
-    static_bit_pool_clear(&pool.used)
-    static_bit_pool_set_1(&pool.used, 0)
+    dynamic_bit_pool_clear(&pool.used)
+    dynamic_bit_pool_set_1(&pool.used, 0)
 }
 
 @(require_results)
 dynamic_pool_has :: proc "contextless" (pool: $T/Dynamic_Pool($D, $H), handle: H) -> bool {
     return \
         handle.index > 0 &&
-        handle.index < Handle_Index(N) &&
+        handle.index < Handle_Index(len(pool.data)) &&
         handle.gen == pool.gen[handle.index]
 }
 
 @(require_results)
 dynamic_pool_find_free :: proc(pool: $T/Dynamic_Pool($D, $H)) -> (handle: H, ok: bool) {
-    index := static_bit_pool_find_0(pool.used) or_return
+    index := dynamic_bit_pool_find_0(pool.used) or_return
     assert(index != 0, "Pool must be cleared before allocating.")
     return {index = Handle_Index(index), gen = pool.gen[index]}, true
 }
@@ -128,10 +131,10 @@ dynamic_pool_find_free :: proc(pool: $T/Dynamic_Pool($D, $H)) -> (handle: H, ok:
 @(require_results)
 dynamic_pool_insert :: proc(pool: ^$T/Dynamic_Pool($D, $H), handle: H, data: D) -> bool {
     assert(handle != {})
-    if !dynamic_pool_has(pool^, handle) || static_bit_pool_is_1(pool.used, handle.index) {
+    if !dynamic_pool_has(pool^, handle) || dynamic_bit_pool_is_1(pool.used, handle.index) {
         return false
     }
-    static_bit_pool_set_1(&pool.used, handle.index)
+    dynamic_bit_pool_set_1(&pool.used, handle.index)
     pool.data[handle.index] = data
     return true
 }
@@ -141,17 +144,16 @@ dynamic_pool_set :: proc(pool: ^$T/Dynamic_Pool($D, $H), handle: H, data: D) -> 
     if !dynamic_pool_has(pool^, handle) {
         return false
     }
-    static_bit_pool_set_1(&pool.used, handle.index)
+    dynamic_bit_pool_set_1(&pool.used, handle.index)
     pool.data[handle.index] = data
     return true
 }
 
-@(require_results)
 dynamic_pool_remove :: proc(pool: ^$T/Dynamic_Pool($D, $H), handle: H) -> bool {
-    if !dynamic_pool_has(pool^, handle) || !static_bit_pool_is_1(pool.used, handle.index) {
+    if !dynamic_pool_has(pool^, handle) || !dynamic_bit_pool_is_1(pool.used, handle.index) {
         return false
     }
-    static_bit_pool_set_0(&pool.used, handle.index)
+    dynamic_bit_pool_set_0(&pool.used, handle.index)
     pool.gen[handle.index] += 1
     pool.data[handle.index] = {}
     return true
@@ -159,7 +161,7 @@ dynamic_pool_remove :: proc(pool: ^$T/Dynamic_Pool($D, $H), handle: H) -> bool {
 
 @(require_results)
 dynamic_pool_get :: proc(pool: ^$T/Dynamic_Pool($D, $H), handle: H) -> (^D, bool) {
-    if !dynamic_pool_has(pool^, handle) || !static_bit_pool_is_1(pool.used, handle.index) {
+    if !dynamic_pool_has(pool^, handle) || !dynamic_bit_pool_is_1(pool.used, handle.index) {
         return nil, false
     }
     return &pool.data[handle.index], true
@@ -211,7 +213,6 @@ static_pool_set :: proc(pool: ^$T/Static_Pool($N, $D, $H), handle: H, data: D) -
     return true
 }
 
-@(require_results)
 static_pool_remove :: proc(pool: ^$T/Static_Pool($N, $D, $H), handle: H) -> bool {
     if !pool_has(pool^, handle) || !static_bit_pool_is_1(pool.used, handle.index) {
         return false
@@ -233,22 +234,23 @@ static_pool_get :: proc(pool: ^$T/Static_Pool($N, $D, $H), handle: H) -> (^D, bo
 // MARK: Iter
 
 Dynamic_Pool_Iter :: struct($D: typeid, $H: typeid) {
-    pool:       ^Dynamic_Pool(N, D, H),
+    pool:       ^Dynamic_Pool(D, H),
     index:      int,
 }
 
 @(require_results)
-dynamic_pool_iter :: proc(pool: ^$T/Dynamic_Pool($D, $H)) -> Dynamic_Pool_Iter(N, D, H) {
+dynamic_pool_iter :: proc(pool: ^$T/Dynamic_Pool($D, $H)) -> Dynamic_Pool_Iter(D, H) {
     return {
         pool = pool,
+        index = 1,
     }
 }
 
 @(require_results)
 dynamic_pool_next :: proc(iter: ^$T/Dynamic_Pool_Iter($D, $H)) -> (handle: H, data: ^D, ok: bool) {
-    for iter.index < N {
+    for iter.index < len(iter.pool.data) {
         defer iter.index += 1
-        if static_bit_pool_is_1(iter.pool.used, iter.index) {
+        if dynamic_bit_pool_is_1(iter.pool.used, iter.index) {
             return {index = Handle_Index(iter.index), gen = iter.pool.gen[iter.index]}, &iter.pool.data[iter.index], true
         }
     }
@@ -265,6 +267,7 @@ Static_Pool_Iter :: struct($N: int, $D: typeid, $H: typeid) {
 static_pool_iter :: proc(pool: ^$T/Static_Pool($N, $D, $H)) -> Static_Pool_Iter(N, D, H) {
     return {
         pool = pool,
+        index = 1,
     }
 }
 
