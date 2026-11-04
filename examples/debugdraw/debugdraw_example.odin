@@ -1,5 +1,6 @@
 package ravn_debugdraw_example
 
+import "core:math"
 import "core:math/linalg"
 import "core:debug/trace"
 import "core:time"
@@ -7,6 +8,7 @@ import "../../debugdraw"
 import "../../base"
 import "../../gpu"
 import "../../platform"
+import "../../input"
 
 main :: proc() {
     context.logger = base.make_logger()
@@ -20,9 +22,22 @@ main :: proc() {
     gpu.init(window = platform.get_native_window_ptr(window))
     defer gpu.shutdown()
 
+    depthbuf: gpu.Resource_Handle
+    if !gpu.create_texture_2d(&depthbuf,
+        gpu.make_texture_desc(.Depth_F32, {**platform.get_window_rect(window).size, 1}, flags = {.Render_Texture}),
+    ) {
+
+    }
+
     debugdraw.init(
         target_color = gpu.SWAPCHAIN_HANDLE,
+        target_depth = depthbuf,
+        depth_write = true,
+        depth_comparison = .Less_Equal,
     )
+
+    input.init()
+    defer input.shutdown()
 
     timer: f32
 
@@ -34,41 +49,78 @@ main :: proc() {
 
         timer += delta
 
+        input.update(delta)
         for event in platform.poll_window_events(window) {
+            input.apply_event(event)
             #partial switch ev in event {
             case platform.Event_Exit:
                 break main_loop
-            case platform.Event_Button:
-                if ev.button == .Escape {
-                    break main_loop
-                }
             }
         }
 
-        // debugdraw.line(0, {1, 0, 0}, debugdraw.RED)
-        // debugdraw.line(0, {0, 1, 0}, debugdraw.LIGHT_GREEN)
-        // debugdraw.line(0, {1, 1, 0}, debugdraw.CYAN)
-        debugdraw.circle(0, 0.1, fill = true)
+        if input.button_pressed(.Escape) {
+            break main_loop
+        }
 
-        debugdraw.basis(0, 0.1)
+        if input.button_pressed(.Space) {
+            debugdraw.sphere(0, 1, time = 1) // persistent
+        }
 
-        debugdraw.cone(0, linalg.matrix3_scale_f32(0.1) * linalg.matrix3_rotate_f32(timer, {1, 0, 0}), fill = true)
+        // Debugdraw demo
+        {
+            debugdraw.grid({0, -0.01, 0}, {2, 0, 0}, {0, 0, 2}, col = {debugdraw.LIGHT_GRAY/2, debugdraw.GRAY/2})
+            // debugdraw.basis(0, 1)
 
-        debugdraw.tri({1, 1, 0}, {1, 0, 0}, {0, -1, 0}, col = debugdraw.LIGHT_GREEN, fill=true)
+            debugdraw.tri(
+                {1, 0, 1} + {-1, 0, -1} * 0.6,
+                {1, 0, 1} + { 0, 0,  1} * 0.6,
+                {1, 0, 1} + { 1, 0,  0} * 0.6,
+            )
 
-        gpu.resize_swapchain(platform.get_native_window_ptr(window), platform.get_window_rect(window).size)
+            debugdraw.tri(
+                {1, 0, 1} + {-1, 0, -1} * 0.5,
+                {1, 0, 1} + { 0, 0,  1} * 0.5,
+                {1, 0, 1} + { 1, 0,  0} * 0.5,
+                col = debugdraw.LIGHT_BLUE,
+                fill = true,
+            )
 
-        gpu.begin_frame()
+            debugdraw.arrow(0, 1, 0.1)
+            debugdraw.arrow(0, {0, 1, 0}, 0.1, debugdraw.RED)
 
-        gpu.begin_graphics_pass("main", {colors = {0 = {resource = gpu.SWAPCHAIN_HANDLE, clear_mode = .Clear, clear_val = {0.1, 0.1, 0.2, 1}}}})
-        gpu.end_graphics_pass()
+            debugdraw.circle({-1, 0, 1}, 0.6)
+            debugdraw.circle({-1, 0, 1}, 0.5, col = debugdraw.LIGHT_GREEN, fill = true)
 
-        // proj := linalg.matrix4_perspective_f32(linalg.to_radians(f32(90)), 1, 0.01, 1000.0)
+            debugdraw.box({-1, 0, -1}, 0.6)
+            debugdraw.box({-1, 0, -1}, 0.5, col = debugdraw.ORANGE, fill = true)
 
-        proj := linalg.matrix_ortho3d_f32(-1, 1, 1, -1, -1, 1)
+            debugdraw.sphere({1, 0, -1}, 0.6)
+            debugdraw.sphere({1, 0, -1}, 0.5, col = debugdraw.ORANGE, fill = true)
 
-        debugdraw.render_frame(proj, delta)
+            debugdraw.hemisphere({3, 0, -1}, 0.6)
+            debugdraw.hemisphere({3, 0, -1}, 0.5, col = debugdraw.RED, fill = true)
 
-        gpu.end_frame(false)
+            debugdraw.cylinder({1, 0, -3}, 0.6)
+            debugdraw.cylinder({1, 0, -3}, 0.5, col = debugdraw.YELLOW, fill = true)
+
+            debugdraw.cone({-3, 0, 1}, 0.6)
+            debugdraw.cone({-3, 0, 1}, 0.5, col = debugdraw.PURPLE, fill = true)
+        }
+
+        framebuffer_size := platform.get_window_rect(window).size
+        gpu.resize_swapchain(platform.get_native_window_ptr(window), framebuffer_size)
+        gpu.resize_texture(&depthbuf, {**framebuffer_size, 1})
+
+        cam_proj :=
+            linalg.matrix4_perspective_f32(math.PI * 0.4, f32(framebuffer_size.x) / f32(framebuffer_size.y), 0.01, 1000.0) *
+            linalg.matrix4_translate_f32({0, 0, -5}) *
+            linalg.matrix4_rotate_f32(0.5, {1, 0, 0}) *
+            linalg.matrix4_rotate_f32(timer * 0.5, {0, 1, 0})
+
+        if gpu.begin_frame() {
+            defer gpu.end_frame(true)
+
+            debugdraw.render_pass(cam_proj, delta, .Clear, 0, .Clear, 1)
+        }
     }
 }
