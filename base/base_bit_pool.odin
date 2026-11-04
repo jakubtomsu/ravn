@@ -1,6 +1,7 @@
 #+vet unused shadowing style explicit-allocators
 package ravn_base
 
+import "core:slice"
 import "base:runtime"
 import "base:intrinsics"
 
@@ -59,12 +60,13 @@ dynamic_bit_pool_create :: proc(num_bits: int, allocator := context.allocator, l
         return {}, false
     }
 
-    if num_bits > 64 {
-        result.l1, err = make([]u64, (num_bits + 4095) / 4096, allocator = allocator)
-        if err != nil {
-            return {}, false
-        }
+    result.l1, err = make([]u64, (num_bits + 4095) / 4096, allocator = allocator)
+    if err != nil {
+        return {}, false
     }
+
+    assert(len(result.l0) > 0)
+    assert(len(result.l1) > 0)
 
     return result, true
 }
@@ -80,8 +82,8 @@ dynamic_bit_pool_destroy :: proc(bp: ^Dynamic_Bit_Pool, allocator := context.all
 }
 
 dynamic_bit_pool_clear :: proc "contextless" (bp: ^Dynamic_Bit_Pool) {
-    intrinsics.mem_zero(raw_data(bp.l1), len(bp.l1))
-    intrinsics.mem_zero(raw_data(bp.l0), len(bp.l0))
+    slice.zero(bp.l0)
+    slice.zero(bp.l1)
 }
 
 @(require_results)
@@ -112,7 +114,7 @@ dynamic_bit_pool_find_0 :: proc "contextless" (bp: Dynamic_Bit_Pool) -> (index: 
 }
 
 dynamic_bit_pool_set_1 :: proc(bp: ^Dynamic_Bit_Pool, #any_int index: u64) {
-    assert(index >= 0 && index * 64 < u64(len(bp.l0)))
+    assert(index >= 0 && index < u64(len(bp.l0)) * 64)
 
     l0_index, l0_slot := _bit_pool_decompose_index(index)
     l1_index, l1_slot := _bit_pool_decompose_index(l0_index)
@@ -126,7 +128,7 @@ dynamic_bit_pool_set_1 :: proc(bp: ^Dynamic_Bit_Pool, #any_int index: u64) {
 }
 
 dynamic_bit_pool_set_0 :: proc(bp: ^Dynamic_Bit_Pool, #any_int index: u64) {
-    assert(index >= 0 && index * 64 < u64(len(bp.l0)))
+    assert(index >= 0 && index < u64(len(bp.l0)) * 64)
     l0_index, l0_slot := _bit_pool_decompose_index(index)
     l1_index, l1_slot := _bit_pool_decompose_index(l0_index)
     // Always clear L0, it must be non-empty after deleting from L1
@@ -136,7 +138,7 @@ dynamic_bit_pool_set_0 :: proc(bp: ^Dynamic_Bit_Pool, #any_int index: u64) {
 
 @(require_results)
 dynamic_bit_pool_is_1 :: proc(bp: Dynamic_Bit_Pool, #any_int index: u64) -> bool {
-    assert(index >= 0 && index * 64 < u64(len(bp.l0)))
+    assert(index >= 0 && index < u64(len(bp.l0)) * 64)
     l0_index, l0_slot := _bit_pool_decompose_index(index)
     return (bp.l0[l0_index] & (1 << l0_slot)) != 0
 }
