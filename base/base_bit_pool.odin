@@ -49,26 +49,28 @@ bit_pool_is_1 :: proc {
 // MARK: dynamic
 
 @(require_results)
-dynamic_bit_pool_create :: proc(num_bits: int, allocator := context.allocator, loc := #caller_location) -> (result: Dynamic_Bit_Pool, ok: bool) {
+dynamic_bit_pool_init :: proc(pool: ^Dynamic_Bit_Pool, num_bits: int, allocator := context.allocator, loc := #caller_location) -> (ok: bool) {
     assert(num_bits > 0)
     assert(num_bits % 64 == 0, loc = loc)
 
     err: runtime.Allocator_Error
 
-    result.l0, err = make([]u64, num_bits / 64, allocator = allocator)
+    pool^ = {}
+
+    pool.l0, err = make([]u64, num_bits / 64, allocator = allocator)
     if err != nil {
-        return {}, false
+        return false
     }
 
-    result.l1, err = make([]u64, (num_bits + 4095) / 4096, allocator = allocator)
+    pool.l1, err = make([]u64, (num_bits + 4095) / 4096, allocator = allocator)
     if err != nil {
-        return {}, false
+        return false
     }
 
-    assert(len(result.l0) > 0)
-    assert(len(result.l1) > 0)
+    assert(len(pool.l0) > 0)
+    assert(len(pool.l1) > 0)
 
-    return result, true
+    return true
 }
 
 dynamic_bit_pool_destroy :: proc(bp: ^Dynamic_Bit_Pool, allocator := context.allocator) {

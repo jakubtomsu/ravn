@@ -8,7 +8,8 @@ import "core:math/rand"
 @(test)
 _test_bit_pool_basic :: proc(t: ^testing.T) {
     N :: 128
-    d_pool, _ := dynamic_bit_pool_create(N)
+    d_pool: Dynamic_Bit_Pool
+    testing.expect(t, dynamic_bit_pool_init(&d_pool, N) == true)
     defer dynamic_bit_pool_destroy(&d_pool)
 
     s_pool: Static_Bit_Pool(N)
@@ -50,7 +51,8 @@ _test_bit_pool_basic :: proc(t: ^testing.T) {
 @(test)
 _test_bit_pool_exhaustion :: proc(t: ^testing.T) {
     N :: 64
-    d_pool, _ := dynamic_bit_pool_create(N)
+    d_pool: Dynamic_Bit_Pool
+    testing.expect(t, dynamic_bit_pool_init(&d_pool, N) == true)
     defer dynamic_bit_pool_destroy(&d_pool)
 
     s_pool: Static_Bit_Pool(N)
@@ -79,7 +81,8 @@ _test_bit_pool_exhaustion :: proc(t: ^testing.T) {
 @(test)
 _test_bit_pool_l1_crossing :: proc(t: ^testing.T) {
     N :: 4160
-    d_pool, _ := dynamic_bit_pool_create(N)
+    d_pool: Dynamic_Bit_Pool
+    testing.expect(t, dynamic_bit_pool_init(&d_pool, N) == true)
     defer dynamic_bit_pool_destroy(&d_pool)
 
     s_pool: Static_Bit_Pool(N)
@@ -100,7 +103,8 @@ _test_bit_pool_l1_crossing :: proc(t: ^testing.T) {
 @(test)
 _test_bit_pool_clear :: proc(t: ^testing.T) {
     N :: 128
-    d_pool, _ := dynamic_bit_pool_create(N)
+    d_pool: Dynamic_Bit_Pool
+    testing.expect(t, dynamic_bit_pool_init(&d_pool, N) == true)
     defer dynamic_bit_pool_destroy(&d_pool)
 
     s_pool: Static_Bit_Pool(N)
@@ -130,8 +134,8 @@ _test_dynamic_bit_pool_fuzz :: proc(t: ^testing.T) {
         num_blocks := rand.int31_max(1024) + 1
         N := int(num_blocks * 64)
 
-        pool, ok := dynamic_bit_pool_create(N)
-        testing.expect(t, ok, "Pool creation failed")
+        pool: Dynamic_Bit_Pool
+        testing.expect(t, dynamic_bit_pool_init(&pool, N), "Pool creation failed")
         defer dynamic_bit_pool_destroy(&pool)
 
         shadow := make([]bool, N)
