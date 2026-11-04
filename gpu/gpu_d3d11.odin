@@ -690,7 +690,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_messages()
         _d3d11_set_label(result.buf, base.get_debug_id_name(id))
 
-        if kind == .Storage {
+        if desc.kind == .Storage {
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.buf, nil, &result.srv)) or_return
             _d3d11_messages()
             _d3d11_set_label(result.srv, base.get_debug_id_name(id))
@@ -737,7 +737,7 @@ when BACKEND == BACKEND_D3D11 {
                 bind_flags = {.SHADER_RESOURCE}
             }
 
-            if rw_resource {
+            if .RW_Resource in desc.flags {
                 bind_flags += {.UNORDERED_ACCESS}
             }
         }
@@ -776,7 +776,7 @@ when BACKEND == BACKEND_D3D11 {
 
         if is_texture_format_depth_stencil(desc.format) {
             dsv_desc := d3d11.DEPTH_STENCIL_VIEW_DESC{
-                Format = _d3d11_texture_depth_dsv_format(format),
+                Format = _d3d11_texture_depth_dsv_format(desc.format),
                 ViewDimension = .TEXTURE2D,
                 Texture2D = {MipSlice = 0},
             }
@@ -784,7 +784,7 @@ when BACKEND == BACKEND_D3D11 {
             _d3d11_set_label(result.dsv, base.get_debug_id_name(id))
 
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
-                Format = _d3d11_texture_depth_srv_format(format),
+                Format = _d3d11_texture_depth_srv_format(desc.format),
                 ViewDimension = .TEXTURE2D,
                 Texture2D = {
                     MostDetailedMip = 0,
@@ -798,7 +798,7 @@ when BACKEND == BACKEND_D3D11 {
             _d3d11_check(id, _state.device->CreateRenderTargetView(result.tex2d, nil, &result.rtv)) or_return
 
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
-                Format = _d3d11_texture_format(format),
+                Format = _d3d11_texture_format(desc.format),
                 ViewDimension = .TEXTURE2D,
                 Texture2D = {
                     MostDetailedMip = 0,
@@ -811,16 +811,16 @@ when BACKEND == BACKEND_D3D11 {
 
         } else if desc.usage != .Staging {
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
-                Format = _d3d11_texture_format(format),
+                Format = _d3d11_texture_format(desc.format),
             }
 
-            if array_depth > 1 {
+            if desc.size.z > 1 {
                 srv_desc.ViewDimension = .TEXTURE2DARRAY
                 srv_desc.Texture2DArray = {
                     MostDetailedMip = 0,
                     MipLevels = 1,
                     FirstArraySlice = 0,
-                    ArraySize = u32(array_depth),
+                    ArraySize = u32(desc.size.z),
                 }
             } else {
                 srv_desc.ViewDimension = .TEXTURE2D
@@ -836,7 +836,7 @@ when BACKEND == BACKEND_D3D11 {
 
         if .RW_Resource in desc.flags {
             uav_desc := d3d11.UNORDERED_ACCESS_VIEW_DESC{
-                Format = _d3d11_texture_format(format),
+                Format = _d3d11_texture_format(desc.format),
                 ViewDimension = .TEXTURE2D,
                 Texture2D = {
                     MipSlice = 0,
@@ -1004,7 +1004,7 @@ when BACKEND == BACKEND_D3D11 {
     _set_vertex_buffer :: proc(slot: int, res: ^Resource_State, offset: int) {
         // TODO: unbind all at the end of a frame
         offset := u32(offset)
-        stride := u32(res.size.y)
+        stride := u32(res.buf_desc.stride)
         _state.device_context->IASetVertexBuffers(
             StartSlot = u32(slot),
             NumBuffers = 1,
@@ -1107,7 +1107,7 @@ when BACKEND == BACKEND_D3D11 {
                     assert(false)
                 }
                 rtv = res.rtv
-                resolution = res.size.xy
+                resolution = res.tex_desc.size.xy
             }
 
             assert(rtv != nil)
@@ -1248,7 +1248,7 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]byte) {
-        switch res.usage {
+        switch res.buf_desc.usage {
         case .Immutable:
             assert(false)
 
@@ -1299,7 +1299,7 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _update_constants :: proc(res: ^Resource_State, data: []byte) {
-        if res.size.y > 1 {
+        if res.consts_desc.item_num > 1 {
             // This is a multi constant buffer, delay updates based on dynamic offsets.
             // The actual buffer will be set dynamically when drawing. Should be
             // fast thanks to internal D3D11 driver buffer renaming.
@@ -1334,7 +1334,7 @@ when BACKEND == BACKEND_D3D11 {
             DstSubresource = sub,
             pDstBox = nil,
             pSrcData = raw_data(data),
-            SrcRowPitch = u32(int(res.size.x) * get_texture_format_pixel_size(res.tex_format)),
+            SrcRowPitch = u32(int(res.tex_desc.size.x) * get_texture_format_pixel_size(res.tex_desc.format)),
             SrcDepthPitch = 0,
         )
         _d3d11_messages()

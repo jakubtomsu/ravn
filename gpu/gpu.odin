@@ -946,8 +946,8 @@ create_bind_group :: proc(
         res := _get_resource(slot.resource) or_continue
         if res.kind == .Constants {
             state.consts[slot.index] = slot.resource
-            state.consts_sizes[slot.index] = u16(res.size.x)
-            if res.size.y > 1 {
+            state.consts_sizes[slot.index] = u16(res.consts_desc.item_size)
+            if res.consts_desc.item_num > 1 {
                 state.consts_dyn += {int(slot.index)}
             }
         }
@@ -1085,7 +1085,8 @@ create_constants :: proc(
     _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
 
     state := Resource_State{
-        consts_desc = desc,
+        kind = .Constants,
+        desc = {consts_desc = desc},
         id = id,
         native = {},
     }
@@ -1121,14 +1122,14 @@ make_texture_desc :: proc "contextless" (
     format:             Texture_Format,
     size:               [3]i32,
     usage:              Usage = .Default,
-    mips:               i32 = 1,
+    #any_int mips:      int = 1,
     flags:              bit_set[Texture_Flag] = {},
 ) -> (result: Texture_Desc) {
     return {
         format  = format,
         size    = size,
         usage   = usage,
-        mips    = mips,
+        mips    = u8(mips),
         flags   = flags,
     }
 }
@@ -1152,33 +1153,33 @@ create_texture_2d :: proc(
     base.assert_id(id, desc.size.x <= MAX_TEXTURE_2D_SIZE)
     base.assert_id(id, desc.size.y > 0)
     base.assert_id(id, desc.size.y <= MAX_TEXTURE_2D_SIZE)
-    base.assert_id(id, desc.array_depth >= 1)
-    base.assert_id(id, desc.array_depth < MAX_TEXTURE_ARRAY_DEPTH)
+    base.assert_id(id, desc.size.z >= 1)
+    base.assert_id(id, desc.size.z < MAX_TEXTURE_ARRAY_DEPTH)
 
-    if render_texture {
-        base.assert_id(id, desc.array_depth == 1)
+    if .Render_Texture in desc.flags {
+        base.assert_id(id, desc.size.z == 1)
         base.assert_id(id, desc.usage == .Default)
-        base.assert_id(id, desc.data == nil)
+        base.assert_id(id, data == nil)
     }
 
-    if usage == .Immutable {
-        base.assert_id(id, desc.data != nil)
+    if desc.usage == .Immutable {
+        base.assert_id(id, data != nil)
     }
 
-    if usage == .Staging {
+    if desc.usage == .Staging {
         base.assert_id(id, .Render_Texture not_in desc.flags)
         base.assert_id(id, .RW_Resource not_in desc.flags)
-        base.assert_id(id, desc.data == nil)
+        base.assert_id(id, data == nil)
         base.assert_id(id, get_texture_format_pixel_size(desc.format) != 0)
     }
 
-    if is_texture_format_depth_stencil(format) {
-        base.assert_id(id, desc.render_texture)
+    if is_texture_format_depth_stencil(desc.format) {
+        base.assert_id(id, .Render_Texture in desc.flags)
     }
 
     if data != nil {
         base.assert_id(id, desc.mips == 1)
-        base.assert_id(id, desc.array_depth == 1)
+        base.assert_id(id, desc.size.z == 1)
         base.assert_id(id, len(data) == (int(desc.size.x * desc.size.y) * int(get_texture_format_pixel_size(desc.format))))
     }
 
@@ -1186,7 +1187,7 @@ create_texture_2d :: proc(
 
     state := Resource_State{
         kind = .Texture2D,
-        tex_desc = desc,
+        desc = {tex_desc = desc},
         id = id,
         native = {},
     }
@@ -1225,7 +1226,7 @@ create_buffer :: proc(
     size := size
 
     if size == 0 && data != nil {
-        size = i32(len(data))
+        size = len(data)
     }
 
     base.log_debug("Creating buffer %s of size %i bytes", name, size)
@@ -1257,7 +1258,7 @@ create_buffer :: proc(
 
     state := Resource_State{
         kind = .Buffer,
-        buf_desc = desc,
+        desc = {buf_desc = desc},
         id = id,
         native = {},
     }
@@ -1296,13 +1297,13 @@ resize_texture :: proc(handle: ^Resource_Handle, size: [3]i32) -> (ok: bool) {
         return false
     }
 
-    if res.size == size {
+    if res.tex_desc.size == size {
         return true
     }
 
     desc := res.tex_desc
     desc.size = size
-    create_texture_2d(&handle, desc = desc)
+    return create_texture_2d(handle, desc = desc)
 }
 
 
@@ -1519,10 +1520,9 @@ update_constants :: proc(handle: Resource_Handle, data: []byte, loc := #caller_l
     }
 
     assert(res.kind == .Constants, loc = loc)
-    assert(len(data) <= int(res.size.x) * int(res.size.y), loc = loc)
-    assert(len(data) % int(res.size.x) == 0, loc = loc)
-    assert(res.size.y >= 1, loc = loc)
-    assert(res.size.z == 1, loc = loc)
+    assert(len(data) <= int(res.consts_desc.item_size) * int(res.consts_desc.item_num), loc = loc)
+    assert(len(data) % int(res.consts_desc.item_size) == 0, loc = loc)
+    assert(res.consts_desc.item_num >= 1, loc = loc)
 
     data_clone := make([]byte, len(data), context.temp_allocator)
     copy(data_clone, data)
@@ -1553,8 +1553,8 @@ update_buffer :: proc(handle: Resource_Handle, offset := 0, buffers: ..[]byte, l
     }
 
     assert(res.kind == .Buffer, loc = loc)
-    assert(total_len <= int(res.size.x), loc = loc)
-    assert(res.usage != .Immutable, loc = loc)
+    assert(total_len <= int(res.buf_desc.size), loc = loc)
+    assert(res.buf_desc.usage != .Immutable, loc = loc)
 
     _update_buffer(res, offset, buffers)
     return true
@@ -1570,7 +1570,7 @@ update_texture_2d :: proc(handle: Resource_Handle, data: []byte, #any_int slice:
     }
 
     assert(res.kind == .Texture2D)
-    assert(slice < res.size.z)
+    assert(slice < res.tex_desc.size.z)
     _update_texture_2d(res, data = data, slice = slice)
     return true
 }
@@ -1632,10 +1632,10 @@ copy_texture :: proc(dst_handle: Resource_Handle, src_handle: Resource_Handle) -
 
     assert(_state.encoder.mode == .None)
     base.assert_id(dst_res.id, dst_res.kind == .Texture2D)
-    base.assert_id(dst_res.id, dst_res.size == src_res.size)
-    base.assert_id(dst_res.id, dst_res.tex_format == src_res.tex_format)
+    base.assert_id(dst_res.id, dst_res.tex_desc.size == src_res.tex_desc.size)
+    base.assert_id(dst_res.id, dst_res.tex_desc.format == src_res.tex_desc.format)
     base.assert_id(src_res.id, src_res.kind == .Texture2D)
-    base.assert_id(dst_res.id, dst_res.usage == .Staging)
+    base.assert_id(dst_res.id, dst_res.tex_desc.usage == .Staging)
 
     return _copy_texture(dst = dst_res, src = src_res)
 }
@@ -1690,7 +1690,7 @@ get_texture_format :: proc(handle: Resource_Handle) -> (result: Texture_Format, 
     if res.kind != .Texture2D && res.kind != .Texture3D {
         return .Invalid, false
     }
-    return res.tex_format, true
+    return res.tex_desc.format, true
 }
 
 
@@ -1731,9 +1731,9 @@ validate_pass_desc :: proc(id: base.Debug_ID, desc: Graphics_Pass_Desc, loc := #
         }
 
         if resolution == {} {
-            resolution = res.size.xy
+            resolution = res.tex_desc.size.xy
         } else {
-            base.assert_id(id, res.size.xy == resolution, loc = loc)
+            base.assert_id(id, res.tex_desc.size.xy == resolution, loc = loc)
         }
     }
 
@@ -1803,7 +1803,7 @@ validate_bind_group_desc :: proc(id: base.Debug_ID, desc: Bind_Group_Desc, loc :
         base.assert_id(id, res.kind == _bind_layout_slot_resource_kind(layout_slot.kind), "Bound resource kind does not match the layout slot", loc = loc)
 
         if layout_slot.kind == .Constants_Dynamic {
-            base.assert_id(id, res.size.y > 1, "A Constants_Dynamic slot expects a multi-item constant buffer", loc = loc)
+        base.assert_id(id, res.consts_desc.item_num > 1, "A Constants_Dynamic slot expects a multi-item constant buffer", loc = loc)
         }
     }
 }

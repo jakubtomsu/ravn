@@ -447,10 +447,10 @@ when BACKEND == BACKEND_WGPU {
                     base.assert_id(id, false)
                 case .Constants:
                     entry.buffer = res.buf
-                    entry.size = u64(res.size.x)
+                    entry.size = u64(res.consts_desc.item_size)
                 case .Buffer:
-                    base.assert_id(id, res.size.x % 4 == 0)
-                    entry.size = u64(res.size.x)
+                    base.assert_id(id, res.buf_desc.size % 4 == 0)
+                    entry.size = u64(res.buf_desc.size)
                     entry.buffer = res.buf
                 case .Texture2D:
                     entry.textureView = res.tex_view
@@ -748,12 +748,12 @@ when BACKEND == BACKEND_WGPU {
         return true
     }
 
-    _create_constants :: proc(id: base.Debug_ID, item_size: i32, item_num: i32) -> (result: _Resource_State, ok: bool) {
+    _create_constants :: proc(id: base.Debug_ID, desc: Constants_Desc) -> (result: _Resource_State, ok: bool) {
         size: u64
-        if item_num > 1 {
-            size = u64(runtime.align_forward_int(int(item_size), int(_state.uniform_offset_align))) * u64(item_num)
+        if desc.item_num > 1 {
+            size = u64(runtime.align_forward_int(int(desc.item_size), int(_state.uniform_offset_align))) * u64(desc.item_num)
         } else {
-            size = u64(item_size) * u64(item_num)
+            size = u64(desc.item_size) * u64(desc.item_num)
         }
 
         result.buf = wgpu.DeviceCreateBuffer(_state.device, &wgpu.BufferDescriptor{
@@ -788,15 +788,15 @@ when BACKEND == BACKEND_WGPU {
 
     _create_texture_2d :: proc(
         id:             base.Debug_ID,
-        format:         Texture_Format,
-        size:           [2]i32,
-        usage:          Usage,
-        mips:           i32,
-        array_depth:    i32,
-        render_texture: bool,
-        rw_resource:    bool,
+        desc:           Texture_Desc,
         data:           []byte,
     ) -> (result: _Resource_State, ok: bool) {
+
+        format := desc.format
+        size := desc.size
+        usage := desc.usage
+        mips := i32(desc.mips)
+        array_depth := size.z
 
         // On WGPU we must use a buffer
         if usage == .Staging {
@@ -818,13 +818,13 @@ when BACKEND == BACKEND_WGPU {
         } else {
             usage_flags: wgpu.TextureUsageFlags = {.TextureBinding}
 
-            if render_texture {
+            if .Render_Texture in desc.flags {
                 usage_flags += {.RenderAttachment, .CopySrc}
             } else {
                 usage_flags += {.CopyDst}
             }
 
-            if rw_resource {
+            if .RW_Resource in desc.flags {
                 usage_flags += {.StorageBinding}
             }
 
@@ -901,18 +901,11 @@ when BACKEND == BACKEND_WGPU {
         return result, true
     }
 
-    _create_buffer :: proc(
-        id:     base.Debug_ID,
-        kind:   Buffer_Kind,
-        stride: i32,
-        size:   i32,
-        usage:  Usage,
-        data:   []u8,
-    ) -> (result: _Resource_State, ok: bool) {
+    _create_buffer :: proc(id: base.Debug_ID, desc: Buffer_Desc, data: []u8) -> (result: _Resource_State, ok: bool) {
         result.buf = wgpu.DeviceCreateBuffer(_state.device, &wgpu.BufferDescriptor{
             label            = base.get_debug_id_name(id),
-            usage            = _wgpu_buffer_usage(usage) + _wgpu_buffer_kind(kind),
-            size             = u64(size),
+            usage            = _wgpu_buffer_usage(desc.usage) + _wgpu_buffer_kind(desc.kind),
+            size             = u64(desc.size),
             mappedAtCreation = data != nil,
         })
 
@@ -921,7 +914,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         if data != nil {
-            assert(len(data) <= int(size))
+            assert(len(data) <= int(desc.size))
             mapping := wgpu.RawBufferGetMappedRange(result.buf, offset = 0, size = len(data))
             intrinsics.mem_copy_non_overlapping(mapping, raw_data(data), len(data))
             wgpu.BufferUnmap(result.buf)
@@ -1046,7 +1039,7 @@ when BACKEND == BACKEND_WGPU {
             slot = u32(slot),
             buffer = res.buf,
             offset = u64(offset),
-            size = u64(res.size.x) - u64(offset),
+            size = u64(res.buf_desc.size) - u64(offset),
         )
     }
 
@@ -1056,7 +1049,7 @@ when BACKEND == BACKEND_WGPU {
             buffer = res.buf,
             format = _wgpu_index_format(format),
             offset = u64(offset),
-            size = u64(res.size.x) - u64(offset),
+            size = u64(res.buf_desc.size) - u64(offset),
         )
     }
 
@@ -1099,7 +1092,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _update_constants :: proc(res: ^Resource_State, data: []u8) {
-        if res.size.y == 1 {
+        if res.consts_desc.item_num == 1 {
             wgpu.QueueWriteBuffer(_state.queue,
                 res.buf,
                 bufferOffset = 0,
@@ -1110,27 +1103,28 @@ when BACKEND == BACKEND_WGPU {
             // Must respect alignment for dynamic offsets.
             // NOTE: is many QueueWriteBuffer calls better than a single big with our own preallocated buffer?
 
-            base.assert_id(res.id, len(data) % int(res.size.x) == 0)
+            item_size := int(res.consts_desc.item_size)
+            base.assert_id(res.id, len(data) % item_size == 0)
 
-            num_items := len(data) / int(res.size.x)
+            num_items := len(data) / item_size
 
-            aligned_size := runtime.align_forward_int(int(res.size.x), int(_state.uniform_offset_align))
+            aligned_size := runtime.align_forward_int(item_size, int(_state.uniform_offset_align))
 
             for i in 0..<num_items {
                 wgpu.QueueWriteBuffer(_state.queue,
                     res.buf,
                     bufferOffset = u64(aligned_size * i),
-                    data = &data[int(res.size.x) * i],
-                    size = uint(res.size.x),
+                    data = &data[item_size * i],
+                    size = uint(item_size),
                 )
             }
         }
     }
 
     _update_texture_2d :: proc(res: ^Resource_State, data: []byte, slice: i32) {
-        base.assert_id(res.id, res.tex_format != .Invalid)
+        base.assert_id(res.id, res.tex_desc.format != .Invalid)
 
-        row_bytes := u32(get_texture_format_pixel_size(res.tex_format) * int(res.size.x))
+        row_bytes := u32(get_texture_format_pixel_size(res.tex_desc.format) * int(res.tex_desc.size.x))
         wgpu.QueueWriteTexture(_state.queue,
             data = raw_data(data),
             dataSize = len(data),
@@ -1143,11 +1137,11 @@ when BACKEND == BACKEND_WGPU {
             dataLayout = &wgpu.TexelCopyBufferLayout{
                 offset = 0,
 	            bytesPerRow = row_bytes,
-	            rowsPerImage = u32(res.size.y),
+	            rowsPerImage = u32(res.tex_desc.size.y),
             },
             writeSize = &wgpu.Extent3D{
-                width = u32(res.size.x),
-                height = u32(res.size.y),
+                width = u32(res.tex_desc.size.x),
+                height = u32(res.tex_desc.size.y),
                 depthOrArrayLayers = 1,
             },
         )
@@ -1217,21 +1211,21 @@ when BACKEND == BACKEND_WGPU {
             aspect = .All,
         }
 
-        pixel_bytes := get_texture_format_pixel_size(src.tex_format)
-        bytes_per_row := (runtime.align_forward_int(int(src.size.x) * int(pixel_bytes), _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT))
+        pixel_bytes := get_texture_format_pixel_size(src.tex_desc.format)
+        bytes_per_row := (runtime.align_forward_int(int(src.tex_desc.size.x) * int(pixel_bytes), _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT))
 
         destination := wgpu.TexelCopyBufferInfo{
             buffer = dst.buf,
             layout = {
                 offset = 0,
                 bytesPerRow = u32(bytes_per_row),
-                rowsPerImage = u32(src.size.y),
+                rowsPerImage = u32(src.tex_desc.size.y),
             },
         }
 
         copy_size := wgpu.Extent3D{
-            width = u32(src.size.x),
-            height = u32(src.size.y),
+            width = u32(src.tex_desc.size.x),
+            height = u32(src.tex_desc.size.y),
             depthOrArrayLayers = 1,
         }
 
@@ -1252,8 +1246,8 @@ when BACKEND == BACKEND_WGPU {
             unimplemented()
         }
 
-        pixel_bytes := get_texture_format_pixel_size(res.tex_format)
-        bytes_per_row := (runtime.align_forward_int(int(res.size.x) * int(pixel_bytes), _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT))
+        pixel_bytes := get_texture_format_pixel_size(res.tex_desc.format)
+        bytes_per_row := (runtime.align_forward_int(int(res.tex_desc.size.x) * int(pixel_bytes), _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT))
 
         State :: struct {
             done:   bool,
@@ -1266,7 +1260,7 @@ when BACKEND == BACKEND_WGPU {
             buffer = res.buf,
             mode = {.Read},
             offset = 0,
-            size = uint(bytes_per_row) * uint(res.size.y),
+            size = uint(bytes_per_row) * uint(res.tex_desc.size.y),
             callbackInfo = {
                 mode = _WGPU_CALLBACK_MODE,
                 callback = on_map_done,
@@ -1286,7 +1280,7 @@ when BACKEND == BACKEND_WGPU {
         mapped := wgpu.RawBufferGetMappedRange(
             buffer = res.buf,
             offset = 0,
-            size = uint(bytes_per_row) * uint(res.size.y),
+            size = uint(bytes_per_row) * uint(res.tex_desc.size.y),
         )
 
         if mapped == nil {
@@ -1296,7 +1290,7 @@ when BACKEND == BACKEND_WGPU {
         return {
             ptr = mapped,
             row_pitch = u32(bytes_per_row),
-            depth_pitch = u32(uint(bytes_per_row) * uint(res.size.y)),
+            depth_pitch = u32(uint(bytes_per_row) * uint(res.tex_desc.size.y)),
         }, true
 
         on_map_done :: proc "c" (

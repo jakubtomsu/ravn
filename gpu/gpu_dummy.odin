@@ -1,6 +1,12 @@
 #+vet explicit-allocators shadowing style unused
 package ravn_gpu
 
+import "base:runtime"
+import "../base"
+
+_ :: runtime
+_ :: base
+
 // Dummy backend for testing.
 // Everything *must compile* on all targets, but won't run (by design)
 // This can be a starting point when writing a new backend from scratch.
@@ -29,10 +35,10 @@ when BACKEND == BACKEND_DUMMY {
     @(require_results) _create_bind_group :: proc(id: base.Debug_ID, desc: Bind_Group_Desc) -> (result: _Bind_Group_State, ok: bool) { dummy() }
     @(require_results) _create_graphics_pipeline :: proc(id: base.Debug_ID, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) { dummy() }
     @(require_results) _create_compute_pipeline :: proc(id: base.Debug_ID, desc: Compute_Pipeline_Desc) -> (result: _Compute_Pipeline_State, ok: bool) { dummy() }
-    @(require_results) _create_constants :: proc(id: base.Debug_ID, item_size: i32, item_num: i32) -> (result: _Resource_State, ok: bool) { dummy() }
+    @(require_results) _create_constants :: proc(id: base.Debug_ID, desc: Constants_Desc) -> (result: _Resource_State, ok: bool) { dummy() }
     @(require_results) _create_shader :: proc(id: base.Debug_ID, data: []u8, kind: Shader_Kind) -> (result: _Shader_State, ok: bool) { dummy() }
-    @(require_results) _create_texture_2d :: proc(id: base.Debug_ID, format: Texture_Format, size: [2]i32, usage: Usage, mips: i32, array_depth: i32, render_texture: bool, rw_resource: bool, data: []byte) -> (result: _Resource_State, ok: bool) { dummy() }
-    @(require_results) _create_buffer :: proc(id: base.Debug_ID, kind: Buffer_Kind, stride: i32, size: i32, usage: Usage, data: []u8) -> (result: _Resource_State, ok: bool) { dummy() }
+    @(require_results) _create_texture_2d :: proc(id: base.Debug_ID, desc: Texture_Desc, data: []byte) -> (result: _Resource_State, ok: bool) { dummy() }
+    @(require_results) _create_buffer :: proc(id: base.Debug_ID, desc: Buffer_Desc, data: []u8) -> (result: _Resource_State, ok: bool) { dummy() }
 
     _destroy_shader :: proc(state: Shader_State) { dummy() }
     _destroy_resource :: proc(state: Resource_State) { dummy() }
@@ -62,6 +68,10 @@ when BACKEND == BACKEND_DUMMY {
     _draw_non_indexed :: proc(vertex_num: int, instance_num: int, vertex_offset: int, instance_offset: int) { dummy() }
     _draw_indexed :: proc(index_num: int, instance_num: int, index_offset: int, vertex_offset: int, instance_offset: int) { dummy() }
     _dispatch_compute :: proc(size: [3]i32) { dummy() }
+
+    _copy_texture :: proc(dst: ^Resource_State, src: ^Resource_State) -> bool { dummy() }
+    _map_texture :: proc(res: ^Resource_State) -> (Mapped_Data, bool) { dummy() }
+    _unmap_texture :: proc(res: ^Resource_State) -> bool { dummy() }
 
     _set_scissor :: proc(min: [2]i32, max: [2]i32) { dummy() }
 
