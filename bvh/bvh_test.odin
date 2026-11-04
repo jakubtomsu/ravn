@@ -7,7 +7,7 @@ import "core:slice"
 import "core:testing"
 
 @(test)
-_fuzz_test :: proc(t: ^testing.T) {
+_test_fuzz :: proc(t: ^testing.T) {
     for i in 0..<256 {
         free_all(context.temp_allocator)
         context.allocator = context.temp_allocator
