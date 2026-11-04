@@ -1,3 +1,23 @@
+/* Input utility package
+
+The platform provides raw events, this input system collects them and
+exposes convenient accessors for keyboard, mouse and gamepad input.
+Includes buffering.
+
+Usage:
+
+    input.init()
+
+    frame_loop: for {
+        input.update(delta)
+        for event in platform.poll_window_events() {
+            input.apply_event(event)
+        }
+    }
+
+    input.shutdown()
+
+*/
 #+vet explicit-allocators shadowing style
 package ravn
 
@@ -48,7 +68,7 @@ Button_Buffer :: struct($E: typeid) where intrinsics.type_is_enum(E) {
     timer:      [E]f32,
 }
 
-init :: proc(state: ^State, allocator := context.allocator) {
+init :: proc(state: ^State = nil, allocator := context.allocator) {
     state := state
 
     if _state != nil {
@@ -63,28 +83,55 @@ init :: proc(state: ^State, allocator := context.allocator) {
     _state = state
 }
 
-update :: proc(state: ^State, delta: f32) {
-    input.mouse_delta = 0
-    input.scroll_delta = 0
+update :: proc(delta: f32) {
+    _state.mouse_delta = 0
+    _state.scroll_delta = 0
 
-    button_buffer_update(&input.buttons, delta_time)
-    button_buffer_update(&input.mouse_buttons, delta_time)
+    button_buffer_update(&_state.buttons, delta_time)
+    button_buffer_update(&_state.mouse_buttons, delta_time)
 
     for gpad, i in state.gamepads {
         button_buffer_update(&gpad.buttons, delta)
         gp.axes = {}
 
-        state, state_ok := platform.get_gamepad_state(i)
+        state, state_ok := platform.gamepad_state(i)
 
         if !state_ok {
-            input.gamepads[i] = {}
-            input.gamepads_connected -= {i}
+            _state.gamepads[i] = {}
+            _state.gamepads_connected -= {i}
             continue
         } else {
-            input.gamepads_connected += {i}
+            _state.gamepads_connected += {i}
         }
 
         gamepad_apply_state(gpad, state)
+    }
+}
+
+apply_event :: proc(event: platform.Event) {
+    #partial switch v in event {
+    case platform.Event_Button:
+            if v.pressed {
+                button_buffer_apply_press(&_state.buttons, v.button)
+            } else {
+                button_buffer_apply_release(&_state.buttons, v.button)
+            }
+
+    case platform.Event_Mouse_Button:
+        if v.pressed {
+            button_buffer_apply_press(&_state.mouse_buttons, v.button)
+        } else {
+            button_buffer_apply_release(&_state.mouse_buttons, v.button)
+        }
+
+    case platform.Event_Mouse:
+        _state.mouse_delta.x += f32(v.move.x)
+        _state.mouse_delta.y += f32(v.move.y)
+        _state.mouse_pos.x = f32(v.pos.x)
+        _state.mouse_pos.y = f32(v.pos.y)
+
+    case platform.Event_Scroll:
+        _state.scroll_delta += v.delta
     }
 }
 
@@ -92,25 +139,25 @@ update :: proc(state: ^State, delta: f32) {
 
 // MARK: Buttons
 
-get_button_down :: proc(button: Button) -> bool {
+button_down :: proc(button: Button) -> bool {
     return button in _state.buttons.down
 }
 
 // Down time is 0 on pressed.
-get_button_down_time :: proc(button: Button) -> f32 {
+button_down_time :: proc(button: Button) -> f32 {
     return _state.buttons.timer[button]
 }
 
-get_button_repeated :: proc(button: Button) -> bool {
+button_repeated :: proc(button: Button) -> bool {
     return button in _state.buttons.repeated
 }
 
-get_button_released :: proc(button: Button) -> bool {
+button_released :: proc(button: Button) -> bool {
     return button in _state.buttons.released
 }
 
 // buf: buffering window duration in seconds
-get_button_pressed :: proc(button: Button, buf: f32 = 0) -> bool {
+button_pressed :: proc(button: Button, buf: f32 = 0) -> bool {
     if buf > 0.0001 &&
         button in _state.buttons.buffered &&
         _state.buttons.timer[button] <= buf
@@ -130,35 +177,35 @@ get_button_pressed :: proc(button: Button, buf: f32 = 0) -> bool {
 // MARK: Mouse
 
 // NOTE: [0, 0] is the bottom left corner.
-get_mouse_pos :: proc() -> [2]f32 {
+mouse_pos :: proc() -> [2]f32 {
     return _state.mouse_pos
 }
 
 // Positive Y is up.
-get_mouse_delta :: proc() -> [2]f32 {
+mouse_delta :: proc() -> [2]f32 {
     return _state.mouse_delta
 }
 
-get_scroll_delta :: proc() -> [2]f32 {
+scroll_delta :: proc() -> [2]f32 {
     return _state.scroll_delta
 }
 
-get_mouse_down :: proc(button: Mouse_Button) -> bool {
+mouse_down :: proc(button: Mouse_Button) -> bool {
     return button in _state.mouse_buttons.down
 }
 
 
 // MARK: Gamepads
 
-is_gamepad_connected :: proc(gamepad_index: int) -> bool {
+gamepad_connected :: proc(gamepad_index: int) -> bool {
     if gamepad_index < 0 || gamepad_index >= MAX_GAMEPADS {
         return false
     }
     return gamepad_index in _state.gamepads_connected
 }
 
-get_gamepad_axis :: proc(gamepad_index: int, axis: Gamepad_Axis, deadzone: f32 = DEFAULT_DEADZONE) -> f32 {
-    if !is_gamepad_connected(gamepad_index) {
+gamepad_axis :: proc(gamepad_index: int, axis: Gamepad_Axis, deadzone: f32 = DEFAULT_DEADZONE) -> f32 {
+    if !gamepad_connected(gamepad_index) {
         return 0
     }
     gamepad := _state.gamepads[gamepad_index]
@@ -166,8 +213,8 @@ get_gamepad_axis :: proc(gamepad_index: int, axis: Gamepad_Axis, deadzone: f32 =
     return abs(val) < deadzone ? 0 : val
 }
 
-get_gamepad_stick :: proc(gamepad_index: int, axis: Gamepad_Stick, deadzone: f32 = DEFAULT_DEADZONE) -> [2]f32 {
-    if !is_gamepad_connected(gamepad_index) {
+gamepad_stick :: proc(gamepad_index: int, axis: Gamepad_Stick, deadzone: f32 = DEFAULT_DEADZONE) -> [2]f32 {
+    if !gamepad_connected(gamepad_index) {
         return 0
     }
 
@@ -198,8 +245,8 @@ get_gamepad_stick :: proc(gamepad_index: int, axis: Gamepad_Stick, deadzone: f32
     return vec
 }
 
-get_gamepad_down :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
-    if !is_gamepad_connected(gamepad_index) {
+gamepad_down :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
+    if !gamepad_connected(gamepad_index) {
         return false
     }
     gamepad := _state.gamepads[gamepad_index]
@@ -207,24 +254,24 @@ get_gamepad_down :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
 }
 
 // Down time is 0 on pressed
-get_gamepad_down_time :: proc(gamepad_index: int, button: Gamepad_Button) -> f32 {
-    if !is_gamepad_connected(gamepad_index) {
+gamepad_down_time :: proc(gamepad_index: int, button: Gamepad_Button) -> f32 {
+    if !gamepad_connected(gamepad_index) {
         return 0
     }
     gamepad := _state.gamepads[gamepad_index]
     return gamepad.buttons.timer[button]
 }
 
-get_gamepad_repeated :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
-    if !is_gamepad_connected(gamepad_index) {
+gamepad_repeated :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
+    if !gamepad_connected(gamepad_index) {
         return false
     }
     gamepad := _state.gamepads[gamepad_index]
     return button in gamepad.buttons.repeated
 }
 
-get_gamepad_released :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
-    if !is_gamepad_connected(gamepad_index) {
+gamepad_released :: proc(gamepad_index: int, button: Gamepad_Button) -> bool {
+    if !gamepad_connected(gamepad_index) {
         return false
     }
     gamepad := _state.gamepads[gamepad_index]
@@ -232,8 +279,8 @@ get_gamepad_released :: proc(gamepad_index: int, button: Gamepad_Button) -> bool
 }
 
 // buf: buffering window duration in seconds
-get_gamepad_pressed :: proc(gamepad_index: int, button: Gamepad_Button, buf: f32 = 0) -> bool {
-    if !is_gamepad_connected(gamepad_index) {
+gamepad_pressed :: proc(gamepad_index: int, button: Gamepad_Button, buf: f32 = 0) -> bool {
+    if !gamepad_connected(gamepad_index) {
         return false
     }
     gamepad := _state.gamepads[gamepad_index]
@@ -281,33 +328,6 @@ button_buffer_apply_release :: proc(buf: ^Button_Buffer($T), elem: T) {
         buf.released += {elem}
     }
     buf.down -= {elem}
-}
-
-button_buffer_apply_event :: proc(input: ^Input, event: platform.Event) {
-    #partial switch v in event {
-    case platform.Event_Button:
-            if v.pressed {
-                button_buffer_apply_press(&input.buttons, v.button)
-            } else {
-                button_buffer_apply_release(&input.buttons, v.button)
-            }
-
-    case platform.Event_Mouse_Button:
-        if v.pressed {
-            button_buffer_apply_press(&input.mouse_buttons, v.button)
-        } else {
-            button_buffer_apply_release(&input.mouse_buttons, v.button)
-        }
-
-    case platform.Event_Mouse:
-        input.mouse_delta.x += f32(v.move.x)
-        input.mouse_delta.y += f32(v.move.y)
-        input.mouse_pos.x = f32(v.pos.x)
-        input.mouse_pos.y = f32(v.pos.y)
-
-    case platform.Event_Scroll:
-        input.scroll_delta += v.delta
-    }
 }
 
 gamepad_apply_state :: proc(gpad: ^Gamepad, state: platform.Gamepad_State) {
