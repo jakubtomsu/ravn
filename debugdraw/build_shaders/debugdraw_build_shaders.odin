@@ -30,9 +30,9 @@ main :: proc() {
 }
 
 compile_all :: proc(ext: string) {
-    compile(fmt.tprintf("debugdraw/data/main.ps.%s", ext),  "debugdraw/main.ps.hlsl")
-    compile(fmt.tprintf("debugdraw/data/vert.vs.%s", ext),  "debugdraw/vert.vs.hlsl")
-    compile(fmt.tprintf("debugdraw/data/shape.vs.%s", ext), "debugdraw/shape.vs.hlsl")
+    compile(fmt.tprintf("debugdraw/data/main.ps.%s", ext),  "debugdraw/shaders/main.ps.hlsl")
+    compile(fmt.tprintf("debugdraw/data/vert.vs.%s", ext),  "debugdraw/shaders/vert.vs.hlsl")
+    compile(fmt.tprintf("debugdraw/data/shape.vs.%s", ext), "debugdraw/shaders/shape.vs.hlsl")
 }
 
 compile :: proc(dst: string, src: string) {

@@ -6,12 +6,7 @@ import "core:math/linalg"
 
 // MARK: Draw simple
 
-line :: proc(
-    pos0:   [3]f32,
-    pos1:   [3]f32,
-    col:    [2][4]u8 = WHITE,
-    time:   f32 = 0,
-) {
+line :: proc(pos0: [3]f32, pos1: [3]f32, col: [2][4]u8 = WHITE, time: f32 = 0) {
     buffer_push(&_state.line_buffer,
         data = [2]Vertex{
             { pos = pos0, col = col[0] },
@@ -79,6 +74,70 @@ basis :: proc(pos: [3]f32, mat: matrix[3, 3]f32 = 1, time: f32 = 0, fill := fals
 
 aabb :: proc(min: [3]f32, max: [3]f32, col := WHITE, time: f32 = 0, fill := false) {
     box((min + max) * 0.5, linalg.matrix3_scale((max - min) * 0.5), col, time, fill)
+}
+
+box_line :: proc(pos0: [3]f32, pos1: [3]f32, rad: f32, col: [4]u8 = WHITE, time: f32 = 0, fill := true) {
+    box((pos0 + pos1) * 0.5, calc_line_mat((pos1 - pos0) * 0.5, rad), col, time, fill)
+}
+
+cylinder_line :: proc(pos0: [3]f32, pos1: [3]f32, rad: f32, col: [4]u8 = WHITE, time: f32 = 0, fill := true) {
+    cylinder((pos0 + pos1) * 0.5, calc_line_mat((pos1 - pos0) * 0.5, rad), col, time, fill)
+}
+
+cone_line :: proc(pos0: [3]f32, pos1: [3]f32, rad: f32, col: [4]u8 = WHITE, time: f32 = 0, fill := true) {
+    cone((pos0 + pos1) * 0.5, calc_line_mat((pos1 - pos0) * 0.5, rad), col, time, fill)
+}
+
+arrow :: proc(pos0: [3]f32, pos1: [3]f32, rad: f32, col: [4]u8 = WHITE, time: f32 = 0, fill := true) {
+    dist := linalg.length(pos1 - pos0)
+    if dist < 0.0001 {
+        return
+    }
+    r := min(rad, dist)
+    dir := (pos1 - pos0) / dist
+    mid := pos1 - dir * min(dist, r * 3)
+    if dist > r * 3 {
+        cylinder_line(pos0, mid, r * 0.3, col, time, fill)
+    }
+    cone_line(mid, pos1, r, col, time, fill)
+}
+
+grid :: proc(
+    pos:        [3]f32 = 0,
+    axis_a:     [3]f32 = {1, 0, 0},
+    axis_b:     [3]f32 = {0, 0, 1},
+    col:        [2][4]u8 = {WHITE, LIGHT_GRAY},
+    segments:   [2]i32 = 5,
+    time:       f32 = 0,
+) {
+    for i in -segments.x..=segments.x {
+        line(
+            pos + axis_a * f32(i) - axis_b * f32(segments.y),
+            pos + axis_a * f32(i) + axis_b * f32(segments.y),
+            col = i == 0 ? col[0] : col[1],
+            time = time,
+        )
+    }
+
+    for i in -segments.y..=segments.y {
+        line(
+            pos + axis_b * f32(i) - axis_a * f32(segments.x),
+            pos + axis_b * f32(i) + axis_a * f32(segments.x),
+            col = i == 0 ? col[0] : col[1],
+            time = time,
+        )
+    }
+}
+
+// Y is "forward"
+calc_line_mat :: proc(dir: [3]f32, rad: [2]f32) -> (result: matrix[3, 3]f32) {
+    result[1] = dir
+    temp: [3]f32 = (abs(dir.x) + abs(dir.z)) < 0.0001 ? {1, 0, 0} : {0, 1, 0}
+    result[0] = linalg.normalize0(linalg.cross(temp, dir))
+    result[2] = linalg.normalize0(linalg.cross(result[0], result[1]))
+    result[0] *= rad.x
+    result[2] *= rad.y
+    return result
 }
 
 shape :: proc(

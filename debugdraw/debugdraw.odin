@@ -15,31 +15,34 @@ _state: ^State
 
 // Buffers share the actual GPU draw elem buffer and pipeline based on layout.
 // Within one layout only offsets and extra bindings are necessary.
+// TODO: split into transparent and opaque passes
 State :: struct {
-    allocator:    runtime.Allocator,
+    allocator:              runtime.Allocator,
+    state_allocator:        runtime.Allocator,
+    uploaded_this_frame:    bool,
 
-    target_color:       gpu.Resource_Handle,
-    target_depth:       gpu.Resource_Handle,
-    vert_buf:           gpu.Resource_Handle,
-    shape_inst_buf:     gpu.Resource_Handle,
-    shape_model_vbuf:   gpu.Resource_Handle,
-    shape_offsets:      [Shape_Kind]u32,
-    consts:             gpu.Resource_Handle,
+    target_color:           gpu.Resource_Handle,
+    target_depth:           gpu.Resource_Handle,
+    vert_buf:               gpu.Resource_Handle,
+    shape_inst_buf:         gpu.Resource_Handle,
+    shape_model_vbuf:       gpu.Resource_Handle,
+    shape_offsets:          [Shape_Kind]u32,
+    consts:                 gpu.Resource_Handle,
 
-    ps:                 gpu.Shader_Handle,
-    vert_vs:            gpu.Shader_Handle,
-    shape_vs:           gpu.Shader_Handle,
+    ps:                     gpu.Shader_Handle,
+    vert_vs:                gpu.Shader_Handle,
+    shape_vs:               gpu.Shader_Handle,
 
-    line_pip:           gpu.Graphics_Pipeline_Handle,
-    tri_pip:            gpu.Graphics_Pipeline_Handle,
-    line_shape_pip:     gpu.Graphics_Pipeline_Handle,
-    tri_shape_pip:      gpu.Graphics_Pipeline_Handle,
-    binds:              gpu.Bind_Group_Handle,
-    bind_layout:        gpu.Bind_Layout_Handle,
+    line_pip:               gpu.Graphics_Pipeline_Handle,
+    tri_pip:                gpu.Graphics_Pipeline_Handle,
+    line_shape_pip:         gpu.Graphics_Pipeline_Handle,
+    tri_shape_pip:          gpu.Graphics_Pipeline_Handle,
+    binds:                  gpu.Bind_Group_Handle,
+    bind_layout:            gpu.Bind_Layout_Handle,
 
-    line_buffer:        Buffer([2]Vertex),
-    tri_buffer:         Buffer([3]Vertex),
-    shape_buffers:      [Shape_Kind]Buffer(Shape_Instance),
+    line_buffer:            Buffer([2]Vertex),
+    tri_buffer:             Buffer([3]Vertex),
+    shape_buffers:          [Shape_Kind]Buffer(Shape_Instance),
 }
 
 Shape_Kind :: enum u8 {
@@ -61,14 +64,27 @@ SHAPE_BUFFER_LINE_KINDS :: bit_set[Shape_Kind]{
     .Line_Box,
     .Line_Circle,
     .Line_Sphere,
+    .Line_Hemisphere,
     .Line_Cone,
     .Line_Cylinder,
+}
+
+@(init)
+_check_shape_buffer_line_kinds :: proc "contextless" () {
+    en := runtime.type_info_base(type_info_of(Shape_Kind)).variant.(runtime.Type_Info_Enum)
+    for name, i in en.names {
+        if name[0] == 'L' {
+            // Check if name is missing from SHAPE_BUFFER_LINE_KINDS
+            assert_contextless(Shape_Kind(en.values[i]) in SHAPE_BUFFER_LINE_KINDS, name)
+        }
+    }
 }
 
 BUFFER_PERSISTENT_FILTER_PER_FRAME :: 1024
 
 Buffer :: struct($T: typeid) {
-    upload_offset:          u32,
+    upload_elem_num:        u32,
+    upload_elem_offset:     u32,
 
     immediate_exhausted:    bool, // Set to true if you try to push data over capacity.
     immediate_buf:          []T,
@@ -124,6 +140,8 @@ init :: proc(
     state:              ^State = nil,
     target_color:       gpu.Resource_Handle,
     target_depth:       gpu.Resource_Handle = {},
+    depth_comparison:   gpu.Comparison_Op = .Always,
+    depth_write         := false,
     line_cap            := 1024 * 16,
     tri_cap             := 1024 * 16,
     shape_buffer_caps   := DEFAULT_SHAPE_BUFFER_CAPS,
@@ -149,6 +167,7 @@ init :: proc(
 
     if state == nil {
         state = new(State, allocator)
+        state.state_allocator = allocator
     }
 
     _state = state
@@ -215,6 +234,8 @@ init :: proc(
         out_depth = gpu.get_texture_format(_state.target_depth) or_else .Invalid,
         blends = { 0 = gpu.BLEND_ALPHA, },
         topo = .Invalid,
+        depth_comparison = depth_comparison,
+        depth_write = depth_write,
     )
 
     {
@@ -338,7 +359,9 @@ shutdown :: proc() {
         buffer_destroy(&buf, allocator = _state.allocator)
     }
 
-    free(_state, _state.allocator)
+    if _state.state_allocator != {} {
+        free(_state, _state.state_allocator)
+    }
 
     _state = nil
 }
@@ -347,8 +370,43 @@ shutdown :: proc() {
 
 // MARK: Render
 
-render_frame :: proc(camera_proj: matrix[4, 4]f32, delta: f32) {
+render_pass :: proc(
+    camera_proj:        matrix[4, 4]f32,
+    delta:              f32,
+    color_clear_mode:   gpu.Clear_Mode = .Keep,
+    color_clear_val:    [4]f32 = 0,
+    depth_clear_mode:   gpu.Clear_Mode = .Keep,
+    depth_clear_val:    f32 = 1,
+) {
     context.allocator = runtime.panic_allocator()
+
+    upload_frame(camera_proj = camera_proj, delta = delta)
+
+    gpu.begin_graphics_pass("ravn_debugdraw", {
+        colors = {
+            0 = {
+                resource = _state.target_color,
+                clear_mode = color_clear_mode,
+                clear_val = color_clear_val,
+            },
+        },
+        depth = {
+            resource = _state.target_depth,
+            clear_mode = depth_clear_mode,
+            clear_val = depth_clear_val,
+        },
+    })
+
+    render_frame()
+
+    gpu.end_graphics_pass()
+}
+
+upload_frame :: proc(camera_proj: matrix[4, 4]f32, delta: f32) {
+    context.allocator = runtime.panic_allocator()
+
+    assert(!_state.uploaded_this_frame)
+    defer _state.uploaded_this_frame = true
 
     {
         buf := upload_buffers_make(context.temp_allocator)
@@ -369,37 +427,26 @@ render_frame :: proc(camera_proj: matrix[4, 4]f32, delta: f32) {
         proj = camera_proj,
     }))
 
-    gpu.begin_graphics_pass("ravn_debugdraw", gpu.Graphics_Pass_Desc{
-        colors = {
-            0 = { resource = _state.target_color, clear_mode = .Keep },
-        },
-        depth = { resource = _state.target_depth, clear_mode = .Keep },
-    })
+    buffer_flush(&_state.line_buffer, delta)
+    buffer_flush(&_state.tri_buffer, delta)
+
+    for &b in _state.shape_buffers {
+        buffer_flush(&b, delta)
+    }
+}
+
+render_frame :: proc() {
+    context.allocator = runtime.panic_allocator()
+
+    assert(_state.uploaded_this_frame)
+    defer _state.uploaded_this_frame = false
 
     gpu.set_bind_group(0, _state.binds)
 
     {
-        gpu.set_graphics_pipeline(_state.line_pip)
-        gpu.set_vertex_buffer(0, _state.vert_buf)
-        draw_vert_buffer(_state.line_buffer, vert_num = 2)
-    }
-
-    {
         gpu.set_graphics_pipeline(_state.tri_pip)
         gpu.set_vertex_buffer(0, _state.vert_buf)
-        draw_vert_buffer(_state.tri_buffer, vert_num = 3)
-    }
-
-    {
-        gpu.set_graphics_pipeline(_state.line_shape_pip)
-        gpu.set_vertex_buffer(0, _state.shape_model_vbuf)
-        gpu.set_vertex_buffer(1, _state.shape_inst_buf)
-
-        for buf, kind in _state.shape_buffers {
-            if kind in SHAPE_BUFFER_LINE_KINDS {
-                draw_inst_buffer(buf, len(_buffer_shape_verts[kind]), vert_offset = int(_state.shape_offsets[kind]))
-            }
-        }
+        draw_vert_buffer(_state.tri_buffer)
     }
 
     {
@@ -414,22 +461,30 @@ render_frame :: proc(camera_proj: matrix[4, 4]f32, delta: f32) {
         }
     }
 
+    {
+        gpu.set_graphics_pipeline(_state.line_pip)
+        gpu.set_vertex_buffer(0, _state.vert_buf)
+        draw_vert_buffer(_state.line_buffer)
+    }
 
-    gpu.end_graphics_pass()
+    {
+        gpu.set_graphics_pipeline(_state.line_shape_pip)
+        gpu.set_vertex_buffer(0, _state.shape_model_vbuf)
+        gpu.set_vertex_buffer(1, _state.shape_inst_buf)
 
-    buffer_flush(&_state.line_buffer, delta)
-    buffer_flush(&_state.tri_buffer, delta)
-
-    for &b in _state.shape_buffers {
-        buffer_flush(&b, delta)
+        for buf, kind in _state.shape_buffers {
+            if kind in SHAPE_BUFFER_LINE_KINDS {
+                draw_inst_buffer(buf, len(_buffer_shape_verts[kind]), vert_offset = int(_state.shape_offsets[kind]))
+            }
+        }
     }
 }
 
-draw_vert_buffer :: proc(buf: $T/Buffer($E), vert_num: int) {
+draw_vert_buffer :: proc(buf: $T/Buffer($E)) {
     gpu.draw_non_indexed(
-        vertex_num = int(buf.immediate_offs + buf.persistent_offs) * vert_num,
+        vertex_num = int(buf.upload_elem_num),
         instance_num = 1,
-        vertex_offset = int(buf.upload_offset),
+        vertex_offset = int(buf.upload_elem_offset),
         instance_offset = 0,
     )
 }
@@ -437,9 +492,9 @@ draw_vert_buffer :: proc(buf: $T/Buffer($E), vert_num: int) {
 draw_inst_buffer :: proc(buf: $T/Buffer($E), vert_num: int, vert_offset: int) {
     gpu.draw_non_indexed(
         vertex_num = vert_num,
-        instance_num = int(buf.immediate_offs + buf.persistent_offs),
+        instance_num = int(buf.upload_elem_num),
         vertex_offset = vert_offset,
-        instance_offset = int(buf.upload_offset),
+        instance_offset = int(buf.upload_elem_offset),
     )
 }
 
@@ -517,6 +572,7 @@ Upload_Buffers :: struct {
     bufs:   [dynamic][]byte,
 }
 
+@(require_results)
 upload_buffers_make :: proc(allocator := context.temp_allocator) -> (result: Upload_Buffers) {
     result = {
         offset = 0,
@@ -527,8 +583,9 @@ upload_buffers_make :: proc(allocator := context.temp_allocator) -> (result: Upl
 
 upload_buffers_push :: proc(upload: ^Upload_Buffers, buf: ^$T/Buffer($E), elem_verts: u32 = 1) {
     assert(upload.bufs.allocator != {}, "Forgot to call init")
-    buf.upload_offset = upload.offset
-    upload.offset += u32(buf.immediate_offs + buf.persistent_offs) * elem_verts
+    buf.upload_elem_offset = upload.offset
+    buf.upload_elem_num = u32(buf.immediate_offs + buf.persistent_offs) * elem_verts
+    upload.offset += buf.upload_elem_num
     append(&upload.bufs, slice.to_bytes(buf.persistent_buf[:buf.persistent_offs]))
     append(&upload.bufs, slice.to_bytes(buf.immediate_buf[:buf.immediate_offs]))
 }

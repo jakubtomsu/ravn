@@ -2,9 +2,10 @@ import bpy
 import bmesh
 import os
 
-# Helper to format vertices with aligned padding for clean columns
+# Helper to format vertices with aligned padding for clean columns.
+# Maps to our coord space by swapping Y and Z
 def fmt_v(v):
-    return f"{{{v.x:>10.6f}, {v.y:>10.6f}, {v.z:>10.6f}, 0}}"
+    return f"{{{v.x:>10.6f}, {v.z:>10.6f}, {v.y:>10.6f}, 0}}"
 
 # Non-indexed
 def export_shapes() -> str:
@@ -13,7 +14,7 @@ def export_shapes() -> str:
     output += "// Machine generated. Do not edit.\n"
     output += "package ravn_debugdraw\n\n"
     output += "@(rodata)\n"
-    output += "_buffer_shape_verts := [Shape_Buffer_Kind][]Shape_Vertex{\n"
+    output += "_buffer_shape_verts := [Shape_Kind][]Shape_Vertex{\n"
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
 
@@ -41,7 +42,7 @@ def export_shapes() -> str:
 
             for poly in mesh.polygons:
                 line_str = "        "
-                for loop_index in poly.loop_indices:
+                for loop_index in reversed(poly.loop_indices):
                     v = mesh.vertices[mesh.loops[loop_index].vertex_index].co
                     line_str += f"{fmt_v(v)}, "
 
