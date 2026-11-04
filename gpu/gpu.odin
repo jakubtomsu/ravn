@@ -128,6 +128,31 @@ Resource_State :: struct #all_or_none {
     id:                 base.Debug_ID,
 }
 
+Constants_Desc :: struct {
+    item_size:  i32,
+    item_num:   i32,
+}
+
+Texture_Desc :: struct {
+    size:               [3]i32,
+    format:             Texture_Format,
+    usage:              Usage,
+    mips:               u8,
+    flags:              bit_set[Texture_Flag],
+}
+
+Texture_Flag :: enum u8 {
+    Render_Texture,
+    RW_Resource,
+}
+
+Buffer_Desc :: struct {
+    size:   i32,
+    stride: u16,
+    kind:   Buffer_Kind,
+    usage:  Usage,
+}
+
 Bind_Layout_State :: struct #all_or_none {
     using native:   _Bind_Layout_State,
     desc:           Bind_Layout_Desc,
@@ -1052,11 +1077,6 @@ create_shader :: proc(
 
 // MARK: Create Resources
 
-Constants_Desc :: struct {
-    item_size:  i32,
-    item_num:   i32,
-}
-
 @(require_results)
 create_constants :: proc(
     handle:     ^Resource_Handle,
@@ -1103,19 +1123,6 @@ create_constants :: proc(
 
 
 // TODO: Mips to zero to gen?
-
-Texture_Desc :: struct {
-    size:               [3]i32,
-    format:             Texture_Format,
-    usage:              Usage,
-    mips:               u8,
-    flags:              bit_set[Texture_Flag],
-}
-
-Texture_Flag :: enum u8 {
-    Render_Texture,
-    RW_Resource,
-}
 
 @(require_results)
 make_texture_desc :: proc "contextless" (
@@ -1199,13 +1206,6 @@ create_texture_2d :: proc(
 
     base.pool_set(&_state.resources, handle^, state) or_else base.panic_id(id, "Invalid state")
     return true
-}
-
-Buffer_Desc :: struct {
-    size:   i32,
-    stride: u16,
-    kind:   Buffer_Kind,
-    usage:  Usage,
 }
 
 // Must set size or data.
