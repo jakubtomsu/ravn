@@ -83,18 +83,27 @@ init :: proc(state: ^State = nil, allocator := context.allocator) {
     _state = state
 }
 
+shutdown :: proc() {
+    assert(_state != nil, "No state to shutdown")
+
+    if _state.state_allocator != {} {
+        free(_state, _state.state_allocator)
+    }
+
+    _state = nil
+}
+
 update :: proc(delta: f32) {
     _state.mouse_delta = 0
     _state.scroll_delta = 0
 
-    button_buffer_update(&_state.buttons, delta_time)
-    button_buffer_update(&_state.mouse_buttons, delta_time)
+    button_buffer_update(&_state.buttons, delta)
 
-    for gpad, i in state.gamepads {
+    for &gpad, i in _state.gamepads {
         button_buffer_update(&gpad.buttons, delta)
-        gp.axes = {}
+        gpad.axes = {}
 
-        state, state_ok := platform.gamepad_state(i)
+        state, state_ok := platform.get_gamepad_state(i)
 
         if !state_ok {
             _state.gamepads[i] = {}
@@ -104,7 +113,7 @@ update :: proc(delta: f32) {
             _state.gamepads_connected += {i}
         }
 
-        gamepad_apply_state(gpad, state)
+        gamepad_apply_state(&gpad, state)
     }
 }
 
@@ -116,13 +125,6 @@ apply_event :: proc(event: platform.Event) {
             } else {
                 button_buffer_apply_release(&_state.buttons, v.button)
             }
-
-    case platform.Event_Mouse_Button:
-        if v.pressed {
-            button_buffer_apply_press(&_state.mouse_buttons, v.button)
-        } else {
-            button_buffer_apply_release(&_state.mouse_buttons, v.button)
-        }
 
     case platform.Event_Mouse:
         _state.mouse_delta.x += f32(v.move.x)
@@ -190,9 +192,6 @@ scroll_delta :: proc() -> [2]f32 {
     return _state.scroll_delta
 }
 
-mouse_down :: proc(button: Mouse_Button) -> bool {
-    return button in _state.mouse_buttons.down
-}
 
 
 // MARK: Gamepads
@@ -213,7 +212,7 @@ gamepad_axis :: proc(gamepad_index: int, axis: Gamepad_Axis, deadzone: f32 = DEF
     return abs(val) < deadzone ? 0 : val
 }
 
-gamepad_stick :: proc(gamepad_index: int, axis: Gamepad_Stick, deadzone: f32 = DEFAULT_DEADZONE) -> [2]f32 {
+gamepad_stick :: proc(gamepad_index: int, stick: Gamepad_Stick, deadzone: f32 = DEFAULT_DEADZONE) -> [2]f32 {
     if !gamepad_connected(gamepad_index) {
         return 0
     }
@@ -225,12 +224,12 @@ gamepad_stick :: proc(gamepad_index: int, axis: Gamepad_Stick, deadzone: f32 = D
     case .Left:
         vec = {
             gamepad.axes[.Left_Thumb_X],
-            gamepad.axes[.Left_Thumb_y],
+            gamepad.axes[.Left_Thumb_Y],
         }
     case .Right:
         vec = {
             gamepad.axes[.Right_Thumb_X],
-            gamepad.axes[.Right_Thumb_y],
+            gamepad.axes[.Right_Thumb_Y],
         }
     }
 
