@@ -118,12 +118,14 @@ Shader_State :: struct #all_or_none {
 }
 
 Resource_State :: struct #all_or_none {
-    using native:   _Resource_State,
-    kind:           Resource_Kind,
-    tex_format:     Texture_Format,
-    usage:          Usage,
-    size:           [3]i32,
-    id:             base.Debug_ID,
+    using native:       _Resource_State,
+    kind:               Resource_Kind,
+    using desc:         struct #raw_union {
+        tex_desc:       Texture_Desc,
+        buf_desc:       Buffer_Desc,
+        consts_desc:    Constants_Desc,
+    },
+    id:                 base.Debug_ID,
 }
 
 Bind_Layout_State :: struct #all_or_none {
@@ -1016,47 +1018,6 @@ create_compute_pipeline :: proc(
 }
 
 @(require_results)
-create_constants :: proc(
-    handle:     ^Resource_Handle,
-    item_size:  i32,
-    item_num:   i32 = 1, // set above 1 to enable multi const buffers with dynamic offsets.
-    name        := #caller_expression(handle),
-    loc         := #caller_location,
-) -> (ok: bool) {
-    id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id, context.allocator)
-
-    base.assert_id(id, item_size > 0)
-    base.assert_id(id, item_num >= 1)
-    base.assert_id(id, item_size < MAX_CONSTANT_BUFFER_SIZE)
-    base.assert_id(id, item_size % 16 == 0)
-
-    if item_num > 1 {
-        base.assert_id(id, item_size % 256 == 0, "Dynamic constant buffers must be aligned to 256 bytes due to hardware reasons")
-    }
-
-    _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
-
-    state := Resource_State{
-        size = {item_size, item_num, 1},
-        kind = .Constants,
-        usage = .Dynamic,
-        id = id,
-        tex_format = .Invalid,
-        native = {},
-    }
-
-    state.native, ok = _create_constants(id, item_size = item_size, item_num = item_num)
-    if !ok {
-        base.log_err("GPU: Failed to create native constants")
-        return false
-    }
-
-    base.pool_set(&_state.resources, handle^, state) or_else base.panic_id(id, "Invalid state")
-    return true
-}
-
-@(require_results)
 create_shader :: proc(
     handle: ^Shader_Handle,
     data:   []byte,
@@ -1089,31 +1050,94 @@ create_shader :: proc(
     return true
 }
 
-// Resources
+// MARK: Create Resources
 
-resize_swapchain :: proc(window: rawptr, size: [2]i32) -> (ok: bool) {
-    assert(_state.has_swapchain, "Cannot resize swapchain in headless mode")
-    assert(size.x > 0, "Swapchain must be non-zero width")
-    assert(size.y > 0, "Swapchain must be non-zero height")
-    if size == _state.swapchain_size {
-        return true
-    }
-    _state.swapchain_size = size
-    return _resize_swapchain(window, size)
+Constants_Desc :: struct {
+    item_size:  i32,
+    item_num:   i32,
 }
 
+@(require_results)
+create_constants :: proc(
+    handle:     ^Resource_Handle,
+    item_size:  i32,
+    item_num:   i32 = 1, // set above 1 to enable multi const buffers with dynamic offsets.
+    name        := #caller_expression(handle),
+    loc         := #caller_location,
+) -> (ok: bool) {
+    id := base.create_debug_id(name, loc, context.allocator)
+    defer if !ok do base.destroy_debug_id(&id, context.allocator)
+
+    base.assert_id(id, item_size > 0)
+    base.assert_id(id, item_num >= 1)
+    base.assert_id(id, item_size < MAX_CONSTANT_BUFFER_SIZE)
+    base.assert_id(id, item_size % 16 == 0)
+
+    if item_num > 1 {
+        base.assert_id(id, item_size % 256 == 0, "Dynamic constant buffers must be aligned to 256 bytes due to hardware reasons")
+    }
+
+    desc := Constants_Desc{
+        item_size = item_size,
+        item_num = item_num,
+    }
+
+    _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
+
+    state := Resource_State{
+        consts_desc = desc,
+        id = id,
+        native = {},
+    }
+
+    state.native, ok = _create_constants(id, desc = desc)
+    if !ok {
+        base.log_err("GPU: Failed to create native constants")
+        return false
+    }
+
+    base.pool_set(&_state.resources, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
+}
+
+
 // TODO: Mips to zero to gen?
+
+Texture_Desc :: struct {
+    size:               [3]i32,
+    format:             Texture_Format,
+    usage:              Usage,
+    mips:               u8,
+    flags:              bit_set[Texture_Flag],
+}
+
+Texture_Flag :: enum u8 {
+    Render_Texture,
+    RW_Resource,
+}
+
+@(require_results)
+make_texture_desc :: proc "contextless" (
+    format:             Texture_Format,
+    size:               [3]i32,
+    usage:              Usage = .Default,
+    mips:               i32 = 1,
+    flags:              bit_set[Texture_Flag] = {},
+) -> (result: Texture_Desc) {
+    return {
+        format  = format,
+        size    = size,
+        usage   = usage,
+        mips    = mips,
+        flags   = flags,
+    }
+}
+
 
 @(require_results)
 create_texture_2d :: proc(
     handle:             ^Resource_Handle,
-    format:             Texture_Format,
-    size:               [2]i32,
-    usage:              Usage = .Default,
-    mips:               i32 = 1,
-    array_depth:        i32 = 1,
-    render_texture:     bool = false,
-    rw_resource:        bool = false,
+    desc:               Texture_Desc,
     data:               []byte = nil,
     name                := #caller_expression(handle),
     loc                 := #caller_location,
@@ -1122,60 +1146,53 @@ create_texture_2d :: proc(
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
-    base.assert_id(id, format != .Invalid)
-    base.assert_id(id, format != .Swapchain)
-    base.assert_id(id, size.x > 0)
-    base.assert_id(id, size.x <= MAX_TEXTURE_2D_SIZE)
-    base.assert_id(id, size.y > 0)
-    base.assert_id(id, size.y <= MAX_TEXTURE_2D_SIZE)
-    base.assert_id(id, array_depth < MAX_TEXTURE_ARRAY_DEPTH)
+    base.assert_id(id, desc.format != .Invalid)
+    base.assert_id(id, desc.format != .Swapchain)
+    base.assert_id(id, desc.size.x > 0)
+    base.assert_id(id, desc.size.x <= MAX_TEXTURE_2D_SIZE)
+    base.assert_id(id, desc.size.y > 0)
+    base.assert_id(id, desc.size.y <= MAX_TEXTURE_2D_SIZE)
+    base.assert_id(id, desc.array_depth >= 1)
+    base.assert_id(id, desc.array_depth < MAX_TEXTURE_ARRAY_DEPTH)
 
     if render_texture {
-        base.assert_id(id, array_depth == 1)
-        base.assert_id(id, usage == .Default)
-        base.assert_id(id, data == nil)
+        base.assert_id(id, desc.array_depth == 1)
+        base.assert_id(id, desc.usage == .Default)
+        base.assert_id(id, desc.data == nil)
     }
 
     if usage == .Immutable {
-        base.assert_id(id, data != nil)
+        base.assert_id(id, desc.data != nil)
     }
 
     if usage == .Staging {
-        base.assert_id(id, !render_texture)
-        base.assert_id(id, !rw_resource)
-        base.assert_id(id, data == nil)
-        base.assert_id(id, get_texture_format_pixel_size(format) != 0)
+        base.assert_id(id, .Render_Texture not_in desc.flags)
+        base.assert_id(id, .RW_Resource not_in desc.flags)
+        base.assert_id(id, desc.data == nil)
+        base.assert_id(id, get_texture_format_pixel_size(desc.format) != 0)
     }
 
     if is_texture_format_depth_stencil(format) {
-        base.assert_id(id, render_texture)
+        base.assert_id(id, desc.render_texture)
     }
 
     if data != nil {
-        base.assert_id(id, mips == 1)
-        base.assert_id(id, array_depth == 1)
-        base.assert_id(id, len(data) == (int(size.x * size.y) * int(get_texture_format_pixel_size(format))))
+        base.assert_id(id, desc.mips == 1)
+        base.assert_id(id, desc.array_depth == 1)
+        base.assert_id(id, len(data) == (int(desc.size.x * desc.size.y) * int(get_texture_format_pixel_size(desc.format))))
     }
 
     _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
 
     state := Resource_State{
         kind = .Texture2D,
-        size = {size.x, size.y, array_depth},
-        usage = usage,
-        tex_format = format,
+        tex_desc = desc,
         id = id,
         native = {},
     }
 
     state.native, ok = _create_texture_2d(id,
-        format = format,
-        usage = usage,
-        size = size,
-        mips = mips,
-        array_depth = array_depth,
-        render_texture = render_texture,
-        rw_resource = rw_resource,
+        desc = desc,
         data = data,
     )
 
@@ -1183,13 +1200,20 @@ create_texture_2d :: proc(
     return true
 }
 
+Buffer_Desc :: struct {
+    size:   i32,
+    stride: u16,
+    kind:   Buffer_Kind,
+    usage:  Usage,
+}
+
 // Must set size or data.
 @(require_results)
 create_buffer :: proc(
     handle:             ^Resource_Handle,
     kind:               Buffer_Kind,
-    #any_int stride:    i32,
-    #any_int size:      i32 = 0,
+    #any_int stride:    int,
+    #any_int size:      int = 0,
     usage:              Usage = .Default,
     data:               []u8 = nil,
     name                := #caller_expression(handle),
@@ -1222,27 +1246,63 @@ create_buffer :: proc(
         base.assert_id(id, len(data) > 0)
     }
 
+    desc := Buffer_Desc{
+        size = i32(size),
+        stride = u16(stride),
+        usage = usage,
+        kind = kind,
+    }
+
     _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
 
     state := Resource_State{
         kind = .Buffer,
-        size = {size, stride, 1},
-        usage = usage,
+        buf_desc = desc,
         id = id,
-        tex_format = {},
         native = {},
     }
 
     state.native, ok = _create_buffer(id,
-        kind = kind,
-        size = state.size.x,
-        stride = stride,
-        usage = usage,
+        desc = desc,
         data = data,
     )
 
     base.pool_set(&_state.resources, handle^, state) or_else base.panic_id(id, "Invalid state")
     return true
+}
+
+
+resize_swapchain :: proc(window: rawptr, size: [2]i32) -> (ok: bool) {
+    assert(_state.has_swapchain, "Cannot resize swapchain in headless mode")
+    assert(size.x > 0, "Swapchain must be non-zero width")
+    assert(size.y > 0, "Swapchain must be non-zero height")
+    if size == _state.swapchain_size {
+        return true
+    }
+    _state.swapchain_size = size
+    return _resize_swapchain(window, size)
+}
+
+// Recreates and clears the texture! Use purely as an util for keeping the old handle.
+resize_texture :: proc(handle: ^Resource_Handle, size: [3]i32) -> (ok: bool) {
+    res, res_ok := _get_resource(handle^)
+    if !res_ok {
+        log.error("Invalid handle")
+        return false
+    }
+
+    if res.kind != .Texture2D {
+        log.error("Not a 2D texture")
+        return false
+    }
+
+    if res.size == size {
+        return true
+    }
+
+    desc := res.tex_desc
+    desc.size = size
+    create_texture_2d(&handle, desc = desc)
 }
 
 
@@ -1681,7 +1741,7 @@ validate_pass_desc :: proc(id: base.Debug_ID, desc: Graphics_Pass_Desc, loc := #
         res, res_ok := _get_resource(desc.depth.resource)
         base.assert_id(id, res_ok, loc = loc)
         base.assert_id(id, res.kind == .Texture2D, loc = loc)
-        base.assert_id(id, res.size.xy == resolution, loc = loc)
+        base.assert_id(id, res.tex_desc.size.xy == resolution, loc = loc)
     }
 
     if desc.depth == {} {

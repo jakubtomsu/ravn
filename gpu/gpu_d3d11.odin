@@ -652,14 +652,11 @@ when BACKEND == BACKEND_D3D11 {
 
     _create_buffer :: proc(
         id:     base.Debug_ID,
-        kind:   Buffer_Kind,
-        size:   i32,
-        stride: i32,
-        usage:  Usage,
+        desc:   Buffer_Desc,
         data:   []u8,
     ) -> (result: _Resource_State, ok: bool) {
         bind_flags: d3d11.BIND_FLAGS
-        switch kind {
+        switch desc.kind {
         case .Invalid:
             assert(false)
         case .Storage:
@@ -670,13 +667,13 @@ when BACKEND == BACKEND_D3D11 {
             bind_flags += {.INDEX_BUFFER}
         }
 
-        desc := d3d11.BUFFER_DESC{
-            ByteWidth           = u32(size),
-            StructureByteStride = kind == .Storage ? u32(stride) : 0,
-            Usage               = _d3d11_usage(usage),
+        d3d_desc := d3d11.BUFFER_DESC{
+            ByteWidth           = u32(desc.size),
+            StructureByteStride = desc.kind == .Storage ? u32(desc.stride) : 0,
+            Usage               = _d3d11_usage(desc.usage),
             BindFlags           = bind_flags,
-            CPUAccessFlags      = _d3d11_cpu_access(usage),
-            MiscFlags           = kind == .Storage ? {.BUFFER_STRUCTURED} : {},
+            CPUAccessFlags      = _d3d11_cpu_access(desc.usage),
+            MiscFlags           = desc.kind == .Storage ? {.BUFFER_STRUCTURED} : {},
         }
 
         initial_data := d3d11.SUBRESOURCE_DATA{
@@ -688,7 +685,7 @@ when BACKEND == BACKEND_D3D11 {
             initial_data_ptr = &initial_data
         }
 
-        _d3d11_check(id, _state.device->CreateBuffer(&desc, initial_data_ptr, &result.buf)) or_return
+        _d3d11_check(id, _state.device->CreateBuffer(&d3d_desc, initial_data_ptr, &result.buf)) or_return
 
         _d3d11_messages()
         _d3d11_set_label(result.buf, base.get_debug_id_name(id))
@@ -702,15 +699,15 @@ when BACKEND == BACKEND_D3D11 {
         return result, true
     }
 
-    _create_constants :: proc(id: base.Debug_ID, item_size: i32, item_num: i32) -> (result: _Resource_State, ok: bool) {
-        desc := d3d11.BUFFER_DESC{
-            ByteWidth = u32(item_size * item_num),
+    _create_constants :: proc(id: base.Debug_ID, desc: Constants_Desc) -> (result: _Resource_State, ok: bool) {
+        d3d_desc := d3d11.BUFFER_DESC{
+            ByteWidth = u32(desc.item_size * desc.item_num),
             Usage = .DYNAMIC,
             BindFlags = {.CONSTANT_BUFFER},
             CPUAccessFlags = {.WRITE},
         }
 
-        _d3d11_check(id, _state.device->CreateBuffer(&desc, nil, &result.buf)) or_return
+        _d3d11_check(id, _state.device->CreateBuffer(&d3d_desc, nil, &result.buf)) or_return
 
         _d3d11_messages()
         _d3d11_set_label(result.buf, base.get_debug_id_name(id))
@@ -719,23 +716,17 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _create_texture_2d :: proc(
-        id:                 base.Debug_ID,
-        format:             Texture_Format,
-        usage:              Usage,
-        size:               [2]i32,
-        mips:               i32,
-        array_depth:        i32,
-        render_texture:      bool,
-        rw_resource:        bool,
-        data:               []byte,
+        id:     base.Debug_ID,
+        desc:   Texture_Desc,
+        data:   []byte,
     ) -> (result: _Resource_State, ok: bool) {
         bind_flags: d3d11.BIND_FLAGS
 
-        if usage == .Staging {
+        if desc.usage == .Staging {
             bind_flags = {}
         } else {
-            if render_texture {
-                if is_texture_format_depth_stencil(format) {
+            if .Render_Texture in desc.flags {
+                if is_texture_format_depth_stencil(desc.format) {
                     // SHADER_RESOURCE so the depth buffer can be sampled. This requires a
                     // typeless resource format (see _d3d11_texture_resource_format).
                     bind_flags = {.DEPTH_STENCIL, .SHADER_RESOURCE}
@@ -751,26 +742,26 @@ when BACKEND == BACKEND_D3D11 {
             }
         }
 
-        desc := d3d11.TEXTURE2D_DESC{
+        d3d_desc := d3d11.TEXTURE2D_DESC{
             // Depth formats must be created as typeless so we can make both a DSV and an SRV over them.
-            Format = _d3d11_texture_format(format),
-            Usage = _d3d11_usage(usage),
-            Width = u32(size.x),
-            Height = u32(size.y),
-            ArraySize = u32(array_depth),
-            MipLevels = u32(mips),
+            Format = _d3d11_texture_format(desc.format),
+            Usage = _d3d11_usage(desc.usage),
+            Width = u32(desc.size.x),
+            Height = u32(desc.size.y),
+            ArraySize = u32(desc.size.z),
+            MipLevels = u32(desc.mips),
             SampleDesc = {
                 Count = 1,
                 Quality = 0,
             },
-            CPUAccessFlags = _d3d11_cpu_access(usage),
+            CPUAccessFlags = _d3d11_cpu_access(desc.usage),
             BindFlags = bind_flags,
             MiscFlags = {},
         }
 
         initial_data := d3d11.SUBRESOURCE_DATA{
             pSysMem = raw_data(data),
-            SysMemPitch = u32(int(size.x) * get_texture_format_pixel_size(format)),
+            SysMemPitch = u32(int(desc.size.x) * get_texture_format_pixel_size(desc.format)),
         }
 
         initial_data_ptr: ^d3d11.SUBRESOURCE_DATA
@@ -778,12 +769,12 @@ when BACKEND == BACKEND_D3D11 {
             initial_data_ptr = &initial_data
         }
 
-        _d3d11_check(id, _state.device->CreateTexture2D(&desc, initial_data_ptr, &result.tex2d)) or_return
+        _d3d11_check(id, _state.device->CreateTexture2D(&d3d_desc, initial_data_ptr, &result.tex2d)) or_return
 
         _d3d11_messages()
         _d3d11_set_label(result.tex2d, base.get_debug_id_name(id))
 
-        if is_texture_format_depth_stencil(format) {
+        if is_texture_format_depth_stencil(desc.format) {
             dsv_desc := d3d11.DEPTH_STENCIL_VIEW_DESC{
                 Format = _d3d11_texture_depth_dsv_format(format),
                 ViewDimension = .TEXTURE2D,
@@ -803,7 +794,7 @@ when BACKEND == BACKEND_D3D11 {
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
             _d3d11_set_label(result.srv, base.get_debug_id_name(id))
 
-        } else if render_texture {
+        } else if .Render_Texture in desc.flags {
             _d3d11_check(id, _state.device->CreateRenderTargetView(result.tex2d, nil, &result.rtv)) or_return
 
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
@@ -818,7 +809,7 @@ when BACKEND == BACKEND_D3D11 {
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
             _d3d11_set_label(result.srv, base.get_debug_id_name(id))
 
-        } else if usage != .Staging {
+        } else if desc.usage != .Staging {
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
                 Format = _d3d11_texture_format(format),
             }
@@ -843,7 +834,7 @@ when BACKEND == BACKEND_D3D11 {
             _d3d11_set_label(result.srv, base.get_debug_id_name(id))
         }
 
-        if rw_resource {
+        if .RW_Resource in desc.flags {
             uav_desc := d3d11.UNORDERED_ACCESS_VIEW_DESC{
                 Format = _d3d11_texture_format(format),
                 ViewDimension = .TEXTURE2D,
