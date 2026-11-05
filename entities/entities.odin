@@ -11,6 +11,8 @@ package ravn_entities
 import "base:intrinsics"
 import "base:runtime"
 
+_ :: runtime
+
 UNION_LEN :: intrinsics.type_union_variant_count
 UNION_HAS :: intrinsics.type_is_variant_of
 UNION_INDEX :: intrinsics.type_variant_index_of
