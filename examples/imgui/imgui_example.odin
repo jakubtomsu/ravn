@@ -33,17 +33,16 @@ main :: proc() {
     imgui_impl_gpu.init()
     defer imgui_impl_gpu.shutdown()
 
-    running := true
-    for running {
+    main_loop: for {
         for event in platform.poll_window_events(window) {
             imgui_impl_platform.process_event(event)
 
             #partial switch ev in event {
             case platform.Event_Exit:
-                running = false
+                break main_loop
             case platform.Event_Button:
                 if ev.button == .Escape {
-                    running = false
+                    break main_loop
                 }
             }
         }
