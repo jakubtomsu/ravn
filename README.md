@@ -30,7 +30,7 @@ See [Cheatsheet](./CHEATSHEET.md) for quick API overview.
 - [collision](collision/)
 - [imgui](imgui/)
 - [input](input/)
-- [entities](input/)
+- [entities](entities/)
 
 # Getting Started
 
