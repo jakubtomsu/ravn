@@ -55,7 +55,7 @@ _render_output :: proc(t: ^testing.T) {
     defer destroy_resource(tex)
 
     readback: Resource_Handle
-    create_texture_2d(&readback, .RGBA_U8_Norm, {512, 512}, .Staging) or_else panic("tex")
+    create_texture_2d(&readback, make_texture_desc(.RGBA_U8_Norm, {512, 512, 1}, .Staging)) or_else panic("tex")
     defer destroy_resource(readback)
 
     for i in 0..<20 {
