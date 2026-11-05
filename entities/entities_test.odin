@@ -5,24 +5,24 @@ package ravn_entities
 import "core:testing"
 
 @(test)
-_basic_test :: proc(t: ^testing.T) {
+_test_basic :: proc(t: ^testing.T) {
     Foo :: struct { using base: Base, using named: Named, val: u8 }
     Bar :: struct { using base: Base, using named: Named, val: f64 }
     Baz :: struct { using base: Base }
     Named :: struct { name: string, }
 
-    ents: Entities(union{Foo, Bar, Baz}, union{Base, Named})
+    ents: Entities(union{Foo, Bar, Baz}, union{})
     init(&ents, default_cap = 64)
     defer shutdown(&ents)
 
-    testing.expect(t, len(get_buffer(&ents, Foo)) == 0)
-    testing.expect(t, len(get_buffer(&ents, Bar)) == 0)
+    testing.expect(t, len(get_values(ents, Foo)) == 0)
+    testing.expect(t, len(get_values(ents, Bar)) == 0)
 
     a := create_sub(&ents, Foo{name = "First", val = 1})
     testing.expect(t, a != {})
     testing.expect(t, a.variant == 0)
 
-    testing.expect(t, len(get_buffer(&ents, Foo)) == 1)
+    testing.expect(t, len(get_values(ents, Foo)) == 1)
 
     testing.expect(t, destroy(&ents, a))
 
@@ -46,10 +46,10 @@ _basic_test :: proc(t: ^testing.T) {
 
 
 @(test)
-_iter_val_test :: proc(t: ^testing.T) {
+_test_iter_val :: proc(t: ^testing.T) {
     Foo :: struct { using base: Base, val: u8 }
-
-    ents: Entities(union{Foo}, union{})
+    Bar :: struct { using base: Base, x: f32 }
+    ents: Entities(union{Foo, Bar}, union{})
     init(&ents, default_cap = 64)
     defer shutdown(&ents)
 
@@ -74,12 +74,12 @@ _iter_val_test :: proc(t: ^testing.T) {
 
 
 @(test)
-_iter_sub_test :: proc(t: ^testing.T) {
+_test_iter_sub :: proc(t: ^testing.T) {
     Foo :: struct { using base: Base, using named: Named, val: u8 }
     Bar :: struct { using base: Base, using named: Named, val: f64 }
     Baz :: struct { using base: Base }
     Named :: struct { name: string, }
-    
+
     ents: Entities(union{Foo, Bar, Baz}, union{Base, Named})
     init(&ents, default_cap = 64)
     defer shutdown(&ents)
@@ -109,4 +109,98 @@ _iter_sub_test :: proc(t: ^testing.T) {
         counter += 1
     }
     testing.expect(t, counter == 6)
+}
+
+@(test)
+_test_generation_aba :: proc(t: ^testing.T) {
+    Foo :: struct { using base: Base, val: int }
+    Bar :: struct { using base: Base, val: int, x: f32 }
+    ents: Entities(union{Foo, Bar}, union{Base})
+    init(&ents, default_cap = 64)
+    defer shutdown(&ents)
+
+    h1, _ := create(&ents, Foo{val = 10})
+    destroy(&ents, h1)
+
+    h2, _ := create(&ents, Foo{val = 20})
+
+    testing.expect(t, h1.index == h2.index, "Freelist should reuse the old slot")
+    testing.expect(t, h1.gen != h2.gen, "Generation counter must increment on reuse")
+
+    _, ok1 := get(&ents, h1)
+    testing.expect(t, !ok1, "Old handle should be fully invalidated")
+
+    ptr2, ok2 := get(&ents, h2)
+    testing.expect(t, ok2 && ptr2.variant.(^Foo).val == 20)
+}
+
+@(test)
+_test_capacity_limits :: proc(t: ^testing.T) {
+    Foo :: struct { using base: Base }
+    Bar :: struct { using base: Base, x: f32 }
+    ents: Entities(union{Foo, Bar}, union{Base})
+
+    init(&ents, default_cap = 4)
+    defer shutdown(&ents)
+
+    _, ok1 := create(&ents, Foo{})
+    _, ok2 := create(&ents, Foo{})
+    h3, ok3 := create(&ents, Foo{})
+    testing.expect(t, ok1 && ok2 && ok3, "Should successfully allocate up to capacity")
+
+    _, ok4 := create(&ents, Foo{})
+    testing.expect(t, !ok4, "Should reject allocations past capacity")
+
+    destroy(&ents, h3)
+    h5, ok5 := create(&ents, Foo{})
+
+    testing.expect(t, ok5, "Should allocate after freeing a slot")
+    testing.expect(t, h5.index == h3.index, "Should reuse the recently freed slot")
+}
+
+@(test)
+_test_clear_invalidation :: proc(t: ^testing.T) {
+    Foo :: struct { using base: Base }
+    Bar :: struct { using base: Base, x: f32 }
+    ents: Entities(union{Foo, Bar}, union{Base})
+    init(&ents, default_cap = 64)
+    defer shutdown(&ents)
+
+    h1, _ := create(&ents, Foo{})
+    h2, _ := create(&ents, Foo{})
+
+    clear(&ents)
+
+    _, ok1 := get(&ents, h1)
+    _, ok2 := get(&ents, h2)
+    testing.expect(t, !ok1 && !ok2, "Clear must immediately invalidate active handles")
+
+    h3, _ := create(&ents, Foo{})
+    testing.expect(t, h3.index == 1, "Clear should reset the top index watermark")
+    testing.expect(t, h3.gen != h1.gen, "Clear must bump the generation counter of reused slots")
+}
+
+@(test)
+_test_clone :: proc(t: ^testing.T) {
+    Foo :: struct { using base: Base, val: int }
+    Bar :: struct { using base: Base, x: f32 }
+    ents: Entities(union{Foo, Bar}, union{Base})
+    init(&ents, default_cap = 64)
+    defer shutdown(&ents)
+
+    h1, _ := create(&ents, Foo{val = 10})
+
+    ents_clone := clone(&ents)
+    defer shutdown(&ents_clone)
+
+    ptr_clone, _ := get(&ents_clone, h1)
+    ptr_clone.variant.(^Foo).val = 99
+    ptr_orig, _ := get(&ents, h1)
+    testing.expect(t, ptr_orig.variant.(^Foo).val == 10, "Original should remain unchanged after clone mutation")
+
+    h2, _ := create(&ents_clone, Foo{val = 20})
+    _, ok_orig := get(&ents, h2)
+    testing.expect(t, !ok_orig, "Original should not be able to retrieve handles created in the clone")
+    _, ok_clone := get(&ents_clone, h2)
+    testing.expect(t, ok_clone, "Clone should retrieve its own new handles")
 }
