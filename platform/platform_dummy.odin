@@ -33,10 +33,7 @@ when BACKEND == BACKEND_DUMMY {
     _set_mouse_relative :: proc(window: Window, relative: bool) { dummy() }
     _set_cursor_visible :: proc(visible: bool) { dummy() }
     @(require_results) _get_main_monitor_rect :: proc() -> Rect { dummy() }
-    @(require_results) _get_executable_path :: proc(allocator := context.temp_allocator) -> string { dummy() }
 
-    _refresh_cpu_core_info :: proc() {}
-    _pin_thread_to_cpu_core :: proc(thread: Thread, core_index: int) -> bool { return false }
     @(require_results) _file_dialog :: proc(mode: File_Dialog_Mode, default_path: string, patterns: []File_Pattern, title := "") -> (string, bool) { dummy() }
 
     _open_url :: proc(url: string) { dummy() }
