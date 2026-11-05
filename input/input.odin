@@ -19,7 +19,7 @@ Usage:
 
 */
 #+vet explicit-allocators shadowing style
-package ravn
+package ravn_input
 
 import "../platform"
 import "base:runtime"
