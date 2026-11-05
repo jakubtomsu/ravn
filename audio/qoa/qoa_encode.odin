@@ -1,6 +1,8 @@
 #+vet explicit-allocators shadowing unused
 package qoa
 
+import "core:log"
+
 encode :: proc(desc: ^Desc, sample_data: []i16, allocator := context.allocator) -> (result: []byte, ok: bool) {
     if
         desc.samples != 0 ||
@@ -9,7 +11,7 @@ encode :: proc(desc: ^Desc, sample_data: []i16, allocator := context.allocator) 
         u32(len(sample_data)) % desc.num_channels != 0 ||
         desc.sample_rate == 0 || desc.sample_rate > 0xffffff
     {
-        log(.Error, "Invalid input desc")
+        log.error("Invalid input desc")
         return nil, false
     }
 

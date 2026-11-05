@@ -2,15 +2,17 @@
 #+build !js
 package ravn_audio
 
-// https://github.com/libsdl-org/SDL/blob/main/examples/audio/02-simple-playback-callback/simple-playback-callback.c
-
+import "core:log"
 import "../base"
 import sdl "vendor:sdl3"
 import "base:intrinsics"
 
+_ :: log
 _ :: base
 _ :: sdl
 _ :: intrinsics
+
+// https://github.com/libsdl-org/SDL/blob/main/examples/audio/02-simple-playback-callback/simple-playback-callback.c
 
 when BACKEND == BACKEND_SDL3 {
     _SDL3_FRAME_RATE :: 48000
@@ -22,7 +24,7 @@ when BACKEND == BACKEND_SDL3 {
     @(require_results)
     _init :: proc() -> bool {
         if !sdl.InitSubSystem({.AUDIO}) {
-            base.log_err("Failed to init SDL Audio subsystem")
+            log.error("Failed to init SDL Audio subsystem")
             return false
         }
 
@@ -42,12 +44,12 @@ when BACKEND == BACKEND_SDL3 {
         )
 
         if _state.stream == nil {
-            base.log_err("Failed to open SDL Audio device stream")
+            log.error("Failed to open SDL Audio device stream")
             return false
         }
 
         if !sdl.ResumeAudioStreamDevice(_state.stream) {
-            base.log_err("Failed to start SDL Audio device stream")
+            log.error("Failed to start SDL Audio device stream")
         }
 
         return true

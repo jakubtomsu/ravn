@@ -3,17 +3,18 @@
 package ravn_platform
 
 import "core:unicode/utf16"
-// TODO: FIXME: on very low FPS input messages seem to get dropped
-
-import "../base"
+import "core:log"
 import "base:intrinsics"
 import "base:runtime"
 import "core:sys/windows"
+import "../base"
 
 _ :: base
 _ :: intrinsics
 _ :: runtime
 _ :: windows
+
+// TODO: FIXME: on very low FPS input messages seem to get dropped
 
 // https://ph3at.github.io/posts/Windows-Input/
 
@@ -458,7 +459,7 @@ when BACKEND == BACKEND_WINDOWS {
         }
 
         if windows.RegisterClassW(&wndclass) == 0 {
-            base.log_err("Failed to register class")
+            log.errorf("Failed to register class")
         }
 
         name_buf: [256]u16
@@ -480,7 +481,7 @@ when BACKEND == BACKEND_WINDOWS {
         )
 
         if hwnd == nil {
-            base.log_err("Failed to create window")
+            log.errorf("Failed to create window")
             return {}
         }
 
@@ -1083,7 +1084,7 @@ when BACKEND == BACKEND_WINDOWS {
             if len(str) > 1 && str[len(str)-1] == '\n' {
                 str = str[:len(str)-1]
             }
-            base.log_err("%s : %s", text, str, loc = loc)
+            log.errorf("%s : %s", text, str, location = loc)
         }
     }
 

@@ -19,7 +19,7 @@ export_web :: proc(dst_dir: string, pkg_name: string, pkg_path: string) -> bool 
     initial_mem_pages := DEFAULT_INITIAL_MEM_PAGES
     max_mem_pages := DEFAULT_MAX_MEM_PAGES
 
-    base.log_info("Compiling WASM ...")
+    log.info("Compiling WASM ...")
 
     if !compile_web(dst_dir,
         pkg_name = pkg_name,
@@ -27,11 +27,11 @@ export_web :: proc(dst_dir: string, pkg_name: string, pkg_path: string) -> bool 
         initial_mem_pages = initial_mem_pages,
         max_mem_pages = max_mem_pages,
     ) {
-        base.log_info("Error: failed to compile to WASM")
+        log.error("Error: failed to compile to WASM")
         return false
     }
 
-    base.log_info("Generating HTML and JS files ...")
+    log.info("Generating HTML and JS files ...")
 
     html := generate_html(
         title = pkg_name,

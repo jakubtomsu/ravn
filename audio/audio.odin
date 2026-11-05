@@ -1,11 +1,12 @@
 #+vet explicit-allocators shadowing
 package ravn_audio
 
-import "../base"
+import "core:log"
 import "base:intrinsics"
 import "base:runtime"
 import "core:math"
-
+import "core:slice"
+import "../base"
 import "wav"
 import "qoa"
 
@@ -69,7 +70,7 @@ State :: struct #align(4096) {
     sounds_gen:         [MAX_SOUNDS]Handle_Gen,
     sounds:             [MAX_SOUNDS]Sound,
 
-    qoa_streams:        base.Pool(MAX_QOA_STREAMS, QOA_Stream, QOA_Stream_Handle),
+    qoa_streams:        base.Static_Pool(MAX_QOA_STREAMS, QOA_Stream, QOA_Stream_Handle),
 
     groups:             [NUM_GROUPS]Group,
 }
@@ -321,11 +322,11 @@ set_listener :: proc(
 //
 
 create_resource_mono_f32 :: proc(frames: []f32, frame_rate: u32) -> (result: Resource_Handle, ok: bool) {
-    return create_resource(.Raw_F32, base.to_bytes(frames), flags = {.Mono}, frame_rate = frame_rate)
+    return create_resource(.Raw_F32, slice.to_bytes(frames), flags = {.Mono}, frame_rate = frame_rate)
 }
 
 create_resource_stereo_f32 :: proc(frames: [][2]f32, frame_rate: u32) -> (result: Resource_Handle, ok: bool) {
-    return create_resource(.Raw_F32, base.to_bytes(frames), flags = {}, frame_rate = frame_rate)
+    return create_resource(.Raw_F32, slice.to_bytes(frames), flags = {}, frame_rate = frame_rate)
 }
 
 // The data slice must remain valid until the resource is destroyed.
@@ -339,7 +340,7 @@ create_resource :: proc(
 
     index, index_ok := base.spsc_pop(&_state.resources_free)
     if !index_ok {
-        base.log_err("No free sound resource slots")
+        log.error("No free sound resource slots")
         return {}, false
     }
 
@@ -486,7 +487,7 @@ create_sound :: proc(
 
     index, index_ok := base.spsc_pop(&_state.sounds_free)
     if !index_ok {
-        base.log_err("No free sound slots", loc = loc)
+        log.error("No free sound slots", location = loc)
         return {}, false
     }
 
@@ -499,7 +500,7 @@ create_sound :: proc(
     case Resource_Handle:
         res, res_ok := _get_resource(s)
         if !res_ok {
-            base.log_err("Attempting to play sound with invalid resource handle %v", s, loc = loc)
+            log.errorf("Attempting to play sound with invalid resource handle %v", s, location = loc)
             return {}, false
         }
 
@@ -1063,7 +1064,7 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
     // Final pass
     // Applies a limiter curve
 
-    out_buf_f32 := base.reinterpret_slice(f32, out_buf)
+    out_buf_f32 := slice.reinterpret([]f32, out_buf)
     out_buf_index := 0
 
     for ; out_buf_index + 7 < len(out_buf_f32); out_buf_index += 8 {

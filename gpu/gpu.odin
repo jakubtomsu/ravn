@@ -1,6 +1,7 @@
 #+vet explicit-allocators shadowing style unused
 package ravn_gpu
 
+import "core:fmt"
 import "core:log"
 import "../base"
 import "base:runtime"
@@ -720,12 +721,12 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
 
     st, is_struct := ti_base.variant.(runtime.Type_Info_Struct)
     if !is_struct {
-        base.log_err("'%v' is not a struct", typeid_of(T), loc = loc)
+        log.errorf("'%v' is not a struct", typeid_of(T), location = loc)
         panic("type must be a struct", loc)
     }
 
     if int(st.field_count) > MAX_VERTEX_LAYOUT_SLOTS {
-        base.log_err("'%v' has %i fields, max is %i", typeid_of(T), st.field_count, MAX_VERTEX_LAYOUT_SLOTS, loc = loc)
+        log.errorf("'%v' has %i fields, max is %i", typeid_of(T), st.field_count, MAX_VERTEX_LAYOUT_SLOTS, location = loc)
         panic("too many vertex fields", loc)
     }
 
@@ -735,7 +736,7 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
         offset := st.offsets[field_index]
 
         if offset % 4 != 0 {
-            base.log_err("field '%v.%s' at offset %i is not 4-byte aligned", typeid_of(T), name, offset, loc = loc)
+            log.errorf("field '%v.%s' at offset %i is not 4-byte aligned", typeid_of(T), name, offset, location = loc)
             panic("field is not 4-byte aligned", loc)
         }
 
@@ -748,7 +749,7 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
             }
             slot_format, ok = _vertex_format_from_name(tag_val, loc)
             if !ok {
-                base.log_err("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, tag_val, loc = loc)
+                log.errorf("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, tag_val, location = loc)
                 panic("no matching Vertex_Format", loc)
             }
         } else {
@@ -779,18 +780,18 @@ _vertex_format_from_type :: proc(ti: ^runtime.Type_Info, loc: runtime.Source_Cod
     case runtime.Type_Info_Float:   prefix = "F"
     case runtime.Type_Info_Integer: prefix = v.signed ? "I" : "U"
     case:
-        base.log_err("Array '%v' has unsupported type '%v'", ti.id, elem_ti, loc = loc)
+        log.errorf("Array '%v' has unsupported type '%v'", ti.id, elem_ti, location = loc)
         return .Invalid, false
     }
 
-    format_name := base.tprintf("%s%i", prefix, elem_ti.size * 8)
+    format_name := fmt.tprintf("%s%i", prefix, elem_ti.size * 8)
     if num_components > 1 {
-        format_name = base.tprintf("%sx%i", format_name, num_components)
+        format_name = fmt.tprintf("%sx%i", format_name, num_components)
     }
 
     result, ok := _vertex_format_from_name(format_name, loc)
     if !ok {
-        base.log_err("Type '%v' maps to '%s', which is not a valid Vertex_Format", ti.id, format_name, loc = loc)
+        log.errorf("Type '%v' maps to '%s', which is not a valid Vertex_Format", ti.id, format_name, location = loc)
         return .Invalid, false
     }
 
@@ -880,8 +881,8 @@ _find_free_or_destroy_existing :: proc(
     if handle^ == {} {
         handle^, ok = base.pool_find_free(pool^)
         if !ok {
-            base.log_err("GPU: Failed to find an available %v: %s",
-                typeid_of(H), base.format_debug_id(id, context.temp_allocator), loc = loc)
+            log.errorf("Failed to find an available %v: %s",
+                typeid_of(H), base.format_debug_id(id, context.temp_allocator), location = loc)
             return false
         }
         return true
@@ -889,8 +890,8 @@ _find_free_or_destroy_existing :: proc(
 
     old, old_ok := base.pool_get(pool, handle^)
     if !old_ok {
-        base.log_err("Failed to re-create invalid %v: %s",
-            typeid_of(H), base.format_debug_id(id, context.temp_allocator), loc = loc)
+        log.errorf("Failed to re-create invalid %v: %s",
+            typeid_of(H), base.format_debug_id(id, context.temp_allocator), location = loc)
         return false
     }
     destroy_state(old)
@@ -905,7 +906,7 @@ create_bind_layout :: proc(
     loc         := #caller_location,
 ) -> (ok: bool) {
     desc := desc
-    base.log_debug("Creating bind_group layout '%s'", name)
+    log.debugf("Creating bind_group layout '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
@@ -931,7 +932,7 @@ create_bind_layout :: proc(
 
     state.native, ok = _create_bind_layout(id, desc)
     if !ok {
-        base.log_err("Failed to create native bind_group layout: '%s'", name)
+        log.errorf("Failed to create native bind_group layout: '%s'", name)
         return false
     }
 
@@ -946,7 +947,7 @@ create_bind_group :: proc(
     name    := #caller_expression(handle),
     loc     := #caller_location,
 ) -> (ok: bool) {
-    base.log_debug("Creating bind_group '%s'", name)
+    log.debugf("Creating bind_group '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
@@ -963,7 +964,7 @@ create_bind_group :: proc(
 
     state.native, ok = _create_bind_group(id, desc)
     if !ok {
-        base.log_err("Failed to create native bind_group: '%s'", name)
+        log.errorf("Failed to create native bind_group: '%s'", name)
         return false
     }
 
@@ -989,7 +990,7 @@ create_graphics_pipeline :: proc(
     name    := #caller_expression(handle),
     loc     := #caller_location,
 ) -> (ok: bool) {
-    base.log_debug("Creating graphics pipeline '%s'", name)
+    log.debugf("Creating graphics pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
@@ -1004,7 +1005,7 @@ create_graphics_pipeline :: proc(
 
     state.native, ok = _create_graphics_pipeline(id, desc)
     if !ok {
-        base.log_err("Failed to create native graphics pipeline: '%s'", name)
+        log.errorf("Failed to create native graphics pipeline: '%s'", name)
         return false
     }
 
@@ -1019,7 +1020,7 @@ create_compute_pipeline :: proc(
     name    := #caller_expression(handle),
     loc     := #caller_location,
 ) -> (ok: bool) {
-    base.log_debug("Creating compute pipeline '%s'", name)
+    log.debugf("Creating compute pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
@@ -1034,7 +1035,7 @@ create_compute_pipeline :: proc(
 
     state.native, ok = _create_compute_pipeline(id, desc)
     if !ok {
-        base.log_err("Failed to create native compute pipeline: '%s'", name)
+        log.errorf("Failed to create native compute pipeline: '%s'", name)
         return false
     }
 
@@ -1067,7 +1068,7 @@ create_shader :: proc(
 
     state.native, ok = _create_shader(id, data = data, kind = kind)
     if !ok {
-        base.log_err("GPU: failed to create a native shader")
+        log.errorf("failed to create a native shader")
         return false
     }
 
@@ -1113,7 +1114,7 @@ create_constants :: proc(
 
     state.native, ok = _create_constants(id, desc = desc)
     if !ok {
-        base.log_err("GPU: Failed to create native constants")
+        log.errorf("Failed to create native constants")
         return false
     }
 
@@ -1150,7 +1151,7 @@ create_texture_2d :: proc(
     name                := #caller_expression(handle),
     loc                 := #caller_location,
 ) -> (ok: bool) {
-    base.log_debug("Creating texture: %s", name)
+    log.debugf("Creating texture: %s", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
@@ -1229,7 +1230,7 @@ create_buffer :: proc(
         size = len(data)
     }
 
-    base.log_debug("Creating buffer %s of size %i bytes", name, size)
+    log.debugf("Creating buffer %s of size %i bytes", name, size)
 
     base.assert_id(id, usage != .Staging)
     base.assert_id(id, stride > 0)
@@ -1673,6 +1674,15 @@ set_scissor :: proc(min: [2]i32, max: [2]i32) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MARK: Getters
 //
+
+get_buffer_size :: proc(handle: Resource_Handle) -> (result: int, ok: bool) #optional_ok {
+    result = -1
+    res := _get_resource(handle) or_return
+    if res.kind != .Buffer {
+        return result, false
+    }
+    return int(res.buf_desc.size), true
+}
 
 get_resource_kind :: proc(handle: Resource_Handle) -> (result: Resource_Kind, ok: bool) #optional_ok {
     if handle == SWAPCHAIN_HANDLE {

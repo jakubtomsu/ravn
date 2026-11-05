@@ -113,7 +113,7 @@ _arena_create_buffer :: proc(arena: ^Arena, data: []byte, loc := #caller_locatio
         name = "Arena",
         loc = loc,
     ) {
-        log.error("GPU: Failed to create arena buffer", location = loc)
+        log.error("Failed to create arena buffer", location = loc)
         return false
     }
     return true

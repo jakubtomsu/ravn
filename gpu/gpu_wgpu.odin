@@ -1,6 +1,7 @@
 #+vet explicit-allocators style shadowing unused
 package ravn_gpu
 
+import "core:log"
 import "../base"
 import "vendor:wgpu"
 import "base:runtime"
@@ -10,6 +11,7 @@ _ :: base
 _ :: wgpu
 _ :: runtime
 _ :: intrinsics
+_ :: log
 
 when BACKEND == BACKEND_WGPU {
 
@@ -88,7 +90,7 @@ when BACKEND == BACKEND_WGPU {
         }
 
         if _state.instance == nil {
-            base.log_err("WebGPU is not supported")
+            log.errorf("WebGPU is not supported")
             return false
         }
 
@@ -97,12 +99,12 @@ when BACKEND == BACKEND_WGPU {
             _state.surface = _wgpu_create_native_surface(_state.instance, native_window, ptr = nil)
 
             if _state.surface == nil {
-                base.log_err("Failed to get WebGPU surface")
+                log.errorf("Failed to get WebGPU surface")
                 return false
             }
         }
 
-        base.log_info("Requesting WebGPU adapter")
+        log.debug("Requesting WebGPU adapter...")
 
         adapter_options := wgpu.RequestAdapterOptions{
             compatibleSurface = _state.surface,
@@ -131,10 +133,10 @@ when BACKEND == BACKEND_WGPU {
         ) {
             context = _state.init_context
 
-            base.log_debug("Got WebGPU Adapter")
+            log.debug("Got WebGPU Adapter")
 
             if status != .Success || adapter == nil {
-                base.log_err("request adapter failure: [%v] %s", status, message)
+                log.errorf("request adapter failure: [%v] %s", status, message)
                 panic("WebGPU Adapter")
             }
             _state.adapter = adapter
@@ -144,7 +146,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _request_wgpu_device :: proc() {
-        base.log_info("Requesting WebGPU Device")
+        log.debug("Requesting WebGPU Device...")
 
         required_features := [?]wgpu.FeatureName{
             // .TextureFormat16bitNorm,
@@ -152,7 +154,7 @@ when BACKEND == BACKEND_WGPU {
 
         for feature in required_features {
             if !wgpu.AdapterHasFeature(_state.adapter, feature) {
-                base.log_err("WebGPU adapter doesn't have a required feature:", feature)
+                log.errorf("WebGPU adapter doesn't have a required feature:", feature)
                 panic("WebGPU Adapter Feature")
             }
         }
@@ -178,10 +180,10 @@ when BACKEND == BACKEND_WGPU {
         ) {
             context = _state.init_context
 
-            base.log_debug("Got WebGPU Device")
+            log.debug("Got WebGPU Device")
 
             if status != .Success || device == nil {
-                base.log_err("request device failure: [%v] %s", status, message)
+                log.errorf("request device failure: [%v] %s", status, message)
                 panic("WGPU Device request failed")
             }
             _state.device = device
@@ -195,13 +197,13 @@ when BACKEND == BACKEND_WGPU {
                 panic("Failed to retreive device limits")
             }
 
-            base.log_debug("WebGPU limits: %v", limits)
+            log.debugf("WebGPU limits: %v", limits)
 
             _state.uniform_offset_align = limits.minUniformBufferOffsetAlignment
 
             _state.init_done = true
 
-            base.log_debug("WebGPU fully initialized")
+            log.debug("WebGPU fully initialized")
         }
     }
 
@@ -257,7 +259,6 @@ when BACKEND == BACKEND_WGPU {
                 // All good, could handle suboptimal here.
 
             case .Timeout, .Outdated, .Lost, .Occluded:
-                base.log_info("%v", _state.surface_texture.status)
                 // Skip this frame, and re-configure surface.
                 if _state.surface_texture.texture != nil {
                     wgpu.TextureRelease(_state.surface_texture.texture)
@@ -266,7 +267,7 @@ when BACKEND == BACKEND_WGPU {
 
             case .Error:
                 // Fatal error
-                base.log_err("wgpu. Error: SurfaceGetCurrentTexture status = %v", _state.surface_texture.status)
+                log.errorf("wgpu. Error: SurfaceGetCurrentTexture status = %v", _state.surface_texture.status)
                 panic("wgpu. SurfaceGetCurrentTexture Fatal Error")
             }
 
@@ -346,7 +347,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_sampler :: proc(desc: Sampler_Desc) -> (result: wgpu.Sampler) {
-        base.log_debug("GPU: Creating WebGPU sampler")
+        log.debug("Creating WebGPU sampler")
 
         result = wgpu.DeviceCreateSampler(_state.device, &wgpu.SamplerDescriptor{
             label = "Sampler",
@@ -372,7 +373,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_bind_layout :: proc(id: base.Debug_ID, desc: Bind_Layout_Desc) -> (result: _Bind_Layout_State, ok: bool) {
-        base.log_debug("GPU: Creating WebGPU bind group layout")
+        log.debug("Creating WebGPU bind group layout")
 
         layout_entries: [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]wgpu.BindGroupLayoutEntry
         for slot in desc.slots {
@@ -416,7 +417,7 @@ when BACKEND == BACKEND_WGPU {
         })
 
         if result.bgl == nil {
-            base.log_err("WGPU: Failed to create bind group layout")
+            log.errorf("WGPU: Failed to create bind group layout")
             return {}, false
         }
 
@@ -424,7 +425,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_bind_group :: proc(id: base.Debug_ID, desc: Bind_Group_Desc) -> (result: _Bind_Group_State, ok: bool) {
-        base.log_debug("GPU: Creating WebGPU bind_group '%s'", base.get_debug_id_name(id))
+        log.debugf("Creating WebGPU bind_group '%s'", base.get_debug_id_name(id))
 
         bind_layout, bind_layout_ok := _get_bind_layout(desc.layout)
         base.assert_id(id, bind_layout_ok)
@@ -474,7 +475,7 @@ when BACKEND == BACKEND_WGPU {
         })
 
         if result.bg == nil {
-            base.log_err("WGPU: Failed to create bind group")
+            log.errorf("WGPU: Failed to create bind group")
             return {}, false
         }
 
@@ -482,7 +483,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_graphics_pipeline :: proc(id: base.Debug_ID, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) {
-        base.log_debug("GPU: Creating WebGPU graphics pipeline '%s'", base.get_debug_id_name(id))
+        log.debugf("Creating WebGPU graphics pipeline '%s'", base.get_debug_id_name(id))
 
         bind_layouts: [dynamic; MAX_PIPELINE_BIND_GROUPS]wgpu.BindGroupLayout
         for handle in desc.bind_layouts {
@@ -501,7 +502,7 @@ when BACKEND == BACKEND_WGPU {
         })
 
         if pip_layout == nil {
-            base.log_err("WGPU: Failed to create pipeline layout")
+            log.errorf("WGPU: Failed to create pipeline layout")
             return {}, false
         }
 
@@ -671,7 +672,7 @@ when BACKEND == BACKEND_WGPU {
         })
 
         if result.pip == nil {
-            base.log_err("WGPU: Failed to create pipeline")
+            log.errorf("WGPU: Failed to create pipeline")
             return {}, false
         }
 
@@ -679,7 +680,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_compute_pipeline :: proc(id: base.Debug_ID, desc: Compute_Pipeline_Desc) -> (result: _Compute_Pipeline_State, ok: bool) {
-        base.log_debug("GPU: Creating WebGPU compute pipeline '%s'", base.get_debug_id_name(id))
+        log.debugf("Creating WebGPU compute pipeline '%s'", base.get_debug_id_name(id))
 
         bind_layouts: [dynamic; MAX_PIPELINE_BIND_GROUPS]wgpu.BindGroupLayout
         for handle in desc.bind_layouts {
@@ -698,7 +699,7 @@ when BACKEND == BACKEND_WGPU {
         })
 
         if pip_layout == nil {
-            base.log_err("WGPU: Failed to create pipeline layout")
+            log.errorf("WGPU: Failed to create pipeline layout")
             return {}, false
         }
 
@@ -983,7 +984,7 @@ when BACKEND == BACKEND_WGPU {
                 case .Texture2D:
                     view = res.tex_view
                 case:
-                    base.log_err("Invalid pass color, must be a Texture2D")
+                    log.errorf("Invalid pass color, must be a Texture2D")
                 }
             }
 
@@ -1307,7 +1308,7 @@ when BACKEND == BACKEND_WGPU {
             state.status = status
 
             if status != .Success {
-                base.log_err("WGPU texture map failed: %v\n\t%s", status, message)
+                log.errorf("WGPU texture map failed: %v\n\t%s", status, message)
             }
         }
 
@@ -1335,7 +1336,7 @@ when BACKEND == BACKEND_WGPU {
 
     _wgpu_log_callback :: proc "c" (level: wgpu.LogLevel, msg: wgpu.StringView, userdata: rawptr) {
         context = _state.init_context
-        base.log(wgpu.ConvertWGPUToOdinLogLevel(level), "WGPU: %s", msg)
+        log.log(wgpu.ConvertWGPUToOdinLogLevel(level), "WGPU: %s", msg)
     }
 
     _wgpu_wait :: proc(future: wgpu.Future) {
@@ -1347,7 +1348,7 @@ when BACKEND == BACKEND_WGPU {
             if res == .Success {
                 return
             }
-            base.log_err("WGPU Future wait failed: %v", res)
+            log.errorf("WGPU Future wait failed: %v", res)
         }
     }
 

@@ -128,7 +128,7 @@ upload_draw_data :: proc(data: ^imgui.DrawData) {
         proj = _ortho_projection(data.DisplayPos, data.DisplaySize),
     }))
 
-    if vbuf, ok := gpu._get_resource(state.vbuf); !ok || vbuf.size.x < data.TotalVtxCount*size_of(imgui.DrawVert) {
+    if gpu.get_buffer_size(state.vbuf) < int(data.TotalVtxCount * size_of(imgui.DrawVert)) {
         if !gpu.create_buffer(&state.vbuf,
             .Vertex,
             size_of(imgui.DrawVert),
@@ -139,7 +139,7 @@ upload_draw_data :: proc(data: ^imgui.DrawData) {
         }
     }
 
-    if ibuf, ok := gpu._get_resource(state.ibuf); !ok || ibuf.size.x < data.TotalIdxCount*size_of(imgui.DrawIdx) {
+    if gpu.get_buffer_size(state.ibuf) < int(data.TotalIdxCount * size_of(imgui.DrawIdx)) {
         if !gpu.create_buffer(&state.ibuf,
             .Index,
             size_of(imgui.DrawIdx),
@@ -220,8 +220,7 @@ _update_texture :: proc(tex: ^imgui.TextureData) {
     case .WantCreate:
         handle: gpu.Resource_Handle
         if !gpu.create_texture_2d(&handle,
-            format = .RGBA_U8_Norm,
-            size = {tex.Width, tex.Height},
+            gpu.make_texture_desc(format = .RGBA_U8_Norm, size = {tex.Width, tex.Height, 1}),
             data = tex.Pixels[:tex.Width*tex.Height*4],
         ) {
             log.error("Failed to create texture")

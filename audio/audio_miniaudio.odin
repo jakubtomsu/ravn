@@ -26,14 +26,14 @@ when BACKEND == BACKEND_MINIAUDIO {
         config.dataCallback      = _miniaudio_data_callback
 
         if ma.device_init(nil, &config, &_state.device) != .SUCCESS {
-            base.log_err("Failed to initialize miniaudio the device")
+            log.error("Failed to initialize miniaudio the device")
             return false
         }
 
         _state.frame_rate = _state.device.sampleRate
 
         if ma.device_start(&_state.device) != .SUCCESS {
-            base.log_err("Failed to start miniaudio device")
+            log.error("Failed to start miniaudio device")
             return false
         }
 

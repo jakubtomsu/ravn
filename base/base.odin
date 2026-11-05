@@ -14,6 +14,8 @@ Handle :: struct {
     _:      u8,
 }
 
+#assert(size_of(Handle) == 4)
+
 make_logger :: proc() -> runtime.Logger {
     return {
         procedure = _logger_proc,

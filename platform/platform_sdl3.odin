@@ -4,21 +4,21 @@
 #+vet explicit-allocators shadowing style unused
 package ravn_platform
 
+import "core:log"
 import "core:strings"
 import "core:time"
 import "base:runtime"
 import "vendor:sdl3"
 import "core:path/filepath"
 import "../base"
-import "../base/ufmt"
 import "core:os"
 import "core:dynlib"
 
+_ :: log
 _ :: runtime
 _ :: base
 _ :: sdl3
 _ :: filepath
-_ :: ufmt
 _ :: strings
 _ :: time
 _ :: os
@@ -40,7 +40,7 @@ when BACKEND == BACKEND_SDL3 {
         if !sdl3.Init({.VIDEO, .EVENTS, .GAMEPAD}) {
             panic("Failed to initialize SDL3")
         }
-        base.log_info("Initialized SDL3")
+        log.debug("Initialized SDL3")
 
         // sdl3.SetHint(sdl3.HINT_MOUSE_FOCUS_CLICKTHROUGH, "1")
 

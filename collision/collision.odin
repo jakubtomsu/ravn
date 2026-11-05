@@ -2,8 +2,9 @@
 package ravn_collision
 
 import "base:intrinsics"
-import "core:math/linalg"
 import "base:runtime"
+import "core:math/linalg"
+import "core:log"
 import "../base"
 import "../geometry"
 import "../bvh"
@@ -39,8 +40,8 @@ ID :: u64
 State :: struct #align(4096) {
     init_allocator:     runtime.Allocator,
 
-    arenas:             base.Pool(MAX_ARENAS, Arena, Arena_Handle),
-    meshes:             base.Pool(MAX_MESHES, Mesh, Mesh_Handle),
+    arenas:             base.Static_Pool(MAX_ARENAS, Arena, Arena_Handle),
+    meshes:             base.Static_Pool(MAX_MESHES, Mesh, Mesh_Handle),
 
     step_read:          i32,
     step_write:         i32,
@@ -379,7 +380,7 @@ create_mesh :: proc(
         }
     }
 
-    base.log_debug("Creating collision mesh with %i verts and %i tris", len(verts), len(triangles))
+    log.debugf("Creating collision mesh with %i verts and %i tris", len(verts), len(triangles))
 
     mesh: Mesh = {
         arena = arena_handle,
@@ -502,11 +503,10 @@ add_mesh_shape :: proc(
     rad:            f32 = 0.0,
     #any_int layer: u8 = 0,
     #any_int id:    u64 = 0,
-
 ) {
     mesh, ok := get_mesh(handle)
     if !ok {
-        base.log_warn("Pushing invalid mesh: %v", handle)
+        log.error("Invalid handle:", handle)
         return
     }
     _add_shape({

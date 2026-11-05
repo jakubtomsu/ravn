@@ -2,6 +2,7 @@
 #+build windows
 package ravn_gpu
 
+import "core:log"
 import "../base"
 import "base:runtime"
 import "core:sys/windows"
@@ -172,7 +173,7 @@ when BACKEND == BACKEND_D3D11 {
             pFeatureLevel = nil,
             ppImmediateContext = &base_device_context,
         )) {
-            base.log_err("Failed to create D3D11 device")
+            log.errorf("Failed to create D3D11 device")
             return false
         }
 
@@ -338,7 +339,7 @@ when BACKEND == BACKEND_D3D11 {
             }
         }
 
-        base.log_debug("GPU: Creating D3D11 input layout")
+        log.debug("Creating D3D11 input layout")
 
         vs, vs_ok := _get_shader(desc.vs_handle)
         if !vs_ok {
@@ -400,7 +401,7 @@ when BACKEND == BACKEND_D3D11 {
             }
         }
 
-        base.log_debug("GPU: Creating D3D11 rasterizer")
+        log.debug("Creating D3D11 rasterizer")
 
         rasterizer_desc := d3d11.RASTERIZER_DESC{
             FillMode                = _d3d11_fill_mode(desc.fill),
@@ -432,7 +433,7 @@ when BACKEND == BACKEND_D3D11 {
             }
         }
 
-        base.log_debug("GPU: Creating D3D11 depth stencil")
+        log.debug("Creating D3D11 depth stencil")
 
         result.desc = desc
         depth_stencil_desc := d3d11.DEPTH_STENCIL_DESC{
@@ -473,7 +474,7 @@ when BACKEND == BACKEND_D3D11 {
             }
         }
 
-        base.log_debug("GPU: Creating D3D11 sampler")
+        log.debug("Creating D3D11 sampler")
 
         _d3d11_check(id, _state.device->CreateSamplerState(&d3d11.SAMPLER_DESC{
             Filter          = _d3d11_filter(desc.filter),
@@ -508,7 +509,7 @@ when BACKEND == BACKEND_D3D11 {
             }
         }
 
-        base.log_debug("GPU: Creating D3D11 blend state")
+        log.debug("Creating D3D11 blend state")
 
         blend_desc := d3d11.BLEND_DESC{
             AlphaToCoverageEnable = false,
@@ -1432,7 +1433,7 @@ when BACKEND == BACKEND_D3D11 {
 
     @(private = "file")
     _d3d11_check :: proc(id: base.Debug_ID, res: dxgi.HRESULT, expr := #caller_expression(res), loc := #caller_location) -> bool {
-        level: base.Log_Level = .Error
+        level: log.Level = .Error
         message := "none"
 
         switch transmute(u32)res {
@@ -1467,9 +1468,7 @@ when BACKEND == BACKEND_D3D11 {
             message = "E_NOTIMPL: The method call isn't implemented with the passed parameter combination"
         }
 
-        base.log(
-            level = level,
-            format = "D3D11 Error:\n\tMessage: %s\n\tSource: %s %s:%i\n\tExpression: %s",
+        log.logf(level, "D3D11 Error:\n\tMessage: %s\n\tSource: %s %s:%i\n\tExpression: %s",
             args = {
                 message,
                 base.get_debug_id_name(id),
@@ -1477,7 +1476,7 @@ when BACKEND == BACKEND_D3D11 {
                 id.line,
                 expr,
             },
-            loc = loc,
+            location = loc,
         )
 
         _d3d11_messages(loc)
@@ -1502,7 +1501,7 @@ when BACKEND == BACKEND_D3D11 {
                 msg := cast(^d3d11.MESSAGE)make_multi_pointer([^]byte, msg_size, context.temp_allocator)
                 _state.info_queue->GetMessage(i, msg, &msg_size)
 
-                level: base.Log_Level
+                level: log.Level
                 switch msg.Severity {
                 case .CORRUPTION: level = .Fatal
                 case .ERROR: level = .Error
@@ -1511,7 +1510,7 @@ when BACKEND == BACKEND_D3D11 {
                 case .MESSAGE: level = .Debug
                 }
 
-                base.log(level, "D3D11 Message:\n\t%v:\n\t%v", msg.Category, msg.pDescription, loc = loc)
+                log.log(level, "D3D11 Message:\n\t%v:\n\t%v", msg.Category, msg.pDescription, location = loc)
 
                 if msg.Severity == .CORRUPTION || msg.Severity == .ERROR {
                     panic("Error")

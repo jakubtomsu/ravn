@@ -1,5 +1,6 @@
 package ravn_build
 
+import "core:log"
 import "../shader_compiler"
 import "../platform"
 import "../base"
@@ -15,7 +16,7 @@ compile_builtin_shaders :: proc() -> bool {
     for target in targets {
         state: shader_compiler.State
         if !shader_compiler.init(&state, target) {
-            base.log_err("Failed to initialize shader compiler for target '{}'", target)
+            log.errorf("Failed to initialize shader compiler for target '{}'", target)
         }
 
         _compile_builtin_shader(&state, "data/default.vs.hlsl", .Vertex) or_return
@@ -43,7 +44,7 @@ _compile_builtin_shader :: proc(
     })
 
     if !bin_ok {
-        base.log_err("Failed to compile builtin shader '%s'", Path)
+        log.errorf("Failed to compile builtin shader '%s'", Path)
         return false
     }
 
@@ -63,7 +64,7 @@ _compile_builtin_shader :: proc(
     write_ok := platform.write_file_by_path(dst_path, bin)
 
     if !write_ok {
-        base.log_err("Failed to write compiled builtin shader (%s) to disk", dst_path)
+        log.errorf("Failed to write compiled builtin shader (%s) to disk", dst_path)
         return false
     }
 
@@ -71,7 +72,7 @@ _compile_builtin_shader :: proc(
 }
 
 _shader_include_bultin :: proc (path: string, user: rawptr) -> (string, bool) {
-    base.log_info("Including '%s'", path)
+    log.debugf("Including '%s'", path)
     // HACK
     if path == "ravn.hlsli" || path == "data/ravn.hlsli" {
         return #load("../data/ravn.hlsli"), true
@@ -89,7 +90,7 @@ find_last_slash :: proc(str: string) -> int {
 remove_all :: proc(pattern: string) {
     iter: platform.Directory_Iter
     for path in platform.iter_directory(&iter, pattern, context.temp_allocator) {
-        base.log_info("removing '%s'", path)
+        log.debugf("removing '%s'", path)
         platform.delete_file(path)
     }
 }

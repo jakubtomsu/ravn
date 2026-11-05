@@ -1,8 +1,8 @@
 #+private=file
 package ravn_build
 
+import "core:log"
 import "../platform"
-import "../base"
 import "../base/ufmt"
 
 import "core:strings"
@@ -31,7 +31,7 @@ Hotreload_File :: struct {
 exec :: proc(str: string) -> bool {
     res := platform.run_shell_command(str)
     if 0 != res {
-        base.log_err("Error: Command '%s' failed with exit code %i", str, res)
+        log.errorf("Error: Command '%s' failed with exit code %i", str, res)
         return false
     }
     return true
@@ -135,16 +135,16 @@ hotreload_run :: proc(pkg: string, pkg_path: string) -> bool {
     initial, initial_ok := hotreload_find_latest_dll(pkg)
 
     if !initial_ok {
-        base.log_err("Hotreload Error: Couldn't find inital DLL for package:", pkg)
+        log.errorf("Hotreload Error: Couldn't find inital DLL for package:", pkg)
         return false
     }
 
-    base.log_info("Hotreload: Loading initial module %s ...", initial.path)
+    log.infof("Hotreload: Loading initial module %s ...", initial.path)
 
     module, module_ok := load_hotreload_module(initial.path)
 
     if !module_ok {
-        base.log_err("Hotreload Error: Failed to load initial DLL")
+        log.errorf("Hotreload Error: Failed to load initial DLL")
         return false
     }
 
@@ -177,7 +177,7 @@ hotreload_run :: proc(pkg: string, pkg_path: string) -> bool {
                 continue
             }
 
-            base.log_info("Hotreload: Loaded %s", new_file.path)
+            log.infof("Hotreload: Loaded %s", new_file.path)
 
             append(&modules_to_unload, new_module.mod)
 
@@ -192,7 +192,7 @@ hotreload_run :: proc(pkg: string, pkg_path: string) -> bool {
         platform.unload_module(lib)
     }
 
-    base.log_info("Hotreload: finished OK")
+    log.infof("Hotreload: finished OK")
 
     return true
 }
@@ -200,21 +200,21 @@ hotreload_run :: proc(pkg: string, pkg_path: string) -> bool {
 load_hotreload_module :: proc(path: string) -> (result: Hotreload_Module, ok: bool) {
     module, module_ok := platform.load_module(path)
     if !module_ok {
-        base.log_err("Hotreload: Failed to load library:", path)
+        log.errorf("Hotreload: Failed to load library: %s", path)
         return {}, false
     }
 
     result.desc = platform.get_module_symbol_address(module, "_app_desc")
 
     if result.desc == nil {
-        base.log_err("Hotreload: Failed to find _app_desc data")
+        log.errorf("Hotreload: Failed to find _app_desc data")
         return {}, false
     }
 
     result.callback = auto_cast(platform.get_module_symbol_address(module, "_app_hot_step"))
 
     if result.callback == nil {
-        base.log_err("Hotreload: Failed to find the _app_hot_step proc")
+        log.errorf("Hotreload: Failed to find the _app_hot_step proc")
         return {}, false
     }
 
