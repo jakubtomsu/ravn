@@ -94,6 +94,8 @@ shutdown :: proc() {
 }
 
 update :: proc(delta: f32) {
+    assert(_state != nil)
+
     _state.mouse_delta = 0
     _state.scroll_delta = 0
 
@@ -103,21 +105,24 @@ update :: proc(delta: f32) {
         button_buffer_update(&gpad.buttons, delta)
         gpad.axes = {}
 
-        state, state_ok := platform.get_gamepad_state(i)
+        if platform._state != nil {
+            state, state_ok := platform.get_gamepad_state(i)
 
-        if !state_ok {
-            _state.gamepads[i] = {}
-            _state.gamepads_connected -= {i}
-            continue
-        } else {
-            _state.gamepads_connected += {i}
+            if !state_ok {
+                _state.gamepads[i] = {}
+                _state.gamepads_connected -= {i}
+                continue
+            } else {
+                _state.gamepads_connected += {i}
+            }
+
+            gamepad_apply_state(&gpad, state)
         }
-
-        gamepad_apply_state(&gpad, state)
     }
 }
 
 apply_event :: proc(event: platform.Event) {
+    assert(_state != nil)
     #partial switch v in event {
     case platform.Event_Button:
             if v.pressed {
