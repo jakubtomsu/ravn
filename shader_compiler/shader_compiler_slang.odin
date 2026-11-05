@@ -9,7 +9,7 @@ import "core:strings"
 import "core:dynlib"
 
 when ODIN_OS == .Windows {
-    SLANG_DYNLIB_PATH :: "slang.dll" // slang-compiler.dll
+    SLANG_DYNLIB_PATH :: "slang-compiler.dll"
 } else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
     SLANG_DYNLIB_PATH :: "./libslang.so"
 } else {
