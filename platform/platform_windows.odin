@@ -9,6 +9,7 @@ import "base:runtime"
 import "core:sys/windows"
 import "../base"
 
+_ :: utf16
 _ :: base
 _ :: intrinsics
 _ :: runtime
