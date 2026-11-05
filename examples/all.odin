@@ -25,6 +25,5 @@ main :: proc() {
 @(require) import audio_simple_example "audio_simple"
 @(require) import debugdraw_example "debugdraw"
 @(require) import imgui_example "imgui"
-@(require) import platform_d3d11_example "platform_d3d11"
 @(require) import triangle_example "triangle"
 @(require) import triangle_gpu_sdl3_example "triangle_gpu_sdl3"
