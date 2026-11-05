@@ -3,7 +3,7 @@
 
 ## Packages
 
-- [base](#base) - 72 procedures
+- [base](#base) - 63 procedures
 - [bvh](#bvh) - 18 procedures
 - [collision](#collision) - 43 procedures
 - [debugdraw](#debugdraw) - 32 procedures
@@ -60,20 +60,6 @@ get_debug_id_name(id: Debug_ID) -> string
 get_debug_id_file(id: Debug_ID) -> string
 assert_id(id: Debug_ID, condition: bool, message: string = "", expr := #caller_expression(condition), loc := #caller_location)
 panic_id(id: Debug_ID, message: string, loc := #caller_location)
-```
-
-### base_hash_pool.odin
-
-```odin
-hash_pool_clear(pool: ^$T/Hash_Pool($N, $D, $H)) // Call to initialize and destroy. Does not clear generation counters and values - garbage is fine.
-hash_pool_has(pool: $T/Hash_Pool($N, $D, $H), handle: H) -> bool
-hash_pool_find_free(pool: $T/Hash_Pool($N, $D, $H), hash: u64) -> (handle: H, found_existing: bool, ok: bool)
-hash_pool_find(pool: ^$T/Hash_Pool($N, $D, $H), hash: u64) -> (: H, : ^D, : bool)
-hash_pool_insert(pool: ^$T/Hash_Pool($N, $D, $H), hash: u64, handle: H, data: D) -> bool
-hash_pool_remove(pool: ^$T/Hash_Pool($N, $D, $H), handle: H) -> bool
-hash_pool_get(pool: ^$T/Hash_Pool($N, $D, $H), handle: H) -> (: ^D, : bool)
-hash_pool_iter(pool: ^$T/Hash_Pool($N, $D, $H)) -> Hash_Pool_Iter(N, D, H)
-hash_pool_next(iter: ^$T/Hash_Pool_Iter($N, $D, $H)) -> (handle: H, data: ^D, ok: bool)
 ```
 
 ### base_pool.odin
@@ -329,7 +315,6 @@ begin_frame() -> (ok: bool) // return value of false means skip frame
 end_frame(sync: bool = true, loc := #caller_location)
 make_graphics_pipeline_desc(ps: Shader_Handle, vs: Shader_Handle, bind_layouts: [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {}, vertex_layouts: [MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc, out_colors: []Texture_Format, out_depth: Texture_Format = .Invalid, blends: []Blend_Desc = {}, index_format: Index_Format = .Invalid, topo: Topology = .Triangles, cull: Cull_Mode = .None, fill: Fill_Mode = .Solid, depth_comparison: Comparison_Op = .Always, depth_write: bool = false, depth_bias: i32 = 0) -> (result: Graphics_Pipeline_Desc)
 make_compute_pipeline_desc(cs: Shader_Handle, layouts: [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle) -> (result: Compute_Pipeline_Desc)
-make_vertex_layout($T: typeid, mode: Vertex_Step_Mode, loc := #caller_location) -> (result: Vertex_Layout_Desc) // Make vertex layout from a struct type using RTTI.
 create_bind_layout(handle: ^Bind_Layout_Handle, desc: Bind_Layout_Desc, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
 create_bind_group(handle: ^Bind_Group_Handle, desc: Bind_Group_Desc, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
 create_graphics_pipeline(handle: ^Graphics_Pipeline_Handle, desc: Graphics_Pipeline_Desc, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
@@ -396,6 +381,7 @@ arena_push_val(arena: ^Arena, val: ^$T) -> bool
 arena_push_data(arena: ^Arena, data: []byte) -> bool // Write the data to the CPU-side staging buffer
 arena_submit(arena: ^Arena, loc := #caller_location) -> bool // Flush the CPU-side staging buffer to the GPU
 arena_allocator(arena: ^Arena) -> runtime.Allocator
+make_vertex_layout($T: typeid, mode: Vertex_Step_Mode, loc := #caller_location) -> (result: Vertex_Layout_Desc) // Make vertex layout from a struct type using RTTI.
 ```
 
 ## imgui
