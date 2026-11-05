@@ -92,7 +92,7 @@ _test_pool_fuzz :: proc(t: ^testing.T) {
     active_handles := make([dynamic]Handle)
     defer delete(active_handles)
 
-    for _ in 0..<1000 {
+    for _ in 0..<10000 {
         op := rand.int31_max(100)
 
         if op < 40 {

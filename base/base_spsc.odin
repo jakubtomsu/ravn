@@ -1,9 +1,9 @@
-#+vet unused shadowing style explicit-allocators
+#+vet unused shadowing style explicit-allocators atomic-access
 package ravn_base
 
 import "base:intrinsics"
 
-// SPSC - Single-Producer Single-Consumer Lock-Free Queue
+// SPSC - Single-Producer Single-Consumer Lock-Free FIFO Queue
 //
 // This is a ring buffer which can be safely operated on by two threads:
 // - one "producer" which keeps pushing values
