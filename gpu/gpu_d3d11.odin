@@ -9,6 +9,7 @@ import "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
 
+_ :: log
 _ :: base
 _ :: runtime
 _ :: windows

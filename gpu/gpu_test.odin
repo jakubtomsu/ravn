@@ -71,9 +71,12 @@ _render_output :: proc(t: ^testing.T) {
 
         end_frame()
 
-        if m, m_ok := map_texture(readback); m_ok {
-            defer unmap_texture(readback)
-            // fmt.println("mapped:", m)
+        m, m_ok := map_texture(readback)
+
+        testing.expect(t, m_ok)
+
+        if m_ok {
+            unmap_texture(readback)
         }
     }
 }
