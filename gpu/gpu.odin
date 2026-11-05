@@ -2,7 +2,6 @@
 package ravn_gpu
 
 import "core:slice"
-import "core:fmt"
 import "core:log"
 import "../base"
 import "base:runtime"
@@ -1222,7 +1221,7 @@ destroy_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) -> bool {
 }
 
 _destroy_shader_state :: proc(state: ^Shader_State) {
-    destroy(state.data, _state.allocator)
+    delete(state.data, _state.allocator)
     _destroy_shader(state^)
     base.destroy_debug_id(&state.id, _state.allocator)
 }
@@ -1291,7 +1290,8 @@ end_graphics_pass :: proc() {
 
 set_bind_group :: proc(#any_int slot: int, handle: Bind_Group_Handle, offsets: []u32 = nil) {
     assert(_state != nil)
-    assert(_state.in_frame)assert(_state.encoder.mode != .None)
+    assert(_state.in_frame)
+    assert(_state.encoder.mode != .None)
     assert(handle != {})
     assert(slot >= 0)
     assert(slot < MAX_PIPELINE_BIND_GROUPS)
