@@ -1,18 +1,14 @@
-/*
-Ravn markdown cheatsheet generator.
-
-Usage:
-    odin doc . -all-packages -doc-format -in-source-order
-    odin run build\cheatsheet -- ravn.odin-doc
-*/
+// Markdown cheatsheet generator
 package ravn_build_cheatsheet
 
+import "core:log"
 import doc "core:odin/doc-format"
 import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:path/filepath"
+import "../../base"
 
 OUT_PATH :: "CHEATSHEET.md"
 
@@ -30,31 +26,58 @@ Package_Entry :: struct {
 }
 
 main :: proc() {
-    doc_path: string
-    if len(os.args) == 2 {
-        doc_path = os.args[1]
-    } else {
-        fmt.eprintln("[cheatsheet] invalid arguments, please provide path to the .odin-doc file")
+    context.logger = base.make_logger()
+
+    _, _, _, err := os.process_exec({
+        command = {
+            "odin",
+            "doc",
+
+            "base",
+            "gpu",
+            "platform",
+            "geometry",
+            "imgui",
+            "debugdraw",
+            "bvh",
+            "collision",
+            "shader_compiler",
+            "scene",
+            "input",
+
+            "-all-packages",
+            "-doc-format",
+            "-in-source-order",
+
+        }
+    }, allocator = context.allocator)
+
+    if err != nil {
+        log.error("Odin doc error:", err)
         os.exit(1)
     }
 
+    log.info("Done")
+
+    doc_path := "base.odin-doc"
+
     data, data_err := os.read_entire_file_from_path(doc_path, context.allocator)
     if data_err != nil {
-        fmt.eprintfln("[cheatsheet] failed to read '%s': %v", doc_path, data_err)
+        log.errorf("failed to read '%s': %v", doc_path, data_err)
         os.exit(1)
     }
 
     header, header_err := doc.read_from_bytes(data)
     if header_err != nil {
-        fmt.eprintfln("[cheatsheet] failed to parse '%s': %v", doc_path, header_err)
-        return
+        log.errorf("failed to parse '%s': %v", doc_path, header_err)
+        os.exit(1)
     }
 
     root: string
     if wd, wd_err := os.get_working_directory(context.allocator); wd_err == nil {
         root = normalize_slashes(wd)
     } else {
-        fmt.eprintfln("[cheatsheet] failed to get working directory: %v", wd_err)
+        log.errorf("failed to get working directory: %v", wd_err)
         os.exit(1)
     }
 
@@ -64,11 +87,11 @@ main :: proc() {
     md := generate_cheatsheet_markdown(pkgs)
 
     if err := os.write_entire_file(OUT_PATH, transmute([]byte)md); err != nil {
-        fmt.eprintfln("[cheatsheet] failed to write '%s': %v", OUT_PATH, err)
+        log.errorf("failed to write '%s': %v", OUT_PATH, err)
         os.exit(1)
     }
 
-    fmt.printfln("[cheatsheet] wrote %s (%d packages)", OUT_PATH, len(pkgs))
+    log.infof("wrote %s (%d packages)", OUT_PATH, len(pkgs))
 }
 
 parse_packages_from_doc :: proc(header: ^doc.Header, root: string, dst_pkgs: ^map[string]^Package_Entry) {
@@ -84,6 +107,10 @@ parse_packages_from_doc :: proc(header: ^doc.Header, root: string, dst_pkgs: ^ma
         pe := new(Package_Entry)
         pe.name = get_str(header, pkg.name)
         pe.path = full
+
+        if strings.has_prefix(pe.name, "ravn_") {
+            pe.name = pe.name[len("ravn_"):]
+        }
 
         for entry in doc.from_array(&header.base, pkg.entries) {
             ent := entities[entry.entity]
