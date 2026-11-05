@@ -31,10 +31,10 @@ main :: proc() {
         return
     }
 
-    vs_bin := shader_compiler.compile_source(#file, VS, {stage = .Vertex}) or_else panic("VS")
-    ps_bin := shader_compiler.compile_source(#file, PS, {stage = .Pixel}) or_else panic("PS")
-    ps: gpu.Shader_Handle; gpu.create_shader(&ps, ps_bin, .Pixel) or_else panic("shader create")
-    vs: gpu.Shader_Handle; gpu.create_shader(&vs, vs_bin, .Vertex) or_else panic("shader create")
+    vs_bin := shader_compiler.compile(#file, VS, {stage = .Vertex}) or_else panic("VS")
+    ps_bin := shader_compiler.compile(#file, PS, {stage = .Pixel}) or_else panic("PS")
+    ps: gpu.Shader_Handle; gpu.create_shader(&ps, ps_bin.data, .Pixel) or_else panic("shader create")
+    vs: gpu.Shader_Handle; gpu.create_shader(&vs, vs_bin.data, .Vertex) or_else panic("shader create")
 
     pip: gpu.Graphics_Pipeline_Handle
     gpu.create_graphics_pipeline(&pip, gpu.make_graphics_pipeline_desc(

@@ -1,5 +1,8 @@
 package ravn_util
 
+import "core:math/linalg"
+import "core:math"
+
 Camera :: struct {
     pos:        [3]f32,
     rot:        quaternion128,
@@ -243,45 +246,15 @@ is_sphere_in_frustum :: proc(fru: Frustum, pos: [3]f32, rad: f32) -> bool #no_bo
     return true
 }
 
-// TODO: early out path? Most objects are small.
-is_sphere_in_frustum_simd :: proc(
-    fru_pos:    [3]#simd[LANES]f32,
-    fru_rad:    [3]#simd[LANES]f32,
-    fru_planes: [6][4]#simd[LANES]f32,
-    pos:        [3]#simd[LANES]f32,
-    rad:        #simd[LANES]f32,
-) -> (result: #simd[LANES]u32) #no_bounds_check {
-    EPS :: 1
-
-    r := fru_rad + rad
-
-    xin := intrinsics.simd_lanes_lt(intrinsics.simd_abs(pos.x - fru_pos.x), r.x)
-    yin := intrinsics.simd_lanes_lt(intrinsics.simd_abs(pos.y - fru_pos.y), r.y)
-    zin := intrinsics.simd_lanes_lt(intrinsics.simd_abs(pos.z - fru_pos.z), r.z)
-    result = xin & yin & zin
-
-    for i in 0..<len(fru_planes) {
-        dists :=
-            fru_planes[i].x * pos.x +
-            fru_planes[i].y * pos.y +
-            fru_planes[i].z * pos.z -
-            fru_planes[i].w - rad
-
-        result &= intrinsics.simd_lanes_lt(dists, EPS)
-    }
-
-    return result
-}
-
 // Returns the ray direction.
-screen_to_world_ray :: proc(pos: [2]f32, cam: Camera) -> [3]f32 {
+screen_to_world_ray :: proc(pos: [2]f32, cam: Camera, screen_size: [2]f32) -> [3]f32 {
     cam_mvp := calc_camera_world_to_clip_matrix(cam)
     cam_inv := linalg.matrix4_inverse_f32(cam_mvp)
 
     p := pos
 
-    p.x = (p.x / f32(get_screen_size().x)) * 2.0 - 1.0
-    p.y = 1.0 - 2.0 * (p.y / f32(get_screen_size().y))
+    p.x = (p.x / f32(screen_size.x)) * 2.0 - 1.0
+    p.y = 1.0 - 2.0 * (p.y / f32(screen_size.y))
 
     p0 := cam_inv * [4]f32{p.x, p.y, 0.0, 1.0}
     p1 := cam_inv * [4]f32{p.x, p.y, 1.0, 1.0}

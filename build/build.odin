@@ -4,7 +4,6 @@ import "core:log"
 import "../shader_compiler"
 import "../platform"
 import "../base"
-import "../base/ufmt"
 import "core:strings"
 
 compile_builtin_shaders :: proc() -> bool {
@@ -60,7 +59,7 @@ _compile_builtin_shader :: proc(
         ext = "wgsl"
     }
 
-    dst_path := ufmt.tprintf(Path + ".%s", ext)
+    dst_path := fmt.tprintf(Path + ".%s", ext)
     write_ok := platform.write_file_by_path(dst_path, bin)
 
     if !write_ok {

@@ -4,8 +4,6 @@ package ravn_build
 import "core:log"
 import "../platform"
 import "../base"
-import "../base/ufmt"
-
 import "core:strings"
 
 ODIN_EXE :: "odin"

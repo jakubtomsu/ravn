@@ -2,8 +2,6 @@ package ravn_build
 
 import "../platform"
 import "../base"
-import "../base/ufmt"
-
 import "core:strconv"
 import "core:strings"
 

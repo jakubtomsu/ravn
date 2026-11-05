@@ -48,7 +48,7 @@ when BACKEND == BACKEND_WASAPI {
         assert(device_format.Format.wFormatTag == .EXTENSIBLE)
         defer windows.CoTaskMemFree(device_format)
 
-        log.info(
+        log.infof(
             "WASAPI Device format: samplerate: %i, channels: %v (%i), f32: %v",
             device_format.Format.nSamplesPerSec,
             device_format.dwChannelMask,

@@ -1,8 +1,10 @@
 package ravn_examples_all
 
-// Imports every RAVN package. Useful for odin check
+import "core:fmt"
 
-main :: proc() {}
+main :: proc() {
+    fmt.println("This is just a stub package which imports everything in RAVN for easy 'odin check' and 'odin test'")
+}
 
 @(require) import "../base"
 @(require) import "../platform"
@@ -15,4 +17,14 @@ main :: proc() {}
 @(require) import "../curve"
 @(require) import "../debugdraw"
 @(require) import "../debugdraw/build_shaders"
+@(require) import "../util"
+@(require) import "../input"
 @(require) import "../entities"
+// @(require) import "../build"
+
+@(require) import audio_simple_example "audio_simple"
+@(require) import debugdraw_example "debugdraw"
+@(require) import imgui_example "imgui"
+@(require) import platform_d3d11_example "platform_d3d11"
+@(require) import triangle_example "triangle"
+@(require) import triangle_gpu_sdl3_example "triangle_gpu_sdl3"

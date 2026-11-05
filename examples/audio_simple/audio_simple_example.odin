@@ -1,9 +1,9 @@
 package ravn_audio_simple_example
 
 import "core:time"
+import "core:fmt"
 import "../../audio"
 import "../../base"
-import "../../base/ufmt"
 
 state: audio.State
 
@@ -31,7 +31,7 @@ main :: proc() {
 
         sound, sound_ok := audio.create_sound(i % 2 == 0 ? res0 : res1)
         assert(sound_ok)
-        ufmt.eprintfln("Iter %i : %v", i, sound)
+        fmt.eprintfln("Iter %i : %v", i, sound)
         // audio.set_sound_playing(sound, true)
         // audio.set_sound_pitch(sound, 0.5 + f32(i) * 0.2)
 

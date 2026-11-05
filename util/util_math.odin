@@ -325,6 +325,11 @@ decode_octahedral :: proc "contextless" (f: [2]f32) -> [3]f32 {
 // MARK: Rect
 //
 
+Rect :: struct {
+    min:    [2]f32,
+    max:    [2]f32,
+}
+
 @(require_results)
 rect_make :: proc "contextless" (min: [2]f32, full_size: [2]f32) -> Rect {
     return {

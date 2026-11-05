@@ -1,5 +1,6 @@
 package triangle_gpu_sdl3_example
 
+import "core:log"
 import "../../base"
 import "../../gpu"
 import "../../shader_compiler"
@@ -22,13 +23,10 @@ verts := []Vertex{
 }
 
 main :: proc() {
-    base.eprintfln("Hello")
-
     assert(sdl.Init({.VIDEO}))
     defer sdl.Quit()
 
     context.logger = base.make_logger()
-    base.log_debug("Init")
 
     sdl.SetHintWithPriority(sdl.HINT_RENDER_DRIVER, "direct3d11", .OVERRIDE)
     window := sdl.CreateWindow("Ravn GPU SDL3 Triangle", 1280, 780, {.HIGH_PIXEL_DENSITY, .HIDDEN, .RESIZABLE})
@@ -49,8 +47,8 @@ main :: proc() {
     if !shader_compiler.init(SHADER_TARGET) {
         panic("No shader compiler")
     }
-    ps_blob := shader_compiler.compile_source("triangle.hlsl", _shader_code, {stage = .Pixel}) or_else panic("ps_blob")
-    vs_blob := shader_compiler.compile_source("triangle.hlsl", _shader_code, {stage = .Vertex}) or_else panic("vs_blob")
+    ps_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Pixel}) or_else panic("ps_blob")
+    vs_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Vertex}) or_else panic("vs_blob")
 
     vbuf: gpu.Resource_Handle
     inst_buf: gpu.Resource_Handle
@@ -63,7 +61,7 @@ main :: proc() {
 
     gpu.create_buffer(&vbuf, .Vertex, size_of(Vertex), data = slice.to_bytes(verts)) or_else panic("buf")
     gpu.create_buffer(&inst_buf, .Vertex, size_of(Instance), size_of(Instance) * MAX_INSTS, usage = .Dynamic) or_else panic("buf")
-    gpu.create_texture_2d(&tex, .RGBA_U8_Norm, 2, .Immutable, data = {
+    gpu.create_texture_2d(&tex, gpu.make_texture_desc(.RGBA_U8_Norm, 2, .Immutable), data = {
         0, 0, 0, 0, 255, 0, 0, 255,
         255, 255, 0, 255, 255, 255, 255, 255,
     }) or_else panic("tex")
@@ -80,8 +78,8 @@ main :: proc() {
     //     },
     // }) or_else panic("binds")
 
-    gpu.create_shader(&ps, ps_blob, .Pixel) or_else panic("ps")
-    gpu.create_shader(&vs, vs_blob, .Vertex) or_else panic("vs")
+    gpu.create_shader(&ps, ps_blob.data, .Pixel) or_else panic("ps")
+    gpu.create_shader(&vs, vs_blob.data, .Vertex) or_else panic("vs")
 
     gpu.create_graphics_pipeline(&pip, gpu.make_graphics_pipeline_desc(
         ps = ps,

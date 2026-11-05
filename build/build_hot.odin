@@ -2,12 +2,11 @@
 package ravn_build
 
 import "core:log"
-import "../platform"
-import "../base/ufmt"
-
+import "core:fmt"
 import "core:strings"
 import "core:strconv"
 import "base:runtime"
+import "../platform"
 
 when ODIN_OS == .Windows {
     DLL_EXT :: ".dll"
@@ -38,20 +37,20 @@ exec :: proc(str: string) -> bool {
 }
 
 compile_hot :: proc(pkg: string, pkg_name: string, index: int) {
-    path := ufmt.tprintf("%s%i" + DLL_EXT, pkg_name, index)
-    assert(!platform.file_exists(path), ufmt.tprintf("!platform.file_exists(\"%s\")", path))
-    exec(ufmt.tprintf("%s build %s -out:%s -debug -build-mode:dll", ODIN_EXE, pkg, path))
+    path := fmt.tprintf("%s%i" + DLL_EXT, pkg_name, index)
+    assert(!platform.file_exists(path), fmt.tprintf("!platform.file_exists(\"%s\")", path))
+    exec(fmt.tprintf("%s build %s -out:%s -debug -build-mode:dll", ODIN_EXE, pkg, path))
 }
 
 clean_hot :: proc(pkg: string) {
     when ODIN_OS == .Windows {
-        remove_all(ufmt.tprintf("%s*.dll", pkg))
-        remove_all(ufmt.tprintf("%s*.pdb", pkg))
-        remove_all(ufmt.tprintf("%s*.exp", pkg))
-        remove_all(ufmt.tprintf("%s*.lib", pkg))
-        remove_all(ufmt.tprintf("%s*.rdi", pkg))
+        remove_all(fmt.tprintf("%s*.dll", pkg))
+        remove_all(fmt.tprintf("%s*.pdb", pkg))
+        remove_all(fmt.tprintf("%s*.exp", pkg))
+        remove_all(fmt.tprintf("%s*.lib", pkg))
+        remove_all(fmt.tprintf("%s*.rdi", pkg))
     } else when ODIN_OS == .Linux {
-        remove_all(ufmt.tprintf("./%s*.so", pkg)) // linux dll
+        remove_all(fmt.tprintf("./%s*.so", pkg)) // linux dll
     }
 }
 
@@ -89,10 +88,10 @@ when ODIN_OS == .Linux || ODIN_OS == .Darwin{
 
 hotreload_find_latest_dll :: proc(pkg_name: string) -> (result: Hotreload_File, ok: bool) {
     when ODIN_OS == .Windows {
-        pattern := ufmt.tprintf("%s*" + DLL_EXT, pkg_name)
+        pattern := fmt.tprintf("%s*" + DLL_EXT, pkg_name)
         PATH_SEPARATOR :: "\\"
     } else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
-        pattern := ufmt.tprintf("./%s*" + DLL_EXT, pkg_name)
+        pattern := fmt.tprintf("./%s*" + DLL_EXT, pkg_name)
         PATH_SEPARATOR :: "/"
     }
     max_index: int = -1

@@ -1,5 +1,7 @@
 package ravn_util
 
+import "core:testing"
+
 @(test)
 _cp437_rune_char_table :: proc(t: ^testing.T) {
     for ch in 0..<max(u8) {
