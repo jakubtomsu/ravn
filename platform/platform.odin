@@ -282,27 +282,33 @@ shutdown :: proc() {
 }
 
 clipboard_set :: proc(data: string) -> bool {
+    assert(_state != nil)
     return _clipboard_set(data)
 }
 
 clipboard_get :: proc(allocator := context.temp_allocator) -> (string, bool) {
+    assert(_state != nil)
     return _clipboard_get(allocator)
 }
 
 @(require_results)
 get_gamepad_state :: proc(#any_int index: int) -> (result: Gamepad_State, ok: bool) {
+    assert(_state != nil)
     return _get_gamepad_state(index)
 }
 
 set_gamepad_feedback :: proc(#any_int index: int, output: Gamepad_Feedback) -> bool {
+    assert(_state != nil)
     return _set_gamepad_feedback(index, output)
 }
 
 get_user_data_dir :: proc(allocator := context.allocator) -> string {
+    assert(_state != nil)
     return _get_user_data_dir(allocator)
 }
 
 set_mouse_relative :: proc(window: Window, relative: bool) {
+    assert(_state != nil)
     if relative == _state.mouse_relative {
         return
     }
@@ -312,10 +318,12 @@ set_mouse_relative :: proc(window: Window, relative: bool) {
 }
 
 register_default_exception_handler :: proc() {
+    assert(_state != nil)
     _register_default_exception_handler()
 }
 
 open_url :: proc(url: string) {
+    assert(_state != nil)
     if
         strings.has_prefix(url, "http://") ||
         strings.has_prefix(url, "https://")
@@ -325,6 +333,7 @@ open_url :: proc(url: string) {
 }
 
 set_cursor_visible :: proc(visible: bool) {
+    assert(_state != nil)
     if _state.mouse_visible == visible {
         return
     }
@@ -333,6 +342,7 @@ set_cursor_visible :: proc(visible: bool) {
 }
 
 set_cursor_icon :: proc(icon: Cursor_Icon) {
+    assert(_state != nil)
     if icon == _state.current_cursor_icon {
         return
     }
@@ -347,6 +357,7 @@ set_cursor_icon :: proc(icon: Cursor_Icon) {
 
 @(require_results)
 create_window :: proc(name: string, style: Window_Style = .Regular, rect: Rect = {}, high_dpi := true) -> Window {
+    assert(_state != nil)
     rect := rect
 
     if rect.size == 0 {
@@ -367,56 +378,68 @@ create_window :: proc(name: string, style: Window_Style = .Regular, rect: Rect =
 }
 
 destroy_window :: proc(window: Window) {
+    assert(_state != nil)
     _destroy_window(window)
 }
 
 set_window_title :: proc(window: Window, name: string) {
+    assert(_state != nil)
     _set_window_title(window, name)
 }
 
 set_window_style :: proc(window: Window, style: Window_Style) {
+    assert(_state != nil)
     _set_window_style(window, style)
 }
 
 set_window_pos :: proc(window: Window, pos: [2]i32) {
+    assert(_state != nil)
     _set_window_pos(window, pos)
 }
 
 set_window_size :: proc(window: Window, size: [2]i32) {
+    assert(_state != nil)
     _set_window_size(window, size)
 }
 
 // Drawable area within the window, without decorators.
 get_window_rect :: proc(window: Window) -> Rect {
+    assert(_state != nil)
     return _get_window_rect(window)
 }
 
 set_mouse_pos_window_relative :: proc(window: Window, pos: [2]i32) {
+    assert(_state != nil)
     _set_mouse_pos_window_relative(window, pos)
 }
 
 is_window_minimized :: proc(window: Window) -> bool {
+    assert(_state != nil)
     return _is_window_minimized(window)
 }
 
 is_window_focused :: proc(window: Window) -> bool {
+    assert(_state != nil)
     return _is_window_focused(window)
 }
 
 @(require_results)
 get_window_dpi_scale :: proc(window: Window) -> f32 {
+    assert(_state != nil)
     return _get_window_dpi_scale(window)
 }
 
 // HWND on windows
 @(require_results)
 get_native_window_ptr :: proc(window: Window) -> rawptr {
+    assert(_state != nil)
     return _get_native_window_ptr(window)
 }
 
 
 @(require_results)
 poll_window_events :: proc(window: Window) -> (event: Event, should_continue: bool) {
+    assert(_state != nil)
     event, should_continue = _event_queue_pop()
     if should_continue {
         return event, true
@@ -442,10 +465,12 @@ poll_window_events :: proc(window: Window) -> (event: Event, should_continue: bo
 }
 
 get_main_monitor_rect :: proc() -> Rect {
+    assert(_state != nil)
     return _get_main_monitor_rect()
 }
 
 file_dialog :: proc(mode: File_Dialog_Mode, default_path: string, patterns: []File_Pattern, title := "") -> (string, bool) {
+    assert(_state != nil)
     return _file_dialog(mode, default_path, patterns, title)
 }
 
