@@ -1,4 +1,4 @@
-package game
+package triangle_gpu_sdl3_example
 
 import "../../base"
 import "../../gpu"

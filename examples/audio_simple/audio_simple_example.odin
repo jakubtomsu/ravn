@@ -1,4 +1,4 @@
-package ravn_simple_audio_example
+package ravn_audio_simple_example
 
 import "core:time"
 import "../../audio"
