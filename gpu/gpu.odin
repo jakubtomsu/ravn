@@ -1864,7 +1864,6 @@ _combine_buffer_writes_temp :: proc(buffers: [][]byte) -> (result: []byte) {
 // MARK: Misc
 //
 
-@(require_results)
 _depth_enable :: proc(comp: Comparison_Op, write: bool) -> bool {
     return comp != .Always || write
 }
