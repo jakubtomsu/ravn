@@ -16,6 +16,8 @@ RAVN is a collection of lightweight 2D and 3D libraries for game and engine deve
 
 ## Packages
 
+See [Cheatsheet](./CHEATSHEET.md) for quick API overview.
+
 - [base](base/)
 - [gpu](gpu/)
 - [platform](platform/)
@@ -42,41 +44,23 @@ Here are the commands to clone the library into your project, and to pull the la
 git subtree add --prefix=ravn https://github.com/jakubtomsu/ravn main --squash
 git subtree pull --prefix=ravn https://github.com/jakubtomsu/ravn main --squash
 ```
+
 ## Examples
 
 You can run demos from the [examples/](examples) directory with something like the following command:
 ```
 odin run examples\hello
-odin run build -- run_hot examples\hello
 ```
-
-# Docs
-
-See [Cheatsheet](./CHEATSHEET.md) for quick API overview.
-
-## Web builds
-
-You can run the following command to export your game to web:
-```
-odin run build -- export-web my_package
-```
-To run the app locally, you must also create a tiny HTTP file server. VSCode live server extension or `python -m http.server <port>` is recommended.
-
-> [!NOTE]
-> In case you're having issues with rendering, you can test WebGPU is behaving correctly locally with `odin run my_package -define:GPU_BACKEND=WGPU`, however the wgpu-native used on desktop can be slightly different than the Chrome Dawn implementation.
-
-## Cross platform shaders
-
-The engine comes with a few built-in shaders. Those always work everywhere by default.
-
-Compiling custom shaders is handled internally using the `shader_compiler` package when you load a shader from source.
-This requires a ***slang compiler dynamic library*** on non-D3D11 builds. Install it from [slang github](https://github.com/shader-slang/slang) releases.
-
-- Windows: copy `slang.dll` and `slang-compiler.dll` into your project
-- Linux: copy `libslang-compiler.so.*` as `libslang.so` into your project.
-
-
 
 # Contributing
-For info about bug reports and contributing, see [CONTRIBUTING](CONTRIBUTING.md)
 
+Most wanted type of contributions is bugfixes. Both Issues and PRs are acceptable.
+Please include `odin report` output and a code sample to reproduce the issue if applicable.
+
+If you want a new feature, it is recommended to discuss it on Discord first.
+
+### Code style
+
+- Keep things simple
+- Ensure coherency with the rest of the code
+- Use the default Odin [naming conventions](https://github.com/odin-lang/Odin/wiki/Naming-Convention)
