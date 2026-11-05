@@ -1552,7 +1552,6 @@ map_texture :: proc(handle: Resource_Handle) -> (Mapped_Data, bool) {
 
 unmap_texture :: proc(handle: Resource_Handle) -> bool {
     assert(_state != nil)
-    assert(_state.in_frame)
     res, res_ok := _get_resource(handle)
     if !res_ok {
         return false

@@ -1,5 +1,5 @@
 #+test
-#+vet explicit-allocators shadowing style unused
+#+vet shadowing style
 #+private file
 package ravn_gpu
 
@@ -51,7 +51,7 @@ _render_output :: proc(t: ^testing.T) {
     defer shutdown()
 
     tex: Resource_Handle
-    create_texture_2d(&tex, .RGBA_U8_Norm, {512, 512}, render_texture = true) or_else panic("tex")
+    create_texture_2d(&tex, make_texture_desc(.RGBA_U8_Norm, {512, 512, 1}, flags = {.Render_Texture})) or_else panic("tex")
     defer destroy_resource(tex)
 
     readback: Resource_Handle
@@ -73,7 +73,7 @@ _render_output :: proc(t: ^testing.T) {
 
         if m, m_ok := map_texture(readback); m_ok {
             defer unmap_texture(readback)
-            fmt.println("mapped:", m)
+            // fmt.println("mapped:", m)
         }
     }
 }
