@@ -104,7 +104,6 @@ when BACKEND == BACKEND_D3D11 {
             tex3d:  ^d3d11.ITexture3D,
             using _: struct {
                 buf:    ^d3d11.IBuffer,
-                const_buf_data: []byte,
             },
         },
     }
@@ -1254,6 +1253,8 @@ when BACKEND == BACKEND_D3D11 {
             assert(false)
 
         case .Dynamic:
+            assert(offset == 0)
+
             mapped: d3d11.MAPPED_SUBRESOURCE
             if !_d3d11_check(res.id, _state.device_context->Map(
                 res.buf,
@@ -1300,32 +1301,20 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _update_constants :: proc(res: ^Resource_State, data: []byte) {
-        if res.consts_desc.item_num > 1 {
-            // This is a multi constant buffer, delay updates based on dynamic offsets.
-            // The actual buffer will be set dynamically when drawing. Should be
-            // fast thanks to internal D3D11 driver buffer renaming.
-
-            err: runtime.Allocator_Error
-            res.const_buf_data, err = runtime.mem_alloc_non_zeroed(len(data), 256, context.temp_allocator)
-            assert(err == nil)
-            runtime.mem_copy_non_overlapping(raw_data(res.const_buf_data), raw_data(data), len(data))
-
-        } else {
-            mapped: d3d11.MAPPED_SUBRESOURCE
-            if !_d3d11_check(res.id, _state.device_context->Map(
-                res.buf,
-                Subresource = 0,
-                MapType = .WRITE_DISCARD,
-                MapFlags = {},
-                pMappedResource = &mapped,
-            )) {
-                return
-            }
-
-            runtime.mem_copy_non_overlapping(mapped.pData, raw_data(data), len(data))
-
-            _state.device_context->Unmap(res.buf, 0)
+        mapped: d3d11.MAPPED_SUBRESOURCE
+        if !_d3d11_check(res.id, _state.device_context->Map(
+            res.buf,
+            Subresource = 0,
+            MapType = .WRITE_DISCARD,
+            MapFlags = {},
+            pMappedResource = &mapped,
+        )) {
+            return
         }
+
+        runtime.mem_copy_non_overlapping(mapped.pData, raw_data(data), len(data))
+
+        _state.device_context->Unmap(res.buf, 0)
     }
 
     _update_texture_2d :: proc(res: ^Resource_State, data: []byte, slice: i32) {

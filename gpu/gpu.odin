@@ -1,6 +1,7 @@
 #+vet explicit-allocators shadowing style unused
 package ravn_gpu
 
+import "core:slice"
 import "core:fmt"
 import "core:log"
 import "../base"
@@ -62,9 +63,10 @@ _state: ^State
 
 State :: struct #align(4096) {
     using native:                   _State,
+    state_allocator:                runtime.Allocator,
+    allocator:                      runtime.Allocator,
     in_frame:                       bool,
     init_context:                   runtime.Context,
-    state_allocator:                runtime.Allocator,
     // On WebGPU, the initialization is async.
     init_done:                      bool,
     has_swapchain:                  bool,
@@ -115,7 +117,7 @@ Shader_State :: struct #all_or_none {
     using native:   _Shader_State,
     kind:           Shader_Kind,
     id:             base.Debug_ID,
-    data:           []byte, // Must be valid at pipeline creation time.
+    data:           []byte,
 }
 
 Resource_State :: struct #all_or_none {
@@ -568,6 +570,7 @@ init :: proc(state: ^State = nil, window: rawptr, allocator := context.allocator
     }
 
     _state = state
+    _state.allocator = allocator
     _state.init_context = context
 
     if window != nil {
@@ -608,7 +611,9 @@ shutdown :: proc() {
 
 // return value of false means skip frame
 begin_frame :: proc() -> (ok: bool) {
+    assert(_state != nil)
     assert(_state.init_done)
+    assert(!_state.in_frame)
     assert(_state.encoder == {})
     _state.encoder = {}
     _state.in_frame = true
@@ -694,180 +699,6 @@ make_compute_pipeline_desc :: proc(
     return result
 }
 
-// Make vertex layout from a struct type using RTTI.
-// Every field must be 4-byte aligned.
-// Example:
-//  Vertex :: struct {
-//      pos:   [3]f32,
-//      uv:    [2]f32,
-//      color: [4]u8 `gpu:"U8x4_Norm"`,
-//  }
-make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_location) -> (result: Vertex_Layout_Desc) {
-    ti_base := runtime.type_info_base(type_info_of(T))
-
-    result.mode = mode
-
-    #partial switch _ in ti_base.variant {
-    case runtime.Type_Info_Float,
-         runtime.Type_Info_Integer,
-         runtime.Type_Info_Array:
-        format, ok := _vertex_format_from_type(ti_base, loc = loc)
-        if !ok {
-            return {}
-        }
-        result.slots[0] = format
-        return result
-    }
-
-    st, is_struct := ti_base.variant.(runtime.Type_Info_Struct)
-    if !is_struct {
-        log.errorf("'%v' is not a struct", typeid_of(T), location = loc)
-        panic("type must be a struct", loc)
-    }
-
-    if int(st.field_count) > MAX_VERTEX_LAYOUT_SLOTS {
-        log.errorf("'%v' has %i fields, max is %i", typeid_of(T), st.field_count, MAX_VERTEX_LAYOUT_SLOTS, location = loc)
-        panic("too many vertex fields", loc)
-    }
-
-    slot_index := 0
-    for field_index in 0 ..< st.field_count {
-        name := st.names[field_index]
-        offset := st.offsets[field_index]
-
-        if offset % 4 != 0 {
-            log.errorf("field '%v.%s' at offset %i is not 4-byte aligned", typeid_of(T), name, offset, location = loc)
-            panic("field is not 4-byte aligned", loc)
-        }
-
-        slot_format: Vertex_Format
-
-        ok: bool
-        if tag_val, has_tag := _struct_tag_lookup(st.tags[field_index], "gpu"); has_tag {
-            if tag_val == "-" {
-                continue
-            }
-            slot_format, ok = _vertex_format_from_name(tag_val, loc)
-            if !ok {
-                log.errorf("field '%v.%s' maps to '%s', which is not a valid Vertex_Format", typeid_of(T), name, tag_val, location = loc)
-                panic("no matching Vertex_Format", loc)
-            }
-        } else {
-            field_ti := runtime.type_info_core(st.types[field_index])
-            slot_format, ok = _vertex_format_from_type(field_ti, loc = loc)
-            if !ok {
-                panic("Invalid vertex format type")
-            }
-        }
-
-        result.slots[slot_index] = slot_format
-        slot_index += 1
-    }
-
-    return result
-}
-
-_vertex_format_from_type :: proc(ti: ^runtime.Type_Info, loc: runtime.Source_Code_Location) -> (Vertex_Format, bool) {
-    elem_ti := ti
-    num_components := 1
-    if arr, is_arr := ti.variant.(runtime.Type_Info_Array); is_arr {
-        num_components = arr.count
-        elem_ti = runtime.type_info_core(arr.elem)
-    }
-
-    prefix: string
-    #partial switch v in elem_ti.variant {
-    case runtime.Type_Info_Float:   prefix = "F"
-    case runtime.Type_Info_Integer: prefix = v.signed ? "I" : "U"
-    case:
-        log.errorf("Array '%v' has unsupported type '%v'", ti.id, elem_ti, location = loc)
-        return .Invalid, false
-    }
-
-    format_name := fmt.tprintf("%s%i", prefix, elem_ti.size * 8)
-    if num_components > 1 {
-        format_name = fmt.tprintf("%sx%i", format_name, num_components)
-    }
-
-    result, ok := _vertex_format_from_name(format_name, loc)
-    if !ok {
-        log.errorf("Type '%v' maps to '%s', which is not a valid Vertex_Format", ti.id, format_name, location = loc)
-        return .Invalid, false
-    }
-
-    return result, true
-}
-
-_vertex_format_from_name :: proc(name: string, loc: runtime.Source_Code_Location) -> (Vertex_Format, bool) {
-    enum_ti := runtime.type_info_base(type_info_of(Vertex_Format)).variant.(runtime.Type_Info_Enum)
-    for n, i in enum_ti.names {
-        format := Vertex_Format(i64(enum_ti.values[i]))
-        if n == name && format != .Invalid {
-            return format, true
-        }
-    }
-    return .Invalid, false
-}
-
-// Based on core:reflect.struct_tag_lookup
-@(require_results)
-_struct_tag_lookup :: proc(tag: string, key: string) -> (value: string, ok: bool) {
-    for t := tag; t != ""; /**/ {
-        i := 0
-        for i < len(t) && t[i] == ' ' { // Skip whitespace
-            i += 1
-        }
-        t = t[i:]
-        if len(t) == 0 {
-            break
-        }
-
-        i = 0
-        loop: for i < len(t) {
-            switch t[i] {
-            case ':', '"':
-                break loop
-            case 0x00 ..< ' ', 0x7f ..= 0x9f: // break if control character is found
-                break loop
-            }
-            i += 1
-        }
-
-        if i == 0 {
-            break
-        }
-        if i+1 >= len(t) {
-            break
-        }
-
-        if t[i] != ':' || t[i+1] != '"' {
-            break
-        }
-        name := string(t[:i])
-        t = t[i+1:]
-
-        i = 1
-        for i < len(t) && t[i] != '"' { // find closing quote
-            if t[i] == '\\' {
-                i += 1 // Skip escaped characters
-            }
-            i += 1
-        }
-
-        if i >= len(t) {
-            break
-        }
-
-        val := string(t[:i+1])
-        t = t[i+1:]
-
-        if key == name {
-            return val[1:i], true
-        }
-    }
-    return
-}
-
 @(require_results)
 _find_free_or_destroy_existing :: proc(
     id:             base.Debug_ID,
@@ -906,6 +737,8 @@ create_bind_layout :: proc(
     loc         := #caller_location,
 ) -> (ok: bool) {
     desc := desc
+    assert(_state != nil)
+    assert(_state.in_frame)
     log.debugf("Creating bind_group layout '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
@@ -947,6 +780,8 @@ create_bind_group :: proc(
     name    := #caller_expression(handle),
     loc     := #caller_location,
 ) -> (ok: bool) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     log.debugf("Creating bind_group '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
@@ -990,6 +825,8 @@ create_graphics_pipeline :: proc(
     name    := #caller_expression(handle),
     loc     := #caller_location,
 ) -> (ok: bool) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     log.debugf("Creating graphics pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
@@ -1020,6 +857,8 @@ create_compute_pipeline :: proc(
     name    := #caller_expression(handle),
     loc     := #caller_location,
 ) -> (ok: bool) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     log.debugf("Creating compute pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
@@ -1051,8 +890,10 @@ create_shader :: proc(
     name    := #caller_expression(handle),
     loc     := #caller_location,
 ) -> (ok: bool) {
-    id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id, context.allocator)
+    assert(_state != nil)
+    assert(_state.in_frame)
+    id := base.create_debug_id(name, loc, _state.allocator)
+    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
 
     base.assert_id(id, kind != .Invalid)
     base.assert_id(id, len(data) > 0)
@@ -1063,7 +904,7 @@ create_shader :: proc(
         kind = kind,
         id = id,
         native = {},
-        data = data, // Warning, keeping user-allocated data
+        data = slice.clone(data, _state.allocator),
     }
 
     state.native, ok = _create_shader(id, data = data, kind = kind)
@@ -1086,8 +927,10 @@ create_constants :: proc(
     name        := #caller_expression(handle),
     loc         := #caller_location,
 ) -> (ok: bool) {
-    id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id, context.allocator)
+    assert(_state != nil)
+    assert(_state.in_frame)
+    id := base.create_debug_id(name, loc, _state.allocator)
+    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
 
     base.assert_id(id, item_size > 0)
     base.assert_id(id, item_num >= 1)
@@ -1151,9 +994,11 @@ create_texture_2d :: proc(
     name                := #caller_expression(handle),
     loc                 := #caller_location,
 ) -> (ok: bool) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     log.debugf("Creating texture: %s", name)
-    id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id, context.allocator)
+    id := base.create_debug_id(name, loc, _state.allocator)
+    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
 
     base.assert_id(id, desc.format != .Invalid)
     base.assert_id(id, desc.format != .Swapchain)
@@ -1221,8 +1066,10 @@ create_buffer :: proc(
     name                := #caller_expression(handle),
     loc                 := #caller_location,
 ) -> (ok: bool) {
-    id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id, context.allocator)
+    assert(_state != nil)
+    assert(_state.in_frame)
+    id := base.create_debug_id(name, loc, _state.allocator)
+    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
 
     size := size
 
@@ -1275,6 +1122,8 @@ create_buffer :: proc(
 
 
 resize_swapchain :: proc(window: rawptr, size: [2]i32) -> (ok: bool) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.has_swapchain, "Cannot resize swapchain in headless mode")
     assert(size.x > 0, "Swapchain must be non-zero width")
     assert(size.y > 0, "Swapchain must be non-zero height")
@@ -1287,6 +1136,8 @@ resize_swapchain :: proc(window: rawptr, size: [2]i32) -> (ok: bool) {
 
 // Recreates and clears the texture! Use purely as an util for keeping the old handle.
 resize_texture :: proc(handle: ^Resource_Handle, size: [3]i32) -> (ok: bool) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     res, res_ok := _get_resource(handle^)
     if !res_ok {
         log.error("Invalid handle")
@@ -1323,69 +1174,82 @@ destroy :: proc {
 }
 
 destroy_shader :: proc(handle: Shader_Handle) -> bool {
+    assert(_state != nil)
+    assert(!_state.in_frame)
     state := base.pool_get(&_state.shaders, handle) or_return
     _destroy_shader_state(state)
     return base.pool_remove(&_state.shaders, handle)
 }
 
 destroy_resource :: proc(handle: Resource_Handle) -> bool {
+    assert(_state != nil)
+    assert(!_state.in_frame)
     state := base.pool_get(&_state.resources, handle) or_return
     _destroy_resource_state(state)
     return base.pool_remove(&_state.resources, handle)
 }
 
 destroy_bind_group :: proc(handle: Bind_Group_Handle) -> bool {
+    assert(_state != nil)
+    assert(!_state.in_frame)
     state := base.pool_get(&_state.bind_groups, handle) or_return
     _destroy_bind_group_state(state)
     return base.pool_remove(&_state.bind_groups, handle)
 }
 
 destroy_bind_layout :: proc(handle: Bind_Layout_Handle) -> bool {
+    assert(_state != nil)
+    assert(!_state.in_frame)
     state := base.pool_get(&_state.bind_layouts, handle) or_return
     _destroy_bind_layout_state(state)
     return base.pool_remove(&_state.bind_layouts, handle)
 }
 
 destroy_graphics_pipeline :: proc(handle: Graphics_Pipeline_Handle) -> bool {
+    assert(_state != nil)
+    assert(!_state.in_frame)
     state := base.pool_get(&_state.graphics_pipelines, handle) or_return
     _destroy_graphics_pipeline_state(state)
     return base.pool_remove(&_state.graphics_pipelines, handle)
 }
 
 destroy_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) -> bool {
+    assert(_state != nil)
+    assert(!_state.in_frame)
     state := base.pool_get(&_state.compute_pipelines, handle) or_return
     _destroy_compute_pipeline_state(state)
     return base.pool_remove(&_state.compute_pipelines, handle)
 }
 
 _destroy_shader_state :: proc(state: ^Shader_State) {
+    destroy(state.data, _state.allocator)
     _destroy_shader(state^)
-    base.destroy_debug_id(&state.id, context.allocator)
+    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_resource_state :: proc(state: ^Resource_State) {
     _destroy_resource(state^)
-    base.destroy_debug_id(&state.id, context.allocator)
+    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_bind_group_state :: proc(state: ^Bind_Group_State) {
     _destroy_bind_group(state^)
-    base.destroy_debug_id(&state.id, context.allocator)
+    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_bind_layout_state :: proc(state: ^Bind_Layout_State) {
     _destroy_bind_layout(state^)
-    base.destroy_debug_id(&state.id, context.allocator)
+    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_graphics_pipeline_state :: proc(state: ^Graphics_Pipeline_State) {
     _destroy_graphics_pipeline(state^)
-    base.destroy_debug_id(&state.id, context.allocator)
+    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_compute_pipeline_state :: proc(state: ^Compute_Pipeline_State) {
     _destroy_compute_pipeline(state^)
-    base.destroy_debug_id(&state.id, context.allocator)
+    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 
@@ -1418,22 +1282,28 @@ begin_graphics_pass :: proc(name: string, desc: Graphics_Pass_Desc, loc := #call
 }
 
 end_graphics_pass :: proc() {
+    assert(_state != nil)
+    assert(_state.in_frame)
     base.assert_id(_state.encoder.id, _state.encoder.mode == .Graphics)
     _end_graphics_pass()
     _state.encoder = {}
 }
 
 set_bind_group :: proc(#any_int slot: int, handle: Bind_Group_Handle, offsets: []u32 = nil) {
-    assert(_state.encoder.mode != .None)
+    assert(_state != nil)
+    assert(_state.in_frame)assert(_state.encoder.mode != .None)
     assert(handle != {})
     assert(slot >= 0)
     assert(slot < MAX_PIPELINE_BIND_GROUPS)
     bind_group, bind_group_ok := _get_bind_group(handle)
     assert(bind_group_ok)
+    assert(len(offsets) == card(bind_group.consts_dyn), "Number of offsets doesn't match number of dynamic cbufs")
     _set_bind_group(slot, bind_group, offsets)
 }
 
 set_vertex_buffer :: proc(slot: int, handle: Resource_Handle, #any_int offset: int = 0) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .Graphics)
     assert(handle != {})
     buf, buf_ok := _get_resource(handle)
@@ -1443,6 +1313,8 @@ set_vertex_buffer :: proc(slot: int, handle: Resource_Handle, #any_int offset: i
 }
 
 set_index_buffer :: proc(handle: Resource_Handle, format: Index_Format, #any_int offset: int = 0) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .Graphics)
     assert(handle != {})
     assert(format != .Invalid)
@@ -1454,6 +1326,8 @@ set_index_buffer :: proc(handle: Resource_Handle, format: Index_Format, #any_int
 }
 
 set_graphics_pipeline :: proc(handle: Graphics_Pipeline_Handle) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .Graphics)
     if _state.encoder.graphics_pipeline == handle {
         return
@@ -1481,6 +1355,8 @@ scope_compute_pass :: proc(name: string) -> bool {
 }
 
 begin_compute_pass :: proc(name: string, loc := #caller_location) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .None, "begin_compute_pass/end_compute_pass mismatch")
     id := base.create_debug_id(name, loc, context.temp_allocator)
     _begin_compute_pass(id)
@@ -1491,12 +1367,16 @@ begin_compute_pass :: proc(name: string, loc := #caller_location) {
 }
 
 end_compute_pass :: proc() {
+    assert(_state != nil)
+    assert(_state.in_frame)
     base.assert_id(_state.encoder.id, _state.encoder.mode == .Compute)
     _end_compute_pass()
     _state.encoder = {}
 }
 
 set_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     pip, pip_ok := _get_compute_pipeline(handle)
 
     if !pip_ok {
@@ -1512,6 +1392,8 @@ set_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) {
 }
 
 update_constants :: proc(handle: Resource_Handle, data: []byte, loc := #caller_location) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .None, "You must do all constant updates before rendering", loc = loc)
 
     res, res_ok := _get_resource(handle)
@@ -1536,6 +1418,8 @@ update_constants :: proc(handle: Resource_Handle, data: []byte, loc := #caller_l
 // This way the backend can sometimes more efficiently copy the data to the native buffer,
 // compared to always allocating a temp buffer to combine the writes.
 update_buffer :: proc(handle: Resource_Handle, offset := 0, buffers: ..[]byte, loc := #caller_location) -> bool {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .None, "You must do all buffer updates outside passes", loc = loc)
 
     if len(buffers) == 0 {
@@ -1556,12 +1440,17 @@ update_buffer :: proc(handle: Resource_Handle, offset := 0, buffers: ..[]byte, l
     assert(res.kind == .Buffer, loc = loc)
     assert(total_len <= int(res.buf_desc.size), loc = loc)
     assert(res.buf_desc.usage != .Immutable, loc = loc)
+    if res.buf_desc.usage == .Dynamic {
+        assert(offset == 0, "Dynamic buffers must be written in one go")
+    }
 
     _update_buffer(res, offset, buffers)
     return true
 }
 
 update_texture_2d :: proc(handle: Resource_Handle, data: []byte, #any_int slice: i32 = 0) -> bool {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .None, "You must do all texture updates before rendering")
 
     res, res_ok := _get_resource(handle)
@@ -1583,6 +1472,8 @@ draw_non_indexed :: proc(
     #any_int vertex_offset: int = 0,
     #any_int instance_offset: int = 0,
 ) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .Graphics)
     assert(_state.encoder.graphics_pipeline != {})
     assert(_state.encoder.graphics_pipeline_desc.topo != .Invalid)
@@ -1603,6 +1494,8 @@ draw_indexed :: proc(
     #any_int vertex_offset: int = 0,
     #any_int instance_offset: int = 0,
 ) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .Graphics)
     assert(_state.encoder.graphics_pipeline_desc.vs != {})
     assert(_state.encoder.graphics_pipeline_desc.ps != {})
@@ -1617,6 +1510,8 @@ draw_indexed :: proc(
 }
 
 dispatch_compute :: proc(size: [3]i32) {
+    assert(_state != nil)
+    assert(_state.in_frame)
     assert(_state.encoder.mode == .Compute)
     assert(size.x > 0 && size.x < MAX_DISPATCH_SIZE)
     assert(size.y > 0 && size.y < MAX_DISPATCH_SIZE)
@@ -1625,6 +1520,8 @@ dispatch_compute :: proc(size: [3]i32) {
 }
 
 copy_texture :: proc(dst_handle: Resource_Handle, src_handle: Resource_Handle) -> bool {
+    assert(_state != nil)
+    assert(_state.in_frame)
     dst_res, dst_res_ok := _get_resource(dst_handle)
     src_res, src_res_ok := _get_resource(src_handle)
     if !dst_res_ok || !src_res_ok {
@@ -1642,6 +1539,7 @@ copy_texture :: proc(dst_handle: Resource_Handle, src_handle: Resource_Handle) -
 }
 
 map_texture :: proc(handle: Resource_Handle) -> (Mapped_Data, bool) {
+    assert(_state != nil)
     res, res_ok := _get_resource(handle)
     if !res_ok {
         return {}, false
@@ -1653,6 +1551,8 @@ map_texture :: proc(handle: Resource_Handle) -> (Mapped_Data, bool) {
 }
 
 unmap_texture :: proc(handle: Resource_Handle) -> bool {
+    assert(_state != nil)
+    assert(_state.in_frame)
     res, res_ok := _get_resource(handle)
     if !res_ok {
         return false
@@ -1664,6 +1564,7 @@ unmap_texture :: proc(handle: Resource_Handle) -> bool {
 }
 
 set_scissor :: proc(min: [2]i32, max: [2]i32) {
+    assert(_state != nil)
     assert(_state.in_frame)
     assert(_state.encoder.mode == .Graphics)
     _set_scissor(min, max)
