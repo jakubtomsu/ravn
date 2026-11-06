@@ -38,14 +38,14 @@ jobs:
           odin test examples -all-packages -define:GPU_BACKEND=WGPU
   build_linux:
     name: Linux Build and Check
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
         - uses: actions/checkout@v4
         - name: Install Odin dependencies
           run: |
             sudo apt-get update
-            sudo apt-get install -y clang llvm
+            sudo apt-get install -y clang llvm libsdl3-dev
         - name: Set up Odin
           run: |
             git clone https://github.com/odin-lang/Odin.git --depth 1 --single-branch --branch=master
@@ -61,7 +61,7 @@ jobs:
             unzip wgpu.zip -d "$GITHUB_WORKSPACE/Odin/vendor/wgpu/lib/wgpu-linux-x86_64-release"
         - name: Check All
           run: |
-            # Why "$GITHUB_WORKSPACE"? To be able to call odin from anywhere in the container's file system
+            # "$GITHUB_WORKSPACE" To be able to call odin from anywhere in the container's file system
             export PATH="$GITHUB_WORKSPACE/Odin/:$PATH"
             odin check examples -define:GPU_BACKEND=Dummy -define:PLATFORM_BACKEND=Dummy
             odin check examples -define:GPU_BACKEND=WGPU
