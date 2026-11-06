@@ -29,7 +29,7 @@ BACKEND_SDL3 :: "SDL3"
 when BACKEND == BACKEND_SDL3 {
 
     _State :: struct {
-        cursor_icons:   [Cursor_Icon]sdl3.Cursor,
+        cursor_icons:   [Cursor_Icon]^sdl3.Cursor,
     }
 
     _Window :: struct {
@@ -46,13 +46,13 @@ when BACKEND == BACKEND_SDL3 {
 
         _state.cursor_icons = {
             .Default        = sdl3.CreateSystemCursor(.DEFAULT),
-            .Text_Input     = sdl3.CreateSystemCursor(.INPUT),
+            .Text_Input     = sdl3.CreateSystemCursor(.TEXT),
             .Wait           = sdl3.CreateSystemCursor(.WAIT),
             .Crosshair      = sdl3.CreateSystemCursor(.CROSSHAIR),
             .Progress       = sdl3.CreateSystemCursor(.PROGRESS),
             .Move           = sdl3.CreateSystemCursor(.MOVE),
             .Not_Allowed    = sdl3.CreateSystemCursor(.NOT_ALLOWED),
-            .Link_Pointer   = sdl3.CreateSystemCursor(.LINK_POINTER),
+            .Link_Pointer   = sdl3.CreateSystemCursor(.POINTER),
             .Resize_NS      = sdl3.CreateSystemCursor(.NS_RESIZE),
             .Resize_EW      = sdl3.CreateSystemCursor(.EW_RESIZE),
             .Resize_NE_SW   = sdl3.CreateSystemCursor(.NESW_RESIZE),
@@ -171,7 +171,7 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     _set_cursor_icon :: proc(icon: Cursor_Icon) {
-        sdl3.SetCursor(_state.cursor_icons[icon])
+        _ = sdl3.SetCursor(_state.cursor_icons[icon])
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

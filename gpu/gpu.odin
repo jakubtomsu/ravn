@@ -737,7 +737,6 @@ create_bind_layout :: proc(
 ) -> (ok: bool) {
     desc := desc
     assert(_state != nil)
-    assert(!_state.in_frame)
     log.debugf("Creating bind_group layout '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
@@ -780,7 +779,6 @@ create_bind_group :: proc(
     loc     := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    assert(!_state.in_frame)
     log.debugf("Creating bind_group '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
@@ -825,7 +823,6 @@ create_graphics_pipeline :: proc(
     loc     := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    assert(!_state.in_frame)
     log.debugf("Creating graphics pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
@@ -857,7 +854,6 @@ create_compute_pipeline :: proc(
     loc     := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    assert(!_state.in_frame)
     log.debugf("Creating compute pipeline '%s'", name)
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
@@ -890,7 +886,6 @@ create_shader :: proc(
     loc     := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    assert(!_state.in_frame)
     id := base.create_debug_id(name, loc, _state.allocator)
     defer if !ok do base.destroy_debug_id(&id, _state.allocator)
 
@@ -927,7 +922,6 @@ create_constants :: proc(
     loc         := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    assert(!_state.in_frame)
     id := base.create_debug_id(name, loc, _state.allocator)
     defer if !ok do base.destroy_debug_id(&id, _state.allocator)
 
@@ -994,7 +988,6 @@ create_texture_2d :: proc(
     loc                 := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    assert(!_state.in_frame)
     log.debugf("Creating texture: %s", name)
     id := base.create_debug_id(name, loc, _state.allocator)
     defer if !ok do base.destroy_debug_id(&id, _state.allocator)
@@ -1066,7 +1059,6 @@ create_buffer :: proc(
     loc                 := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    assert(!_state.in_frame)
     id := base.create_debug_id(name, loc, _state.allocator)
     defer if !ok do base.destroy_debug_id(&id, _state.allocator)
 
