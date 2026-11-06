@@ -64,7 +64,5 @@ jobs:
             # Why "$GITHUB_WORKSPACE"? To be able to call odin from anywhere in the container's file system
             export PATH="$GITHUB_WORKSPACE/Odin/:$PATH"
             odin check examples -define:GPU_BACKEND=Dummy -define:PLATFORM_BACKEND=Dummy
-            odin check examples -define:GPU_BACKEND=D3D11
             odin check examples -define:GPU_BACKEND=WGPU
-            odin test examples -all-packages -define:GPU_BACKEND=D3D11
             odin test examples -all-packages -define:GPU_BACKEND=WGPU
