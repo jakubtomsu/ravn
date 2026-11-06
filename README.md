@@ -4,7 +4,7 @@
 
 (read as *raven*)
 
-RAVN is a collection of lightweight 3D libraries for game and engine development in [Odin](https://odin-lang.org).
+RAVN is a collection of lightweight libraries for game and engine development in [Odin](https://odin-lang.org).
 
 ### [Discord Link](https://discord.com/invite/wn5jMMMYe4)
 
