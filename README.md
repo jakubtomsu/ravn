@@ -49,7 +49,7 @@ git subtree pull --prefix=ravn https://github.com/jakubtomsu/ravn main --squash
 
 You can run demos from the [examples/](examples) directory with something like the following command:
 ```
-odin run examples\hello
+odin run examples\triangle
 ```
 
 # Contributing
