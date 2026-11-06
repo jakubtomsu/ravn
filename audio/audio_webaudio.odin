@@ -1,6 +1,7 @@
 #+build js
 package ravn_audio
 
+import "core:log"
 import "../base"
 
 // NOTE: no backend guard, this must be active on JS
@@ -22,7 +23,7 @@ _State :: struct {
 
 @(require_results)
 _init :: proc() -> bool {
-    base.log_info("Webaudio init")
+    log.debug("Webaudio init")
     _state.frame_rate = _WEBAUDIO_FRAME_RATE
     _init_js() // async
     return true

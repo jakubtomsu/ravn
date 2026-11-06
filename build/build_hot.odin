@@ -1,13 +1,12 @@
 #+private=file
 package ravn_build
 
-import "../platform"
-import "../base"
-import "../base/ufmt"
-
+import "core:log"
+import "core:fmt"
 import "core:strings"
 import "core:strconv"
 import "base:runtime"
+import "../platform"
 
 when ODIN_OS == .Windows {
     DLL_EXT :: ".dll"
@@ -31,27 +30,27 @@ Hotreload_File :: struct {
 exec :: proc(str: string) -> bool {
     res := platform.run_shell_command(str)
     if 0 != res {
-        base.log_err("Error: Command '%s' failed with exit code %i", str, res)
+        log.errorf("Error: Command '%s' failed with exit code %i", str, res)
         return false
     }
     return true
 }
 
 compile_hot :: proc(pkg: string, pkg_name: string, index: int) {
-    path := ufmt.tprintf("%s%i" + DLL_EXT, pkg_name, index)
-    assert(!platform.file_exists(path), ufmt.tprintf("!platform.file_exists(\"%s\")", path))
-    exec(ufmt.tprintf("%s build %s -out:%s -debug -build-mode:dll", ODIN_EXE, pkg, path))
+    path := fmt.tprintf("%s%i" + DLL_EXT, pkg_name, index)
+    assert(!platform.file_exists(path), fmt.tprintf("!platform.file_exists(\"%s\")", path))
+    exec(fmt.tprintf("%s build %s -out:%s -debug -build-mode:dll", ODIN_EXE, pkg, path))
 }
 
 clean_hot :: proc(pkg: string) {
     when ODIN_OS == .Windows {
-        remove_all(ufmt.tprintf("%s*.dll", pkg))
-        remove_all(ufmt.tprintf("%s*.pdb", pkg))
-        remove_all(ufmt.tprintf("%s*.exp", pkg))
-        remove_all(ufmt.tprintf("%s*.lib", pkg))
-        remove_all(ufmt.tprintf("%s*.rdi", pkg))
+        remove_all(fmt.tprintf("%s*.dll", pkg))
+        remove_all(fmt.tprintf("%s*.pdb", pkg))
+        remove_all(fmt.tprintf("%s*.exp", pkg))
+        remove_all(fmt.tprintf("%s*.lib", pkg))
+        remove_all(fmt.tprintf("%s*.rdi", pkg))
     } else when ODIN_OS == .Linux {
-        remove_all(ufmt.tprintf("./%s*.so", pkg)) // linux dll
+        remove_all(fmt.tprintf("./%s*.so", pkg)) // linux dll
     }
 }
 
@@ -89,10 +88,10 @@ when ODIN_OS == .Linux || ODIN_OS == .Darwin{
 
 hotreload_find_latest_dll :: proc(pkg_name: string) -> (result: Hotreload_File, ok: bool) {
     when ODIN_OS == .Windows {
-        pattern := ufmt.tprintf("%s*" + DLL_EXT, pkg_name)
+        pattern := fmt.tprintf("%s*" + DLL_EXT, pkg_name)
         PATH_SEPARATOR :: "\\"
     } else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
-        pattern := ufmt.tprintf("./%s*" + DLL_EXT, pkg_name)
+        pattern := fmt.tprintf("./%s*" + DLL_EXT, pkg_name)
         PATH_SEPARATOR :: "/"
     }
     max_index: int = -1
@@ -135,16 +134,16 @@ hotreload_run :: proc(pkg: string, pkg_path: string) -> bool {
     initial, initial_ok := hotreload_find_latest_dll(pkg)
 
     if !initial_ok {
-        base.log_err("Hotreload Error: Couldn't find inital DLL for package:", pkg)
+        log.errorf("Hotreload Error: Couldn't find inital DLL for package:", pkg)
         return false
     }
 
-    base.log_info("Hotreload: Loading initial module %s ...", initial.path)
+    log.infof("Hotreload: Loading initial module %s ...", initial.path)
 
     module, module_ok := load_hotreload_module(initial.path)
 
     if !module_ok {
-        base.log_err("Hotreload Error: Failed to load initial DLL")
+        log.errorf("Hotreload Error: Failed to load initial DLL")
         return false
     }
 
@@ -177,7 +176,7 @@ hotreload_run :: proc(pkg: string, pkg_path: string) -> bool {
                 continue
             }
 
-            base.log_info("Hotreload: Loaded %s", new_file.path)
+            log.infof("Hotreload: Loaded %s", new_file.path)
 
             append(&modules_to_unload, new_module.mod)
 
@@ -192,7 +191,7 @@ hotreload_run :: proc(pkg: string, pkg_path: string) -> bool {
         platform.unload_module(lib)
     }
 
-    base.log_info("Hotreload: finished OK")
+    log.infof("Hotreload: finished OK")
 
     return true
 }
@@ -200,21 +199,21 @@ hotreload_run :: proc(pkg: string, pkg_path: string) -> bool {
 load_hotreload_module :: proc(path: string) -> (result: Hotreload_Module, ok: bool) {
     module, module_ok := platform.load_module(path)
     if !module_ok {
-        base.log_err("Hotreload: Failed to load library:", path)
+        log.errorf("Hotreload: Failed to load library: %s", path)
         return {}, false
     }
 
     result.desc = platform.get_module_symbol_address(module, "_app_desc")
 
     if result.desc == nil {
-        base.log_err("Hotreload: Failed to find _app_desc data")
+        log.errorf("Hotreload: Failed to find _app_desc data")
         return {}, false
     }
 
     result.callback = auto_cast(platform.get_module_symbol_address(module, "_app_hot_step"))
 
     if result.callback == nil {
-        base.log_err("Hotreload: Failed to find the _app_hot_step proc")
+        log.errorf("Hotreload: Failed to find the _app_hot_step proc")
         return {}, false
     }
 

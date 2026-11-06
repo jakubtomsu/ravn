@@ -6,7 +6,7 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
     return false
 }
 
-_compile_slang_wgsl :: proc(
+_compile_slang :: proc(
     state:          ^State,
     name:           string,
     source:         string,

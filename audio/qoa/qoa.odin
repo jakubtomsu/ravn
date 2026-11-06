@@ -115,8 +115,6 @@ dequantized residual forms the final output sample.
 #+vet explicit-allocators shadowing unused
 package qoa
 
-import "base:runtime"
-
 MIN_FILESIZE :: 16
 MAX_CHANNELS :: 8
 
@@ -322,11 +320,3 @@ pack_sample :: proc(val: f32) -> i16 {
 unpack_sample :: proc(val: i16) -> f32 {
     return f32(val) * (1.0 / 32768.0)
 }
-
-log :: proc(level: runtime.Logger_Level, str: string, loc := #caller_location) {
-    if context.logger.procedure == nil || level < context.logger.lowest_level {
-        return
-    }
-    context.logger.procedure(context.logger.data, level, str, context.logger.options, location = loc)
-}
-

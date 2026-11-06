@@ -1,6 +1,7 @@
 #+vet explicit-allocators
 package audio_wav
 
+import "core:log"
 import "base:runtime"
 
 RIFF_CHUNK_ID: [4]byte: "RIFF"
@@ -51,7 +52,7 @@ decode :: proc(data: []byte, allocator := context.allocator) -> (header: Header,
     sample_bytes: []byte
     header, sample_bytes, ok = decode_header(data)
     if !ok {
-        log(.Error, "WAV: Failed to decode header")
+        log.error("Failed to decode header")
         return {}, nil, false
     }
 
@@ -63,19 +64,19 @@ decode :: proc(data: []byte, allocator := context.allocator) -> (header: Header,
 @(require_results)
 decode_header :: proc(data: []byte) -> (result: Header, result_data: []byte, ok: bool) {
     if len(data) < size_of(Header) {
-        log(.Error, "WAV: Data is too small")
+        log.error("Data is too small")
         return {}, nil, false
     }
 
     result.riff = (cast(^RIFF_Chunk)raw_data(data))^
 
     if result.riff.id != RIFF_CHUNK_ID || result.riff.file_format_id != FILE_FORMAT_ID {
-        log(.Error, "WAV: RIFF Header magic mismatch")
+        log.error("RIFF Header magic mismatch")
         return {}, nil, false
     }
 
     if int(result.riff.size) + 8 > len(data) {
-        log(.Error, "WAV: File size doesn't match header")
+        log.error("File size doesn't match header")
         return result, nil, false
     }
 
@@ -92,12 +93,12 @@ decode_header :: proc(data: []byte) -> (result: Header, result_data: []byte, ok:
             result.data = (cast(^Data_Chunk)&data[offset])^
 
             if result.format == {} {
-                log(.Error, "WAV: Format chunk must come before data chunk")
+                log.error("Format chunk must come before data chunk")
                 return result, nil, false
             }
 
             result_data = data[offset + size_of(Chunk):]
-            
+
             if len(result_data) < int(result.data.size) {
                 return result, nil, false
             }
@@ -208,11 +209,4 @@ reinterpret_bytes :: proc "contextless" ($T: typeid, bytes: []byte) -> []T {
     n := len(bytes) / size_of(T)
     assert_contextless(n * size_of(T) == len(bytes))
     return ([^]T)(raw_data(bytes))[:n]
-}
-
-log :: proc(level: runtime.Logger_Level, str: string, loc := #caller_location) {
-    if context.logger.procedure == nil || level < context.logger.lowest_level {
-        return
-    }
-    context.logger.procedure(context.logger.data, level, str, context.logger.options, location = loc)
 }

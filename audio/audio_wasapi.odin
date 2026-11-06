@@ -1,6 +1,7 @@
 #+build windows
 package ravn_audio
 
+import "core:log"
 import "../base"
 import "base:intrinsics"
 import "core:sys/windows"
@@ -47,7 +48,7 @@ when BACKEND == BACKEND_WASAPI {
         assert(device_format.Format.wFormatTag == .EXTENSIBLE)
         defer windows.CoTaskMemFree(device_format)
 
-        base.log_info(
+        log.infof(
             "WASAPI Device format: samplerate: %i, channels: %v (%i), f32: %v",
             device_format.Format.nSamplesPerSec,
             device_format.dwChannelMask,
@@ -74,7 +75,7 @@ when BACKEND == BACKEND_WASAPI {
 
         closest: ^wasapi.WAVEFORMATEX
         if _state.audio_client->IsFormatSupported(.SHARED, cast(^wasapi.WAVEFORMATEX)&format, &closest) != windows.S_OK {
-            base.log_err("WASAPI: stereo f32 not supported.")
+            log.error("WASAPI: stereo f32 not supported.")
             return false
         }
 
@@ -108,7 +109,7 @@ when BACKEND == BACKEND_WASAPI {
             )
 
             if _state.thread == nil {
-                base.log_err("Failed to create thread.")
+                log.error("Failed to create thread.")
                 return false
             }
 
@@ -184,7 +185,7 @@ when BACKEND == BACKEND_WASAPI {
 
     _wasapi_check :: proc(hr: windows.HRESULT, expr := #caller_expression, loc := #caller_location) -> bool {
         if !windows.SUCCEEDED(hr) {
-            base.log_err("WASAPI Error: %v (%x)", transmute(wasapi.Result)hr, transmute(u32)hr, loc = loc)
+            log.errorf("WASAPI Error: %v (%x)", transmute(wasapi.Result)hr, transmute(u32)hr, location = loc)
             return false
         }
         return true

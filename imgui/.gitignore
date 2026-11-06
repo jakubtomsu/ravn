@@ -1,0 +1,4 @@
+dear_bindings/
+imgui/
+*.lib
+*.pdb

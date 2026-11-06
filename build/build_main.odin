@@ -1,10 +1,9 @@
 #+vet unused style shadowing
 package ravn_build
 
+import "core:log"
 import "../platform"
 import "../base"
-import "../base/ufmt"
-
 import "core:strings"
 
 ODIN_EXE :: "odin"
@@ -70,7 +69,7 @@ parse_flags :: proc(params: []string) -> (flags: Flags, ok: bool) {
         }
     }
     if !cmd_ok {
-        base.log_err("Invalid command '%s'", params[0])
+        log.errorf("Invalid command '%s'", params[0])
         show_help = true
         return {}, false
     }
@@ -80,7 +79,7 @@ parse_flags :: proc(params: []string) -> (flags: Flags, ok: bool) {
 
     case:
         if len(params) < 2 {
-            base.log_err("Package path missing")
+            log.errorf("Package path missing")
             return {}, false
         }
 
@@ -97,7 +96,7 @@ main :: proc() {
 
     fl, fl_ok := parse_flags(args[1:])
     if !fl_ok {
-        base.log_err("Invalid arguments")
+        log.errorf("Invalid arguments")
         platform.exit_process(1)
     }
 
@@ -106,7 +105,7 @@ main :: proc() {
     switch fl.cmd {
     case .Export_Web:
         if !export_web(strings.concatenate({pkg_name, "-web-export"}), pkg_name, fl.pkg) {
-            base.log_err("Web export failed")
+            log.errorf("Web export failed")
             platform.exit_process(1)
         }
 
@@ -123,13 +122,13 @@ main :: proc() {
 
     case .Builtin_Shaders:
         if !compile_builtin_shaders() {
-            base.log_err("Failed to compile builtin shaders")
+            log.errorf("Failed to compile builtin shaders")
             platform.exit_process(1)
         }
 
     case .Build_Hot:
         latest, _ := hotreload_find_latest_dll(pkg_name)
-        base.log_info("Building %i", latest.index + 1)
+        log.infof("Building %i", latest.index + 1)
         compile_hot(fl.pkg, pkg_name = pkg_name, index = latest.index + 1)
     }
 }

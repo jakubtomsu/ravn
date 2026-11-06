@@ -1,0 +1,34 @@
+package ravn_debugdraw
+
+// color utils
+
+// Based Sweetie 16 palette:
+// https://lospec.com/palette-list/sweetie-16
+
+BLACK       :: [4]u8{0x1a, 0x1c, 0x2c, 0xff}// #1a1c2c
+PURPLE      :: [4]u8{0x5d, 0x27, 0x5d, 0xff}// #5d275d
+RED         :: [4]u8{0xb1, 0x3e, 0x53, 0xff}// #b13e53
+ORANGE      :: [4]u8{0xef, 0x7d, 0x57, 0xff}// #ef7d57
+YELLOW      :: [4]u8{0xff, 0xcd, 0x75, 0xff}// #ffcd75
+LIGHT_GREEN :: [4]u8{0xa7, 0xf0, 0x70, 0xff}// #a7f070
+GREEN       :: [4]u8{0x38, 0xb7, 0x64, 0xff}// #38b764
+DARK_GREEN  :: [4]u8{0x25, 0x71, 0x79, 0xff}// #257179
+DARK_BLUE   :: [4]u8{0x29, 0x36, 0x6f, 0xff}// #29366f
+BLUE        :: [4]u8{0x3b, 0x5d, 0xc9, 0xff}// #3b5dc9
+LIGHT_BLUE  :: [4]u8{0x41, 0xa6, 0xf6, 0xff}// #41a6f6
+CYAN        :: [4]u8{0x73, 0xef, 0xf7, 0xff}// #73eff7
+WHITE       :: [4]u8{0xf4, 0xf4, 0xf4, 0xff}// #f4f4f4
+LIGHT_GRAY  :: [4]u8{0x94, 0xb0, 0xc2, 0xff}// #94b0c2
+GRAY        :: [4]u8{0x56, 0x6c, 0x86, 0xff}// #566c86
+DARK_GRAY   :: [4]u8{0x33, 0x3c, 0x57, 0xff}// #333c57
+
+CLEAR_ALPHA :: [4]u8{1, 1, 1, 0}
+
+pack_color :: proc(col: [4]f32) -> [4]u8 {
+    return {
+        u8(clamp(col[0], 0, 1) * 255),
+        u8(clamp(col[1], 0, 1) * 255),
+        u8(clamp(col[2], 0, 1) * 255),
+        u8(clamp(col[3], 0, 1) * 255),
+    }
+}

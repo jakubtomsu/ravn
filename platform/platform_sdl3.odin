@@ -4,21 +4,21 @@
 #+vet explicit-allocators shadowing style unused
 package ravn_platform
 
+import "core:log"
 import "core:strings"
 import "core:time"
 import "base:runtime"
 import "vendor:sdl3"
 import "core:path/filepath"
 import "../base"
-import "../base/ufmt"
 import "core:os"
 import "core:dynlib"
 
+_ :: log
 _ :: runtime
 _ :: base
 _ :: sdl3
 _ :: filepath
-_ :: ufmt
 _ :: strings
 _ :: time
 _ :: os
@@ -28,34 +28,36 @@ BACKEND_SDL3 :: "SDL3"
 
 when BACKEND == BACKEND_SDL3 {
 
-    _State :: struct { _: u8 }
-
-    _File_Handle :: struct {
-    }
-
-    _Directory_Iter :: struct {
-        index: i32,
-        count: i32,
-        matches: [^]cstring, // allocated by sdl.GlobDirectory
-    }
-
-    _Thread :: struct {
-        thread: ^sdl3.Thread,
+    _State :: struct {
+        cursor_icons:   [Cursor_Icon]^sdl3.Cursor,
     }
 
     _Window :: struct {
         window: ^sdl3.Window,
     }
 
-    _Module :: struct {
-        lib: dynlib.Library,
-    }
-
     _init :: proc() {
         if !sdl3.Init({.VIDEO, .EVENTS, .GAMEPAD}) {
             panic("Failed to initialize SDL3")
         }
-        base.log_info("Initialized SDL3")
+        log.debug("Initialized SDL3")
+
+        // sdl3.SetHint(sdl3.HINT_MOUSE_FOCUS_CLICKTHROUGH, "1")
+
+        _state.cursor_icons = {
+            .Default        = sdl3.CreateSystemCursor(.DEFAULT),
+            .Text_Input     = sdl3.CreateSystemCursor(.TEXT),
+            .Wait           = sdl3.CreateSystemCursor(.WAIT),
+            .Crosshair      = sdl3.CreateSystemCursor(.CROSSHAIR),
+            .Progress       = sdl3.CreateSystemCursor(.PROGRESS),
+            .Move           = sdl3.CreateSystemCursor(.MOVE),
+            .Not_Allowed    = sdl3.CreateSystemCursor(.NOT_ALLOWED),
+            .Link_Pointer   = sdl3.CreateSystemCursor(.POINTER),
+            .Resize_NS      = sdl3.CreateSystemCursor(.NS_RESIZE),
+            .Resize_EW      = sdl3.CreateSystemCursor(.EW_RESIZE),
+            .Resize_NE_SW   = sdl3.CreateSystemCursor(.NESW_RESIZE),
+            .Resize_NW_SE   = sdl3.CreateSystemCursor(.NWSE_RESIZE),
+        }
     }
 
     _shutdown :: proc() {
@@ -68,44 +70,14 @@ when BACKEND == BACKEND_SDL3 {
     // MARK: Common
     //
 
-    @(require_results)
-    _get_commandline_args :: proc(allocator: runtime.Allocator) -> []string {
-        return os.args
-    }
-
-    @(require_results)
-    _run_shell_command :: proc(command: string) -> int {
-        state, _, _, err := os.process_exec(
-            os.Process_Desc{
-                // We run the command fully without splitting, to keep the `""` and `''` as-is
-                // If we are to split by spaces, we could be splitting inside quotes and run the command wrong
-                command = {"sh", "-c", command},
-            },
-            allocator = context.temp_allocator,
-        )
-        if err != nil {
-            return -1
-        }
-        return state.exit_code
-    }
-
-    _exit_process :: proc(code: int) -> ! {
-        runtime.trap()
-    }
-
     _register_default_exception_handler :: proc() {
 
     }
 
     @(require_results)
-    _memory_protect :: proc(ptr: rawptr, num_bytes: int, protect: Memory_Protection) -> bool {
-        return false
-    }
-
-    @(require_results)
     _clipboard_set :: proc(data: string) -> bool {
         return sdl3.SetClipboardText(
-            clone_to_cstring(data, context.temp_allocator),
+            strings.clone_to_cstring(data, context.temp_allocator),
         )
     }
 
@@ -168,7 +140,7 @@ when BACKEND == BACKEND_SDL3 {
         _ = sdl3.SetWindowMouseGrab(window.window, relative)
     }
 
-    _set_mouse_visible :: proc(visible: bool) {
+    _set_cursor_visible :: proc(visible: bool) {
         if visible {
             _ = sdl3.ShowCursor()
         } else {
@@ -194,77 +166,13 @@ when BACKEND == BACKEND_SDL3 {
         }
     }
 
-    @(require_results)
-    _set_current_directory :: proc(path: string) -> bool {
-        return os.set_working_directory(path) != nil
+    _open_url :: proc(url: string) {
+        _ = sdl3.OpenURL(strings.clone_to_cstring(url, context.temp_allocator))
     }
 
-    @(require_results)
-    _get_executable_path :: proc(allocator := context.temp_allocator) -> string {
-        unimplemented()
+    _set_cursor_icon :: proc(icon: Cursor_Icon) {
+        _ = sdl3.SetCursor(_state.cursor_icons[icon])
     }
-
-    @(require_results)
-    _load_module :: proc(path: string) -> (result: Module, ok: bool) {
-        lib := dynlib.load_library(path, global_symbols = true, allocator = context.temp_allocator) or_return
-        return {
-            lib = lib,
-        }, true
-    }
-
-    _unload_module :: proc(module: Module) {
-        dynlib.unload_library(module.lib)
-    }
-
-    @(require_results)
-    _get_module_symbol_address :: proc(module: Module, cstr: cstring) -> (result: rawptr) {
-        return dynlib.symbol_address(module.lib, string(cstr), context.temp_allocator) or_else nil
-    }
-
-    _sleep_ms :: proc(#any_int ms: int) {
-        time.sleep(time.Millisecond * time.Duration(ms))
-    }
-
-    @(require_results)
-    _get_time_ns :: proc() -> u64 {
-        return sdl3.GetTicksNS()
-    }
-
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MARK: Thread
-    //
-
-    @(require_results)
-    _create_thread :: proc(procedure: Thread_Proc, name: string) -> (result: Thread) {
-        result.thread = sdl3.CreateThread(_thread_proc, clone_to_cstring(name, context.temp_allocator), rawptr(procedure))
-
-        return
-
-        _thread_proc :: proc "c" (data: rawptr) -> i32 {
-            proc_ptr := transmute(Thread_Proc)data
-            proc_ptr()
-            return 0
-        }
-    }
-
-    _join_thread :: proc(thread: Thread) {
-        sdl3.WaitThread(thread.thread, nil)
-    }
-
-    @(require_results)
-    _get_current_thread_id :: proc() -> u64 {
-        return u64(sdl3.GetCurrentThreadID())
-    }
-
-    _refresh_cpu_core_info :: proc() {
-    }
-
-    _pin_thread_to_cpu_core :: proc(thread: Thread, core_index: int) -> bool {
-        return false
-    }
-
-
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // MARK: Window
@@ -284,7 +192,7 @@ when BACKEND == BACKEND_SDL3 {
             flags += {.HIGH_PIXEL_DENSITY}
         }
 
-        name_ptr := clone_to_cstring(name, context.temp_allocator)
+        name_ptr := strings.clone_to_cstring(name, context.temp_allocator)
 
         wnd := sdl3.CreateWindow(name_ptr, rect.size.x, rect.size.y, flags)
         if wnd == nil {
@@ -307,7 +215,7 @@ when BACKEND == BACKEND_SDL3 {
     }
 
     _set_window_title :: proc(window: Window, name: string) {
-        sdl3.SetWindowTitle(window.window, clone_to_cstring(name, context.temp_allocator))
+        sdl3.SetWindowTitle(window.window, strings.clone_to_cstring(name, context.temp_allocator))
     }
 
     _set_window_style :: proc(window: Window, style: Window_Style) {
@@ -374,8 +282,8 @@ when BACKEND == BACKEND_SDL3 {
                 return true
 
             case .KEY_DOWN, .KEY_UP:
-                _event_queue_push(Event_Key{
-                    key = _sdl_scancode_to_key(event.key.scancode),
+                _event_queue_push(Event_Button{
+                    button = _sdl_scancode_to_button(event.key.scancode),
                     pressed = event.key.down,
                 })
                 return true
@@ -394,7 +302,7 @@ when BACKEND == BACKEND_SDL3 {
                 return true
 
             case .MOUSE_BUTTON_DOWN, .MOUSE_BUTTON_UP:
-                _event_queue_push(Event_Mouse_Button{
+                _event_queue_push(Event_Button{
                     button = _sdl_mouse_to_button(event.button.button),
                     pressed = event.button.down,
                 })
@@ -423,19 +331,18 @@ when BACKEND == BACKEND_SDL3 {
         return false
     }
 
-    _sdl_mouse_to_button :: proc(button: sdl3.Uint8) -> Mouse_Button {
+    _sdl_mouse_to_button :: proc(button: u8) -> Button {
         switch button {
-        case sdl3.BUTTON_LEFT: return .Left
-        case sdl3.BUTTON_MIDDLE: return .Middle
-        case sdl3.BUTTON_RIGHT: return .Right
-        case sdl3.BUTTON_X1: return .Extra_1
-        case sdl3.BUTTON_X2: return .Extra_2
+        case sdl3.BUTTON_LEFT:  return .Mouse_Left
+        case sdl3.BUTTON_MIDDLE:return .Mouse_Middle
+        case sdl3.BUTTON_RIGHT: return .Mouse_Right
+        case sdl3.BUTTON_X1:    return .Mouse_Extra_1
+        case sdl3.BUTTON_X2:    return .Mouse_Extra_2
         }
-        assert(false)
-        return .Left
+        return .Invalid
     }
 
-    _sdl_scancode_to_key :: proc(scancode: sdl3.Scancode) -> Key {
+    _sdl_scancode_to_button :: proc(scancode: sdl3.Scancode) -> Button {
         // NOTE: few of our keys don't map cleanly.
         #partial switch scancode {
         case .UNKNOWN: return .Invalid
@@ -559,113 +466,9 @@ when BACKEND == BACKEND_SDL3 {
         return .Invalid
     }
 
-
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // MARK: File IO
-    //
-
-    @(require_results)
-    _open_file :: proc(path: string) -> (File_Handle, bool) {
-        unimplemented()
-    }
-
-    _close_file :: proc(handle: File_Handle) {
-        unimplemented()
-    }
-
-    @(require_results)
-    _get_last_write_time :: proc(handle: File_Handle) -> (u64, bool) {
-        unimplemented()
-    }
-
-    @(require_results)
-    _delete_file :: proc(path: string) -> bool {
-        return (os.remove_all(path) == nil)
-    }
-
-    @(require_results)
-    _read_file_by_path :: proc(path: string, allocator := context.allocator) -> (data: []byte, ok: bool) {
-        size: uint
-        ptr := cast([^]byte)sdl3.LoadFile(clone_to_cstring(path, context.temp_allocator), &size)
-        return ptr[:size], ptr != nil
-    }
-
-    @(require_results)
-    _write_file_by_path :: proc(path: string, data: []u8) -> bool {
-        unimplemented()
-    }
-
-    @(require_results)
-    _file_exists :: proc(path: string) -> bool {
-        return os.exists(path)
-    }
-
-    @(require_results)
-    _clone_file :: proc(path: string, new_path: string, fail_if_exists := true) -> bool {
-        unimplemented()
-    }
-
-    @(require_results)
-    _create_directory :: proc(path: string) -> bool {
-        return false
-    }
-
-    @(require_results)
-    _is_file :: proc(path: string) -> bool {
-        return false
-    }
-
-    @(require_results)
-    _is_directory :: proc(path: string) -> bool {
-        return false
-    }
-
-    @(require_results)
-    _iter_directory :: proc(iter: ^Directory_Iter, pattern: string, allocator := context.temp_allocator) -> (result: string, ok: bool) {
-        dir := filepath.dir(pattern)
-
-        if iter^ == {}{
-            file_pat := filepath.base(pattern)
-
-            cdir := strings.clone_to_cstring(dir, context.temp_allocator)
-            cfile_pat := strings.clone_to_cstring(file_pat, context.temp_allocator)
-
-            count : i32
-            iter.matches = cast([^]cstring)(sdl3.GlobDirectory(cdir, cfile_pat, {}, &count))
-            iter.count = count
-
-            if iter.matches == nil {
-                return {}, false
-            }
-        }
-
-        // If at the end of null-terminated matches
-        if iter.index >= iter.count {
-            sdl3.free(iter.matches)
-            iter^ = {}
-            return {}, false
-        }
-        entry := iter.matches[iter.index]
-        iter.index += 1
-
-        return strings.clone(ufmt.tprintf("%s/%s", dir, entry), allocator), true
-    }
-
     @(require_results)
     _file_dialog :: proc(mode: File_Dialog_Mode, default_path: string, patterns: []File_Pattern, title := "") -> (string, bool) {
         return "", false
-    }
-
-    _sdl_mouse_button :: proc(b: u8) -> Mouse_Button {
-        switch b {
-        case sdl3.BUTTON_LEFT:   return .Left
-        case sdl3.BUTTON_MIDDLE: return .Middle
-        case sdl3.BUTTON_RIGHT:  return .Right
-        case sdl3.BUTTON_X1:     return .Extra_1
-        case sdl3.BUTTON_X2:     return .Extra_2
-        }
-        return .Left
     }
 
 }

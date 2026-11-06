@@ -2,13 +2,14 @@
 #+build !js
 package ravn_shader_compiler
 
-import "../base"
-import "../platform"
+import "core:log"
 import "slang"
 import "base:runtime"
+import "core:strings"
+import "core:dynlib"
 
 when ODIN_OS == .Windows {
-    SLANG_DYNLIB_PATH :: "slang.dll"
+    SLANG_DYNLIB_PATH :: "slang-compiler.dll"
 } else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
     SLANG_DYNLIB_PATH :: "./libslang.so"
 } else {
@@ -17,8 +18,12 @@ when ODIN_OS == .Windows {
 
 _Slang_State :: struct {
     using vtable:   slang.Global_VTable,
-    module:         platform.Module,
+    module:         dynlib.Library,
     global_session: ^slang.IGlobalSession,
+}
+
+_Slang_Blob :: struct {
+    blob:   ^slang.IBlob,
 }
 
 _slang_init :: proc(state: ^_Slang_State) -> bool {
@@ -27,9 +32,9 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
     }
 
     module_ok: bool
-    state.module, module_ok = platform.load_module(SLANG_DYNLIB_PATH)
+    state.module, module_ok = dynlib.load_library(SLANG_DYNLIB_PATH, global_symbols = false, allocator = context.temp_allocator)
     if !module_ok {
-        base.log_err("Failed to load " + SLANG_DYNLIB_PATH + ". Ensure it's in your working directory to compile shaders.")
+        log.error("Failed to load " + SLANG_DYNLIB_PATH + ". Ensure it's in your working directory to compile shaders.")
         return false
     }
 
@@ -48,35 +53,46 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
         return false
     }
 
-    base.log_info("Successfully loaded slang compiler")
-
     return true
 
-    _load_sym :: proc(state: ^_Slang_State, name: cstring) -> (rawptr, bool) {
-        result := platform.get_module_symbol_address(state.module, name)
+    _load_sym :: proc(state: ^_Slang_State, name: string) -> (rawptr, bool) {
+        result := dynlib.symbol_address(state.module, name, context.temp_allocator)
         if result == nil {
-            base.log_err("Failed to find symbol '%s' in slang.dll", name)
+            log.error("Failed to find symbol '%s' in slang.dll", name)
             return nil, false
         }
         return result, true
     }
 }
 
-_compile_slang_wgsl :: proc(
+_compile_slang :: proc(
     state:          ^State,
     name:           string,
     source:         string,
     opts:           Options,
-) -> (result: []byte, ok: bool) {
+) -> (result: Blob, ok: bool) {
     assert(state.slang.global_session != nil)
 
     // Implements something like the following slangc command:
     // slangc.exe name.hlsl -target wgsl -entry vs_main -stage vertex -o shader.wgsl -fvk-b-shift 0 0 -fvk-t-shift 8 0 -fvk-s-shift 16 0
 
+    format: slang.CompileTarget
+    profile_name: cstring
+    switch state.target {
+    case .Invalid, .DXBC:
+        assert(false)
+    case .WGSL:
+        format = .WGSL
+        profile_name = "wgsl_1_0"
+    case .SPIRV:
+        format = .SPIRV
+        profile_name = "spirv_1_5"
+    }
+
     target_desc := slang.TargetDesc{
         structureSize = size_of(slang.TargetDesc),
-        format = .WGSL,
-        profile = state.slang.global_session->findProfile("wgsl_1_0"),
+        format = format,
+        profile = state.slang.global_session->findProfile(profile_name),
     }
 
     // Hardcoded for now...
@@ -135,7 +151,7 @@ _compile_slang_wgsl :: proc(
     session: ^slang.ISession
     _slang_check(state.slang.global_session->createSession(session_desc, &session))
 
-    cname := clone_to_cstring(name, context.temp_allocator)
+    cname := strings.clone_to_cstring(name, context.temp_allocator)
 
     source_blob := state.slang.createBlob(raw_data(source), len(source))
     diag: ^slang.IBlob
@@ -143,7 +159,7 @@ _compile_slang_wgsl :: proc(
 
     _slang_diag(diag)
     if module == nil {
-        return nil, false
+        return {}, false
     }
 
     entry_point_name: cstring
@@ -164,25 +180,36 @@ _compile_slang_wgsl :: proc(
     _slang_check_diag(session->createCompositeComponentType(&components[0], len(components), &composite, &diag), diag)
 
     if composite == nil {
-        return nil, false
+        return {}, false
     }
 
-    wgsl_code: ^slang.IBlob
-    _slang_check_diag(composite->getEntryPointCode(0, 0, &wgsl_code, &diag), diag)
-    if wgsl_code == nil {
-        return nil, false
+    code: ^slang.IBlob
+    _slang_check_diag(composite->getEntryPointCode(0, 0, &code, &diag), diag)
+    if code == nil {
+        return {}, false
     }
 
-    return _slang_blob_buf(wgsl_code), true
+    result.data = _slang_blob_buf(code)
+    result._slang = {
+        blob = code,
+    }
+
+    return result, true
 
     pack_vk_shift :: proc(#any_int kind: u8, set: u32) -> i32 {
         return transmute(i32)((u32(kind) << 24) | (set & 0x00FFFFFF))
     }
 }
 
+_slang_blob_destroy :: proc(blob: ^_Slang_Blob) {
+    if blob.blob != nil {
+        blob.blob->release()
+    }
+}
+
 _slang_check :: proc(res: slang.Result, expr := #caller_expression(res), loc := #caller_location) -> bool {
     if res != .OK {
-        base.log_err("Slang Error: %v (%x)", res, transmute(u32)res, loc = loc)
+        log.error("Slang Error: %v (%x)", res, transmute(u32)res, location = loc)
         assert(false, message = expr, loc = loc)
         return false
     }
@@ -191,7 +218,7 @@ _slang_check :: proc(res: slang.Result, expr := #caller_expression(res), loc := 
 
 _slang_check_diag :: proc(res: slang.Result, diag: ^slang.IBlob, expr := #caller_expression(res), loc := #caller_location) -> bool {
     if res != .OK {
-        base.log_err("Slang Error: %v (%x):\n%s", res, transmute(u32)res, _slang_blob_str(diag), loc = loc)
+        log.error("Slang Error: %v (%x):\n%s", res, transmute(u32)res, _slang_blob_str(diag), location = loc)
         assert(false, message = expr, loc = loc)
         return false
     }
@@ -200,7 +227,7 @@ _slang_check_diag :: proc(res: slang.Result, diag: ^slang.IBlob, expr := #caller
 
 _slang_diag :: proc(diag: ^slang.IBlob, loc := #caller_location) -> bool {
     if diag != nil {
-        base.log_err("Slang Error: %s", _slang_blob_str(diag), loc = loc)
+        log.error("Slang Error: %s", _slang_blob_str(diag), location = loc)
         return false
     }
     return true
@@ -244,15 +271,13 @@ _slang_ifilesystem_loadfile :: proc "system" (
     assert(path != nil)
     assert(outBlob != nil)
 
-    // base.log_info("INCLUDE %s", path)
-
     if this.opts.include_proc == nil {
         return .E_NOT_FOUND
     }
 
     result, ok := this.opts.include_proc(
         path = string(path),
-        user = this.opts.user,
+        opts = this.opts,
     )
 
     if !ok {
