@@ -21,8 +21,8 @@ when BACKEND == BACKEND_DUMMY {
     _Bind_Layout_State :: struct { _: u8 }
     _Bind_Group_State :: struct { _: u8 }
 
-    dummy :: proc "contextless" () -> ! {
-        panic_contextless("Error: dummy GPU backend")
+    dummy :: proc() -> ! {
+        panic("Error: dummy GPU backend")
     }
 
     @(require_results) _init :: proc(native_window: rawptr) -> bool { dummy() }
@@ -38,6 +38,7 @@ when BACKEND == BACKEND_DUMMY {
     @(require_results) _create_constants :: proc(id: base.Debug_ID, desc: Constants_Desc) -> (result: _Resource_State, ok: bool) { dummy() }
     @(require_results) _create_shader :: proc(id: base.Debug_ID, data: []u8, kind: Shader_Kind) -> (result: _Shader_State, ok: bool) { dummy() }
     @(require_results) _create_texture_2d :: proc(id: base.Debug_ID, desc: Texture_Desc, data: []byte) -> (result: _Resource_State, ok: bool) { dummy() }
+    @(require_results) _create_texture_3d :: proc(id: base.Debug_ID, desc: Texture_Desc, data: []byte) -> (result: _Resource_State, ok: bool) { dummy() }
     @(require_results) _create_buffer :: proc(id: base.Debug_ID, desc: Buffer_Desc, data: []u8) -> (result: _Resource_State, ok: bool) { dummy() }
 
     _destroy_shader :: proc(state: Shader_State) { dummy() }
@@ -74,5 +75,4 @@ when BACKEND == BACKEND_DUMMY {
     _unmap_texture :: proc(res: ^Resource_State) -> bool { dummy() }
 
     _set_scissor :: proc(min: [2]i32, max: [2]i32) { dummy() }
-
 }

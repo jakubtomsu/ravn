@@ -988,7 +988,7 @@ create_texture_2d :: proc(
     loc                 := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    log.debugf("Creating texture: %s", name)
+    log.debugf("Creating 2D texture: %s", name)
     id := base.create_debug_id(name, loc, _state.allocator)
     defer if !ok do base.destroy_debug_id(&id, _state.allocator)
 
@@ -1038,6 +1038,58 @@ create_texture_2d :: proc(
     }
 
     state.native, ok = _create_texture_2d(id,
+        desc = desc,
+        data = data,
+    )
+
+    base.pool_set(&_state.resources, handle^, state) or_else base.panic_id(id, "Invalid state")
+    return true
+}
+
+@(require_results)
+create_texture_3d :: proc(
+    handle:             ^Resource_Handle,
+    desc:               Texture_Desc,
+    data:               []byte = nil,
+    name                := #caller_expression(handle),
+    loc                 := #caller_location,
+) -> (ok: bool) {
+    assert(_state != nil)
+    log.debugf("Creating 3D texture: %s", name)
+    id := base.create_debug_id(name, loc, _state.allocator)
+    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
+
+    base.assert_id(id, desc.format != .Invalid)
+    base.assert_id(id, desc.format != .Swapchain)
+    base.assert_id(id, !is_texture_format_depth_stencil(desc.format))
+    base.assert_id(id, desc.usage != .Staging)
+    base.assert_id(id, .Render_Texture not_in desc.flags)
+    base.assert_id(id, desc.size.x > 0)
+    base.assert_id(id, desc.size.x <= MAX_TEXTURE_3D_SIZE)
+    base.assert_id(id, desc.size.y > 0)
+    base.assert_id(id, desc.size.y <= MAX_TEXTURE_3D_SIZE)
+    base.assert_id(id, desc.size.z >= 1)
+    base.assert_id(id, desc.size.z <= MAX_TEXTURE_3D_SIZE)
+
+    if desc.usage == .Immutable {
+        base.assert_id(id, data != nil)
+    }
+
+    if data != nil {
+        base.assert_id(id, desc.mips == 1)
+        base.assert_id(id, len(data) == (int(desc.size.x * desc.size.y * desc.size.z) * int(get_texture_format_pixel_size(desc.format))))
+    }
+
+    _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
+
+    state := Resource_State{
+        kind = .Texture3D,
+        desc = {tex_desc = desc},
+        id = id,
+        native = {},
+    }
+
+    state.native, ok = _create_texture_3d(id,
         desc = desc,
         data = data,
     )

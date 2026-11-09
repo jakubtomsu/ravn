@@ -819,7 +819,7 @@ when BACKEND == BACKEND_D3D11 {
                 srv_desc.ViewDimension = .TEXTURE2DARRAY
                 srv_desc.Texture2DArray = {
                     MostDetailedMip = 0,
-                    MipLevels = 1,
+                    MipLevels = u32(desc.mips),
                     FirstArraySlice = 0,
                     ArraySize = u32(desc.size.z),
                 }
@@ -827,7 +827,7 @@ when BACKEND == BACKEND_D3D11 {
                 srv_desc.ViewDimension = .TEXTURE2D
                 srv_desc.Texture2D = {
                     MostDetailedMip = 0,
-                    MipLevels = 1,
+                    MipLevels = u32(desc.mips),
                 }
             }
 
@@ -845,6 +845,78 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(id, _state.device->CreateUnorderedAccessView(result.tex2d, &uav_desc, &result.uav)) or_return
+            _d3d11_set_label(result.uav, base.get_debug_id_name(id))
+        }
+
+        _d3d11_messages()
+
+        return result, true
+    }
+
+    _create_texture_3d :: proc(
+        id:     base.Debug_ID,
+        desc:   Texture_Desc,
+        data:   []byte,
+    ) -> (result: _Resource_State, ok: bool) {
+        bind_flags: d3d11.BIND_FLAGS
+        bind_flags = {.SHADER_RESOURCE}
+
+        if .RW_Resource in desc.flags {
+            bind_flags += {.UNORDERED_ACCESS}
+        }
+
+        d3d_desc := d3d11.TEXTURE3D_DESC{
+            Format = _d3d11_texture_format(desc.format),
+            Usage = _d3d11_usage(desc.usage),
+            Width = u32(desc.size.x),
+            Height = u32(desc.size.y),
+            Depth = u32(desc.size.z),
+            MipLevels = u32(desc.mips),
+            CPUAccessFlags = _d3d11_cpu_access(desc.usage),
+            BindFlags = bind_flags,
+            MiscFlags = {},
+        }
+
+        initial_data := d3d11.SUBRESOURCE_DATA{
+            pSysMem = raw_data(data),
+            SysMemPitch = u32(int(desc.size.x) * get_texture_format_pixel_size(desc.format)),
+            SysMemSlicePitch = u32(int(desc.size.x) * int(desc.size.y) * get_texture_format_pixel_size(desc.format)),
+        }
+
+        initial_data_ptr: ^d3d11.SUBRESOURCE_DATA
+        if data != nil {
+            initial_data_ptr = &initial_data
+        }
+
+        _d3d11_check(id, _state.device->CreateTexture3D(&d3d_desc, initial_data_ptr, &result.tex3d)) or_return
+
+        _d3d11_messages()
+        _d3d11_set_label(result.tex3d, base.get_debug_id_name(id))
+
+        {
+            srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
+                Format = _d3d11_texture_format(desc.format),
+                ViewDimension = .TEXTURE3D,
+                Texture3D = {
+                    MostDetailedMip = 0,
+                    MipLevels = u32(desc.mips),
+                },
+            }
+
+            _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex3d, &srv_desc, &result.srv)) or_return
+            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
+        }
+
+        if .RW_Resource in desc.flags {
+            uav_desc := d3d11.UNORDERED_ACCESS_VIEW_DESC{
+                Format = _d3d11_texture_format(desc.format),
+                ViewDimension = .TEXTURE3D,
+                Texture3D = {
+                    MipSlice = 0,
+                },
+            }
+
+            _d3d11_check(id, _state.device->CreateUnorderedAccessView(result.tex3d, &uav_desc, &result.uav)) or_return
             _d3d11_set_label(result.uav, base.get_debug_id_name(id))
         }
 

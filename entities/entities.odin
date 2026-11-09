@@ -68,7 +68,7 @@ Entities :: struct($Val_Union: typeid, $Sub_Union: typeid)
         UNION_LEN(Val_Union) > 1,
         UNION_LEN(Val_Union) < 256,
         size_of(intrinsics.type_convert_variants_to_pointers(Val_Union)) == 2*size_of(rawptr),
-        intrinsics.type_union_tag_offset(intrinsics.type_convert_variants_to_pointers(Val_Union)) == 8
+        intrinsics.type_union_tag_offset(intrinsics.type_convert_variants_to_pointers(Val_Union)) == size_of(uintptr)
 {
     buffers:    [UNION_LEN(Val_Union)]Buffer,
     sizes:      [UNION_LEN(Val_Union)]i64,
@@ -105,6 +105,7 @@ init :: proc(
     for i in 0..<UNION_LEN(Val_Union) {
         cap := i < len(caps) ? caps[i] : default_cap
         assert(cap >= 2)
+        assert(cap < int(max(Handle_Index)))
         data := runtime.make_aligned([]byte, cap * int(ents.sizes[i]), alignment = 64, allocator = allocator)
         ents.buffers[i] = {
             data = raw_data(data),
@@ -285,14 +286,14 @@ get :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -> (r
 }
 
 @(require_results)
-get_sub :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $Sub: typeid) -> (result: ^Sub, ok: bool) where UNION_HAS(Sub_Union, Sub) {
+get_sub :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $Sub: typeid) -> (result: ^Sub, ok: bool) where UNION_HAS(Sub_Union, Sub) #optional_ok {
     buf := get_buffer(ents, handle.variant) or_return
     offset := ents.offsets[UNION_INDEX(Sub_Union, Sub)][handle.variant]
     if offset == -1 {
         return nil, false
     }
 
-    base := get_entity_base(ents^, buf^, handle)
+    base := get_entity_base(ents^, buf^, handle) or_return
     if handle != base.handle {
         return nil, false
     }
