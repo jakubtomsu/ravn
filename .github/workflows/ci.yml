@@ -78,10 +78,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # https://github.com/laytan/setup-odin
       - name: Setup Odin
-        uses: odin-lang/setup-odin@v2
+        uses: laytan/setup-odin@v2
         with:
-          odin-version: 'latest'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release: 'latest'
+          branch: 'master'
 
       - name: Run Generator
         run: odin run build/cheatsheet/cheatsheet.odin -file
