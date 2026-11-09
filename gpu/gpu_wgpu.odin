@@ -793,16 +793,10 @@ when BACKEND == BACKEND_WGPU {
         data:           []byte,
     ) -> (result: _Resource_State, ok: bool) {
 
-        format := desc.format
-        size := desc.size
-        usage := desc.usage
-        mips := i32(desc.mips)
-        array_depth := size.z
-
         // On WGPU we must use a buffer
-        if usage == .Staging {
-            pixel_bytes := get_texture_format_pixel_size(format)
-            aligned_size := int(size.y) * (runtime.align_forward_int(int(size.x) * int(pixel_bytes), _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT))
+        if desc.usage == .Staging {
+            pixel_bytes := get_texture_format_pixel_size(desc.format)
+            aligned_size := int(desc.size.y) * (runtime.align_forward_int(int(desc.size.x) * int(pixel_bytes), _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT))
 
             buf_desc := wgpu.BufferDescriptor{
                 label = base.get_debug_id_name(id),
@@ -818,44 +812,38 @@ when BACKEND == BACKEND_WGPU {
 
         } else {
             usage_flags: wgpu.TextureUsageFlags = {.TextureBinding}
-
             if .Render_Texture in desc.flags {
                 usage_flags += {.RenderAttachment, .CopySrc}
             } else {
                 usage_flags += {.CopyDst}
             }
-
             if .RW_Resource in desc.flags {
                 usage_flags += {.StorageBinding}
             }
 
-            formats := [?]wgpu.TextureFormat{
-                _wgpu_texture_format(format),
-            }
-
+            formats := [?]wgpu.TextureFormat{_wgpu_texture_format(desc.format)}
             tex_desc := wgpu.TextureDescriptor{
                 label = base.get_debug_id_name(id),
                 usage = usage_flags,
                 dimension = ._2D,
                 size = {
-                    width = u32(size.x),
-                    height = u32(size.y),
-                    depthOrArrayLayers = u32(array_depth),
+                    width = u32(desc.size.x),
+                    height = u32(desc.size.y),
+                    depthOrArrayLayers = u32(desc.size.z),
                 },
-                format = _wgpu_texture_format(format),
-                mipLevelCount = u32(mips),
+                format = _wgpu_texture_format(desc.format),
+                mipLevelCount = u32(desc.mips),
                 sampleCount = u32(1),
                 viewFormatCount = len(formats),
                 viewFormats = &formats[0],
             }
 
             result.tex = wgpu.DeviceCreateTexture(_state.device, &tex_desc)
-
             if result.tex == nil {
                 return {}, false
             }
 
-            row_bytes := u32(get_texture_format_pixel_size(format) * int(size.x))
+            row_bytes := u32(get_texture_format_pixel_size(desc.format) * int(desc.size.x))
 
             // assert(row_bytes % 256 == 0)
 
@@ -872,12 +860,12 @@ when BACKEND == BACKEND_WGPU {
                     dataLayout = &wgpu.TexelCopyBufferLayout{
                         offset = 0,
                         bytesPerRow = row_bytes,
-                        rowsPerImage = u32(size.y),
+                        rowsPerImage = u32(desc.size.y),
                     },
                     writeSize = &wgpu.Extent3D{
-                        width = u32(size.x),
-                        height = u32(size.y),
-                        depthOrArrayLayers = u32(array_depth),
+                        width = u32(desc.size.x),
+                        height = u32(desc.size.y),
+                        depthOrArrayLayers = u32(desc.size.z),
                     },
                 )
             }
@@ -885,18 +873,102 @@ when BACKEND == BACKEND_WGPU {
             result.tex_view = wgpu.TextureCreateView(result.tex, &wgpu.TextureViewDescriptor{
                 label = base.get_debug_id_name(id),
                 format = formats[0],
-                dimension = array_depth > 1 ? ._2DArray : ._2D,
+                dimension = desc.size.z > 1 ? ._2DArray : ._2D,
                 baseMipLevel = 0,
-                mipLevelCount = u32(mips),
+                mipLevelCount = u32(desc.mips),
                 baseArrayLayer = 0,
-                arrayLayerCount = u32(array_depth),
-                aspect = wgpu.TextureAspect.All, // tf is this
+                arrayLayerCount = u32(desc.size.z),
+                aspect = wgpu.TextureAspect.All,
                 usage = usage_flags,
             })
-
             if result.tex_view == nil {
                 return {}, false
             }
+        }
+
+        return result, true
+    }
+
+    _create_texture_3d :: proc(
+        id:             base.Debug_ID,
+        desc:           Texture_Desc,
+        data:           []byte,
+    ) -> (result: _Resource_State, ok: bool) {
+        usage_flags: wgpu.TextureUsageFlags = {.TextureBinding, .CopyDst}
+        if .RW_Resource in desc.flags {
+            usage_flags += {.StorageBinding}
+        }
+
+        formats := [?]wgpu.TextureFormat{_wgpu_texture_format(desc.format)}
+        tex_desc := wgpu.TextureDescriptor{
+            label = base.get_debug_id_name(id),
+            usage = usage_flags,
+            dimension = ._3D,
+            size = {
+                width = u32(desc.size.x),
+                height = u32(desc.size.y),
+                depthOrArrayLayers = u32(desc.size.z),
+            },
+            format = _wgpu_texture_format(desc.format),
+            mipLevelCount = u32(desc.mips),
+            sampleCount = u32(1),
+            viewFormatCount = len(formats),
+            viewFormats = &formats[0],
+        }
+
+        result.tex = wgpu.DeviceCreateTexture(_state.device, &tex_desc)
+        if result.tex == nil {
+            return {}, false
+        }
+
+        pixel_bytes := int(get_texture_format_pixel_size(desc.format))
+        row_bytes := int(desc.size.x) * pixel_bytes
+        aligned_row_bytes := runtime.align_forward_int(row_bytes, _WGPU_COPY_BYTES_PER_ROW_ALIGNMENT)
+        if data != nil {
+            padded_data := make([]byte, aligned_row_bytes * int(desc.size.y) * int(desc.size.z), allocator = _state.allocator)
+            defer delete(padded_data, _state.allocator)
+            for z in 0..<int(desc.size.z) {
+                for y in 0..<int(desc.size.y) {
+                    src_offset := (z * int(desc.size.y) + y) * row_bytes
+                    dst_offset := (z * int(desc.size.y) + y) * aligned_row_bytes
+                    intrinsics.mem_copy_non_overlapping(raw_data(padded_data[dst_offset:]), raw_data(data[src_offset:src_offset + row_bytes]), row_bytes)
+                }
+            }
+            wgpu.QueueWriteTexture(_state.queue,
+                &wgpu.TexelCopyTextureInfo{
+                    texture = result.tex,
+                    mipLevel = 0,
+                    origin = {0, 0, 0},
+                    aspect = .All,
+                },
+                raw_data(padded_data),
+                dataSize = len(padded_data),
+                dataLayout = &wgpu.TexelCopyBufferLayout{
+                    offset = 0,
+                    bytesPerRow = u32(aligned_row_bytes),
+                    rowsPerImage = u32(desc.size.y),
+                },
+                writeSize = &wgpu.Extent3D{
+                    width = u32(desc.size.x),
+                    height = u32(desc.size.y),
+                    depthOrArrayLayers = u32(desc.size.z),
+                },
+            )
+        }
+
+        result.tex_view = wgpu.TextureCreateView(result.tex, &wgpu.TextureViewDescriptor{
+            label = base.get_debug_id_name(id),
+            format = formats[0],
+            dimension = ._3D,
+            baseMipLevel = 0,
+            mipLevelCount = u32(desc.mips),
+            baseArrayLayer = 0,
+            arrayLayerCount = 0,
+            aspect = wgpu.TextureAspect.All,
+            usage = usage_flags,
+        })
+        if result.tex_view == nil {
+            return {}, false
         }
 
         return result, true

@@ -3,12 +3,11 @@
 #+private file
 package ravn_gpu
 
-// import "core:slice"
-import "core:fmt"
+import "core:slice"
 import "core:testing"
 
 @(test)
-_vertex_layout_test :: proc(t: ^testing.T) {
+_test_rtti_vertex_layout :: proc(t: ^testing.T) {
     U10x3_U2 :: bit_field u32 {
         x: u32 | 10,
         y: u32 | 10,
@@ -45,10 +44,21 @@ _vertex_layout_test :: proc(t: ^testing.T) {
     }
 }
 
+// NOTE: this needs to be a single test due to the default test runner multithreading.
 @(test)
-_render_output :: proc(t: ^testing.T) {
+_test_gpu :: proc(t: ^testing.T) {
     init(window = nil)
     defer shutdown()
+
+    {
+        res: [2]Resource_Handle
+        testing.expect(t, create_texture_3d(&res[0], make_texture_desc(.RGBA_F32, {32, 32, 32}, .Default)))
+        testing.expect(t, create_texture_3d(&res[1], make_texture_desc(.R_S16, {2, 2, 2}, .Immutable), data = slice.to_bytes([]i16{1, 2, 3, 4, 5, 6, 7, 8})))
+
+        for handle in res {
+            testing.expect(t, destroy_resource(handle))
+        }
+    }
 
     tex: Resource_Handle
     create_texture_2d(&tex, make_texture_desc(.RGBA_U8_Norm, {512, 512, 1}, flags = {.Render_Texture})) or_else panic("tex")
