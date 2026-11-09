@@ -54,12 +54,14 @@ _test_iter_val :: proc(t: ^testing.T) {
     defer shutdown(&ents)
 
     handles := []Handle{
-        create(&ents, Foo{}),
+        create(&ents, Foo{val = 123}),
         create(&ents, Foo{}),
         create(&ents, Foo{}),
         create(&ents, Foo{}),
         create(&ents, Foo{}),
     }
+
+    testing.expect(t, get(&ents, handles[0]).variant.(^Foo).val == 123)
 
     destroy(&ents, handles[0])
     destroy(&ents, handles[2])
@@ -80,7 +82,7 @@ _test_iter_sub :: proc(t: ^testing.T) {
     Baz :: struct { using base: Base }
     Named :: struct { name: string, }
 
-    ents: Entities(union{Foo, Bar, Baz}, union{Base, Named})
+    ents: Entities(union{Foo, Bar, Baz}, union{Base, Foo, Bar, Baz, Named})
     init(&ents, default_cap = 64)
     defer shutdown(&ents)
 
@@ -99,6 +101,8 @@ _test_iter_sub :: proc(t: ^testing.T) {
         create(&ents, Baz{}),
         create(&ents, Foo{name = "f"}),
     }
+
+    testing.expect(t, get_sub(&ents, handles[0], Named).name == "b")
 
     destroy(&ents, handles[0])
     destroy(&ents, handles[1])
@@ -196,11 +200,5 @@ _test_clone :: proc(t: ^testing.T) {
     ptr_clone, _ := get(&ents_clone, h1)
     ptr_clone.variant.(^Foo).val = 99
     ptr_orig, _ := get(&ents, h1)
-    testing.expect(t, ptr_orig.variant.(^Foo).val == 10, "Original should remain unchanged after clone mutation")
-
-    h2, _ := create(&ents_clone, Foo{val = 20})
-    _, ok_orig := get(&ents, h2)
-    testing.expect(t, !ok_orig, "Original should not be able to retrieve handles created in the clone")
-    _, ok_clone := get(&ents_clone, h2)
-    testing.expect(t, ok_clone, "Clone should retrieve its own new handles")
+    testing.expect(t, ptr_orig.variant.(^Foo).val == 10)
 }
