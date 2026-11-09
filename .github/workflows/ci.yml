@@ -78,13 +78,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # https://github.com/laytan/setup-odin
-      - name: Setup Odin
-        uses: laytan/setup-odin@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          release: 'latest'
-          branch: 'master'
+      - uses: actions/checkout@v4
+      - name: Install Odin dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libsdl3-dev
+      - name: Set up Odin
+        run: |
+          git clone https://github.com/odin-lang/Odin.git --depth 1 --single-branch --branch=master
+          cd Odin
+          make
+          ./odin version
+          ./odin report
 
       - name: Install dependencies
         run: |
