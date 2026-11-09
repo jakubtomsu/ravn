@@ -90,5 +90,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "auto update docs"
-          # Optional: restrict it so it ONLY looks at the generated markdown file
-          # file_pattern: 'docs/cheatsheet.md'
+          file_pattern: 'docs/cheatsheet.md'
