@@ -36,6 +36,7 @@ jobs:
           odin check examples -define:PLATFORM_BACKEND=SDL3
           odin test examples -all-packages -define:GPU_BACKEND=D3D11
           odin test examples -all-packages -define:GPU_BACKEND=WGPU
+
   build_linux:
     name: Linux Build and Check
     runs-on: ubuntu-latest
@@ -66,3 +67,26 @@ jobs:
             odin check examples -define:GPU_BACKEND=Dummy -define:PLATFORM_BACKEND=Dummy
             odin check examples -define:GPU_BACKEND=WGPU
             odin test examples -all-packages -define:GPU_BACKEND=WGPU
+
+  update-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Odin
+        uses: odin-lang/setup-odin@v2
+        with:
+          odin-version: 'latest'
+
+      - name: Run Generator
+        run: odin run build/cheatsheet/cheatsheet.odin -file
+
+      - name: Commit changes (only if modified)
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "auto update docs"
+          # Optional: restrict it so it ONLY looks at the generated markdown file
+          # file_pattern: 'docs/cheatsheet.md'
