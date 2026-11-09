@@ -48,7 +48,7 @@ main :: proc() {
             "-all-packages",
             "-doc-format",
             "-in-source-order",
-            "-out:cheatsheet.odin-doc",
+            "-out:./cheatsheet.odin-doc",
 
         }
     }, allocator = context.allocator)
@@ -60,7 +60,7 @@ main :: proc() {
 
     log.info("Done")
 
-    doc_path := "cheatsheet.odin-doc"
+    doc_path := "./cheatsheet.odin-doc"
 
     data, data_err := os.read_entire_file_from_path(doc_path, context.allocator)
     if data_err != nil {
