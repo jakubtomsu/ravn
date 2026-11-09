@@ -28,7 +28,7 @@ Package_Entry :: struct {
 main :: proc() {
     context.logger = base.make_logger()
 
-    _, _, _, err := os.process_exec({
+    state, stdout, stderr, err := os.process_exec({
         command = {
             "odin",
             "doc",
@@ -54,11 +54,18 @@ main :: proc() {
     }, allocator = context.allocator)
 
     if err != nil {
-        log.error("Odin doc error:", err)
+        log.error("Failed to launch Odin executable:", err)
         os.exit(1)
     }
 
-    log.info("Done")
+    if !state.success {
+        log.errorf("odin doc failed with exit code %d", state.exit_code)
+        if len(stderr) > 0 do fmt.eprintf("%s\n", stderr)
+        if len(stdout) > 0 do fmt.printf("%s\n", stdout)
+        os.exit(1)
+    }
+
+    log.info("Odin doc generated successfully")
 
     doc_path := "./cheatsheet.odin-doc"
 
