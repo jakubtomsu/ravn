@@ -87,7 +87,7 @@ jobs:
           branch: 'master'
 
       - name: Install dependencies
-          run: |
+        run: |
             "$GITHUB_WORKSPACE/Odin/vendor/miniaudio/src/build_miniaudio.sh"
             "$GITHUB_WORKSPACE/Odin/vendor/stb/src/build_stb.sh"
             curl -L https://github.com/gfx-rs/wgpu-native/releases/download/v29.0.1.1/wgpu-linux-x86_64-release.zip -o wgpu.zip
