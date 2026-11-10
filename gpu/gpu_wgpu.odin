@@ -1014,7 +1014,14 @@ when BACKEND == BACKEND_WGPU {
         case .Buffer, .Constants:
             wgpu.BufferDestroy(res.buf)
 
-        case .Texture2D, .Texture3D:
+        case .Texture2D:
+            if res.tex_desc.usage == .Staging {
+                wgpu.BufferDestroy(res.buf)
+            } else {
+                wgpu.TextureDestroy(res.tex)
+            }
+
+        case .Texture2D:
             wgpu.TextureDestroy(res.tex)
         }
     }

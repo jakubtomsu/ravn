@@ -50,14 +50,68 @@ _test_gpu :: proc(t: ^testing.T) {
     init(window = nil)
     defer shutdown()
 
+    // Basic creation and destruction
     {
-        res: [2]Resource_Handle
-        testing.expect(t, create_texture_3d(&res[0], make_texture_desc(.RGBA_F32, {32, 32, 32}, .Default)))
-        testing.expect(t, create_texture_3d(&res[1], make_texture_desc(.R_S16, {2, 2, 2}, .Immutable), data = slice.to_bytes([]i16{1, 2, 3, 4, 5, 6, 7, 8})))
+        res_buf_vtx, res_buf_idx, res_buf_storage: Resource_Handle
+        res_tex_2d, res_tex_depth, res_tex_3d, res_uav: Resource_Handle
+        res_cbuf, res_cbuf_dyn: Resource_Handle
 
-        for handle in res {
-            testing.expect(t, destroy_resource(handle))
-        }
+        layout_std, layout_comp: Bind_Layout_Handle
+        group_std, group_comp: Bind_Group_Handle
+
+        // Resources
+        testing.expect(t, create_buffer(&res_buf_vtx, .Vertex, 16, 64, .Default))
+        testing.expect(t, create_buffer(&res_buf_idx, .Index, 2, 0, .Immutable, data = slice.to_bytes([]u16{0, 1, 2, 3})))
+        testing.expect(t, create_buffer(&res_buf_storage, .Storage, 4, 1024, .Dynamic))
+
+        testing.expect(t, create_texture_2d(&res_tex_2d, make_texture_desc(.RGBA_U8, {256, 256, 1}, .Default)))
+        testing.expect(t, create_texture_2d(&res_tex_depth, make_texture_desc(.Depth_F32, {1920, 1080, 1}, .Default, flags = {.Render_Texture})))
+        testing.expect(t, create_texture_2d(&res_uav, make_texture_desc(.R_U32, {64, 64, 1}, .Default, flags = {.RW_Resource})))
+        testing.expect(t, create_texture_3d(&res_tex_3d, make_texture_desc(.RGBA_F32, {32, 32, 32}, .Default)))
+
+        testing.expect(t, create_constants(&res_cbuf, 64, 1))
+        testing.expect(t, create_constants(&res_cbuf_dyn, 256, 4)) // Dynamic cbuf with multiple items
+
+        testing.expect(t, create_bind_layout(&layout_std, {slots = {
+            {index = 0, kind = .Constants, stages = {.Vertex}},
+            {index = 2, kind = .Sampler, stages = {.Pixel}},
+            {index = 5, kind = .Resource_Texture_2D, stages = {.Pixel}},
+            {index = 7, kind = .Resource_Texture_3D, stages = {.Pixel}},
+        }}))
+
+        testing.expect(t, create_bind_group(&group_std, {layout = layout_std, slots = {
+            {index = 0, resource = res_cbuf},
+            {index = 2, sampler = make_sampler_desc({.Min, .Mag, .Mip})},
+            {index = 5, resource = res_tex_2d},
+            {index = 7, resource = res_tex_3d},
+        }}))
+
+        testing.expect(t, create_bind_layout(&layout_comp, {slots = {
+            {index = 1, kind = .Constants_Dynamic, stages = {.Compute}},
+            {index = 4, kind = .Resource_Buffer, stages = {.Compute}},
+            {index = 8, kind = .RW_Resource_Texture_2D, stages = {.Compute}, format = .R_U32},
+        }}))
+
+        testing.expect(t, create_bind_group(&group_comp, {layout = layout_comp, slots = {
+            {index = 1, resource = res_cbuf_dyn},
+            {index = 4, resource = res_buf_storage},
+            {index = 8, resource = res_uav},
+        }}))
+
+        testing.expect(t, destroy_bind_group(group_comp))
+        testing.expect(t, destroy_bind_group(group_std))
+        testing.expect(t, destroy_bind_layout(layout_comp))
+        testing.expect(t, destroy_bind_layout(layout_std))
+
+        testing.expect(t, destroy_resource(res_cbuf_dyn))
+        testing.expect(t, destroy_resource(res_cbuf))
+        testing.expect(t, destroy_resource(res_tex_3d))
+        testing.expect(t, destroy_resource(res_uav))
+        testing.expect(t, destroy_resource(res_tex_depth))
+        testing.expect(t, destroy_resource(res_tex_2d))
+        testing.expect(t, destroy_resource(res_buf_storage))
+        testing.expect(t, destroy_resource(res_buf_idx))
+        testing.expect(t, destroy_resource(res_buf_vtx))
     }
 
     tex: Resource_Handle

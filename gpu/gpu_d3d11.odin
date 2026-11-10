@@ -1238,11 +1238,12 @@ when BACKEND == BACKEND_D3D11 {
             offset_nums:   [MAX_BIND_GROUP_CONSTANTS]u32
 
             index := 0
+            dyn_index := 0
             for _, i in bind_group.consts {
                 offset_nums[index] = u32(bind_group.consts_sizes[i]) / 4
                 if i in bind_group.consts_dyn {
-                    assert(offsets[index] % 4 == 0)
-                    offset_starts[index] = offsets[index] / 4
+                    assert(offsets[dyn_index] % 16 == 0)
+                    offset_starts[dyn_index] = offsets[dyn_index] / 16
                 }
                 index += 1
             }

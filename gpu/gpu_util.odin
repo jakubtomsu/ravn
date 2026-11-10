@@ -151,6 +151,7 @@ arena_push_data :: proc(arena: ^Arena, data: []byte) -> bool {
 }
 
 // Flush the CPU-side staging buffer to the GPU
+// TODO: multiple submits to a dynamic arena don't work.
 arena_submit :: proc(arena: ^Arena, loc := #caller_location) -> bool {
     if arena.upload_offset == 0 {
         return true
@@ -255,9 +256,9 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
     result.mode = mode
 
     #partial switch _ in ti_base.variant {
-    case runtime.Type_Info_Float,
-         runtime.Type_Info_Integer,
-         runtime.Type_Info_Array:
+    case ^runtime.Type_Info_Float,
+         ^runtime.Type_Info_Integer,
+         ^runtime.Type_Info_Array:
         format, ok := _vertex_format_from_type(ti_base, loc = loc)
         if !ok {
             return {}
@@ -266,7 +267,7 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
         return result
     }
 
-    st, is_struct := ti_base.variant.(runtime.Type_Info_Struct)
+    st, is_struct := ti_base.variant.(^runtime.Type_Info_Struct)
     if !is_struct {
         log.errorf("'%v' is not a struct", typeid_of(T), location = loc)
         panic("type must be a struct", loc)
@@ -317,15 +318,15 @@ make_vertex_layout :: proc($T: typeid, mode: Vertex_Step_Mode, loc := #caller_lo
 _vertex_format_from_type :: proc(ti: ^runtime.Type_Info, loc: runtime.Source_Code_Location) -> (Vertex_Format, bool) {
     elem_ti := ti
     num_components := 1
-    if arr, is_arr := ti.variant.(runtime.Type_Info_Array); is_arr {
+    if arr, is_arr := ti.variant.(^runtime.Type_Info_Array); is_arr {
         num_components = arr.count
         elem_ti = runtime.type_info_core(arr.elem)
     }
 
     prefix: string
     #partial switch v in elem_ti.variant {
-    case runtime.Type_Info_Float:   prefix = "F"
-    case runtime.Type_Info_Integer: prefix = v.signed ? "I" : "U"
+    case ^runtime.Type_Info_Float:   prefix = "F"
+    case ^runtime.Type_Info_Integer: prefix = v.signed ? "I" : "U"
     case:
         log.errorf("Array '%v' has unsupported type '%v'", ti.id, elem_ti, location = loc)
         return .Invalid, false
@@ -346,7 +347,7 @@ _vertex_format_from_type :: proc(ti: ^runtime.Type_Info, loc: runtime.Source_Cod
 }
 
 _vertex_format_from_name :: proc(name: string, loc: runtime.Source_Code_Location) -> (Vertex_Format, bool) {
-    enum_ti := runtime.type_info_base(type_info_of(Vertex_Format)).variant.(runtime.Type_Info_Enum)
+    enum_ti := runtime.type_info_base(type_info_of(Vertex_Format)).variant.(^runtime.Type_Info_Enum)
     for n, i in enum_ti.names {
         format := Vertex_Format(i64(enum_ti.values[i]))
         if n == name && format != .Invalid {
