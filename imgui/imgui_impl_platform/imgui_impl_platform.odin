@@ -8,11 +8,12 @@ import "../../platform"
 import ".."
 
 State :: struct {
-    init_context:   runtime.Context,
-    allocator:      runtime.Allocator,
-    window:         platform.Window,
-    clipboard_data: cstring,
-    prev_tick:      time.Tick,
+    init_context:       runtime.Context,
+    allocator:          runtime.Allocator,
+    window:             platform.Window,
+    clipboard_data:     cstring,
+    prev_tick:          time.Tick,
+    prev_show_mouse:    bool,
 }
 
 _get_state :: proc() -> ^State {
@@ -90,13 +91,18 @@ new_frame :: proc() {
 update_mouse_cursor :: proc() {
     io := imgui.GetIO()
     cursor := imgui.GetMouseCursor()
+    state := _get_state()
 
-    if io.MouseDrawCursor || cursor == .None {
-        platform.set_cursor_visible(false)
-    } else {
-        platform.set_cursor_visible(true)
-        platform.set_cursor_icon(_imgui_cursor_icon(cursor))
+    show_mouse := io.MouseDrawCursor || cursor == .None
+    if show_mouse != state.prev_show_mouse {
+        if show_mouse {
+            platform.set_cursor_visible(false)
+        } else {
+            platform.set_cursor_visible(true)
+            platform.set_cursor_icon(_imgui_cursor_icon(cursor))
+        }
     }
+    state.prev_show_mouse = show_mouse
 }
 
 process_event :: proc(event: platform.Event) {

@@ -1,6 +1,7 @@
 #+vet explicit-allocators shadowing unused
 package ravn_imgui_impl_gpu
 
+import "core:math"
 import "base:intrinsics"
 import "core:mem"
 import "core:slice"
@@ -132,7 +133,7 @@ upload_draw_data :: proc(data: ^imgui.DrawData) {
         if !gpu.create_buffer(&state.vbuf,
             .Vertex,
             size_of(imgui.DrawVert),
-            size = max(4096, data.TotalVtxCount) * size_of(imgui.DrawVert),
+            size = max(4096, math.next_power_of_two(int(data.TotalVtxCount))) * size_of(imgui.DrawVert),
             usage = .Dynamic,
         ) {
             log.error("Failed to create vertex buffer")
@@ -143,7 +144,7 @@ upload_draw_data :: proc(data: ^imgui.DrawData) {
         if !gpu.create_buffer(&state.ibuf,
             .Index,
             size_of(imgui.DrawIdx),
-            size = max(4096, data.TotalIdxCount) * size_of(imgui.DrawIdx),
+            size = max(4096, math.next_power_of_two(int(data.TotalIdxCount))) * size_of(imgui.DrawIdx),
             usage = .Dynamic,
         ) {
             log.error("Failed to create index buffer")
