@@ -41,5 +41,5 @@ compile :: proc(dst: string, src: string) {
         include_dirs = {".", "debugdraw/"}, // HACK around slang vs d3dcompiler inconsistent include paths
     }
     bin := shader_compiler.compile(src, opts) or_else panic("Failed to load")
-    os.write_entire_file(dst, bin.data, truncate = false) or_else panic("Failed to write")
+    os.write_entire_file(dst, bin.data) or_else panic("Failed to write")
 }
