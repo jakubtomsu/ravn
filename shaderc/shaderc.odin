@@ -1,10 +1,16 @@
 #+vet explicit-allocators shadowing style
-package ravn_shader_compiler
+package ravn_shaderc
 
 import "core:log"
 import "core:strings"
 import "core:os"
 import "base:runtime"
+
+when ODIN_OS == .Windows {
+    DEFAULT_TARGET :: Target.DXBC
+} else {
+    DEFAULT_TARGET :: Target.WGSL
+}
 
 _state: ^State
 State :: struct {
@@ -32,7 +38,7 @@ Options :: struct {
     defines:        [][2]string,
     release:        bool,
     include_proc:   Include_Proc,
-    include_dirs:   []string,
+    include_dirs:   [dynamic; 32]string,
     user:           rawptr,
 }
 
@@ -43,6 +49,13 @@ Blob :: struct {
 }
 
 Include_Proc :: #type proc (path: string, opts: Options) -> (string, bool)
+
+DEFAULT_OPTIONS :: Options{
+    include_proc = file_system_include_proc,
+    include_dirs = {
+        ".",
+    },
+}
 
 // If this returns false the shader compiler is not available. Do not call any other procedures.
 @(require_results)
@@ -79,12 +92,23 @@ shutdown :: proc() {
     _state = nil
 }
 
+get_target_file_ext :: proc(target: Target) -> string {
+    switch target {
+    case .Invalid:  return "invalid"
+    case .DXBC:     return "dxbc"
+    case .WGSL:     return "wgsl"
+    case .SPIRV:    return "spv"
+    }
+    assert(false)
+    return "none"
+}
+
 compile :: proc {
     compile_from_path,
     compile_from_source,
 }
 
-compile_from_path :: proc(path: string, opts: Options = {}, loc := #caller_location) -> (result: Blob, ok: bool) {
+compile_from_path :: proc(path: string, opts: Options = DEFAULT_OPTIONS, loc := #caller_location) -> (result: Blob, ok: bool) {
     data, err := os.read_entire_file_from_path(path, context.temp_allocator)
     if err != nil {
         log.error("Failed to read shader file:", err)
@@ -96,7 +120,7 @@ compile_from_path :: proc(path: string, opts: Options = {}, loc := #caller_locat
 compile_from_source :: proc(
     name:           string,
     source:         string,
-    opts:           Options = {},
+    opts:           Options = DEFAULT_OPTIONS,
     loc := #caller_location,
 ) -> (result: Blob, ok: bool) {
     opts := opts
@@ -143,7 +167,7 @@ destroy_blob :: proc(blob: ^Blob) {
 file_system_include_proc : Include_Proc : proc(path: string, opts: Options) -> (string, bool) {
     for dir in opts.include_dirs {
         actual_path := os.join_path({dir, path}, context.temp_allocator) or_continue
-        log.debug(actual_path, path)
+        // log.debug(actual_path, path)
         data, err := os.read_entire_file_from_path(actual_path, allocator = context.temp_allocator)
         if err == nil {
             return string(data), true
