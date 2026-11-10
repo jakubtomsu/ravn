@@ -1573,10 +1573,10 @@ when BACKEND == BACKEND_D3D11 {
                 case .MESSAGE: level = .Debug
                 }
 
-                log.log(level, "D3D11 Message:\n\t%v:\n\t%v", msg.Category, msg.pDescription, location = loc)
+                log.logf(level, "D3D11 Message: %v: %v", msg.Category, msg.pDescription, location = loc)
 
                 if msg.Severity == .CORRUPTION || msg.Severity == .ERROR {
-                    panic("Error")
+                    panic("D3D11 Error")
                 }
             }
         }

@@ -901,7 +901,7 @@ create_shader :: proc(
         data = slice.clone(data, _state.allocator),
     }
 
-    state.native, ok = _create_shader(id, data = data, kind = kind)
+    state.native, ok = _create_shader(id, data = state.data, kind = kind)
     if !ok {
         log.errorf("failed to create a native shader")
         return false
@@ -1437,7 +1437,6 @@ set_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) {
 
 update_constants :: proc(handle: Resource_Handle, data: []byte, loc := #caller_location) {
     assert(_state != nil)
-    assert(_state.in_frame)
     assert(_state.encoder.mode == .None, "You must do all constant updates before rendering", loc = loc)
 
     res, res_ok := _get_resource(handle)

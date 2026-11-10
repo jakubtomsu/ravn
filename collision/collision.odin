@@ -350,7 +350,7 @@ get_mesh :: proc(handle: Mesh_Handle) -> (^Mesh, bool) {
     return base.pool_get(&_state.meshes, handle)
 }
 
-// NOTE: doesn't clone the data. You must allocate it yourself with the
+// WARNING: doesn't clone the data. You must allocate it yourself with the
 // specified arena or ensure it's alive for the lifetime of this mesh.
 @(require_results)
 create_mesh :: proc(
