@@ -7,6 +7,7 @@ import "../../platform"
 import "../../imgui"
 import "../../imgui/imgui_impl_gpu"
 import "../../imgui/imgui_impl_platform"
+import "../../imgui/imgui_util"
 
 main :: proc() {
     context.logger = base.make_logger()
@@ -20,18 +21,8 @@ main :: proc() {
     gpu.init(window = platform.get_native_window_ptr(window))
     defer gpu.shutdown()
 
-    imgui.CHECKVERSION()
-    imgui.CreateContext()
-    io := imgui.GetIO()
-    io.ConfigFlags += {.NavEnableKeyboard, .NavEnableGamepad}
-
-    imgui.StyleColorsDark()
-
-    imgui_impl_platform.init(window)
-    defer imgui_impl_platform.shutdown()
-
-    imgui_impl_gpu.init()
-    defer imgui_impl_gpu.shutdown()
+    imgui_util.init(window)
+    defer imgui_util.shutdown()
 
     main_loop: for {
         for event in platform.poll_window_events(window) {
@@ -47,9 +38,7 @@ main :: proc() {
             }
         }
 
-        imgui_impl_platform.new_frame()
-        imgui_impl_gpu.new_frame()
-        imgui.NewFrame()
+        imgui_util.new_frame()
 
         imgui.ShowDemoWindow()
 
@@ -57,16 +46,7 @@ main :: proc() {
 
         gpu.begin_frame()
 
-        imgui.Render()
-        draw_data := imgui.GetDrawData()
-
-        imgui_impl_gpu.upload_draw_data(draw_data)
-
-        gpu.begin_graphics_pass("main", {
-            colors = { 0 = { resource = gpu.SWAPCHAIN_HANDLE, clear_mode = .Clear, clear_val = {0, 0, 0.2, 1} }},
-        })
-        imgui_impl_gpu.render_draw_data(draw_data)
-        gpu.end_graphics_pass()
+        imgui_util.render_pass(clear_mode = .Clear)
 
         gpu.end_frame(false)
     }
