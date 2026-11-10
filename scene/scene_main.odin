@@ -1,27 +1,28 @@
 package ravn_scene
 
-import "core:fmt"
+import "core:log"
+import "core:debug/trace"
 import "core:os"
+import "core:fmt"
 import "core:flags"
 
 // Dump util
+// Run as 'odin run ravn\scene -- data\scene.rscn'
 main :: proc() {
+    context.assertion_failure_proc = trace.assertion_failure_proc
+    context.logger = log.create_console_logger()
+    
     Args :: struct {
-        exec:   string `args:"pos=0,required"`,
-        path:   string `args:"pos=1,required"`,
+        path:   string `args:"pos=0,required"`,
         data:   bool,
     }
 
     args: Args
-    args_err := flags.parse(&args, os.args)
-    if args_err != nil {
-        fmt.println("Error parsing args: ", args_err)
-        os.exit(2)
-    }
+    flags.parse_or_exit(&args, os.args)
 
     scene, err := load(args.path)
     if err != nil {
-        fmt.println("Error:", err)
+        log.error("Failed to load:", err)
         os.exit(1)
     }
 

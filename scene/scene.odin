@@ -2,6 +2,7 @@
 #+vet explicit-allocators shadowing unused
 package ravn_scene
 
+import "core:log"
 import "core:slice"
 import "core:os"
 import "base:intrinsics"
@@ -182,10 +183,12 @@ load_from_data :: proc(data: []byte) -> (scene: Scene, err: Error) {
     header := cast(^Header)raw_data(data)
 
     if header.magic != MAGIC {
+        log.error("Invalid magic")
         return {}, .Invalid_Magic
     }
 
     if header.version != VERSION {
+        log.error("Invalid version")
         return {}, .Invalid_Version
     }
 
@@ -226,4 +229,8 @@ get_range_slice :: proc(data: []$T, range: [2]$Int) -> []T where intrinsics.type
         return nil
     }
     return data[range[0]:][:range[1]]
+}
+
+get_string :: proc(scene: Scene, range: [2]u32) -> string {
+    return string(get_range_slice(scene.string_data, range))
 }
