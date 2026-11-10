@@ -71,7 +71,7 @@ SHAPE_BUFFER_LINE_KINDS :: bit_set[Shape_Kind]{
 
 @(init)
 _check_shape_buffer_line_kinds :: proc "contextless" () {
-    en := runtime.type_info_base(type_info_of(Shape_Kind)).variant.(runtime.Type_Info_Enum)
+    en := runtime.type_info_base(type_info_of(Shape_Kind)).variant.(^runtime.Type_Info_Enum)
     for name, i in en.names {
         if name[0] == 'L' {
             // Check if name is missing from SHAPE_BUFFER_LINE_KINDS
