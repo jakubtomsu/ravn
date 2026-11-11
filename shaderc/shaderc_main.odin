@@ -14,13 +14,13 @@ main :: proc() {
 
     Args :: struct {
         path:       string `args:"pos=0,required" usage:"File or directory path"`,
-        targets:    bit_set[Target] `usage:"Output format targets"`,
+        targets:    bit_set[Target] `usage:"Output format targets, default is DXBC and WGSL"`,
         stage:      Stage `usage:"Optional shader stage"`,
         release:    bool `usage:"Build in optimized release mode"`,
     }
 
     args := Args{}
-    args.targets = {.HLSL, .WGSL}
+    args.targets = {.DXBC, .WGSL}
     flags.parse_or_exit(&args, os.args)
 
     if .Invalid in args.targets {
@@ -69,11 +69,14 @@ main :: proc() {
 
         if !any_file {
             log.warnf("No shader files found in %q, ensure you use correct file suffixes", args.path)
+            os.exit(1)
         }
 
     } else {
         log.error("Path must be file or a directory")
     }
+
+    log.info("Compilation finished successfully.")
 
     return
 
