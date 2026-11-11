@@ -297,24 +297,30 @@ when BACKEND == BACKEND_D3D11 {
                 case .Constants:
                     assert(res.buf != nil)
                     append(&result.cbufs, res.buf)
+                    res.buf->AddRef()
 
                 case .Buffer:
                     assert(res.srv != nil)
                     append(&result.srvs, res.srv)
+                    res.srv->AddRef()
 
                 case .Texture2D, .Texture3D:
                     if _is_bind_layout_slot_rw(layout.desc[i].kind) {
                         assert(res.uav != nil)
                         append(&result.uavs, res.uav)
+                        res.uav->AddRef()
                     } else {
                         assert(res.srv != nil)
                         append(&result.srvs, res.srv)
+                        res.srv->AddRef()
                     }
                 }
 
             } else {
                 assert(slot.sampler != {})
-                append(&result.smps, _getref_or_create_sampler(id, slot.sampler).smp)
+                smp := _getref_or_create_sampler(id, slot.sampler).smp
+                append(&result.smps, smp)
+                smp->AddRef()
             }
         }
 
