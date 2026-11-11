@@ -55,6 +55,7 @@ main :: proc() {
             os.exit(1)
         }
 
+        any_file := false
         for fi in files {
             if
                 strings.ends_with(fi.name, ".vs.slang") ||
@@ -62,7 +63,12 @@ main :: proc() {
                 strings.ends_with(fi.name, ".cs.slang")
             {
                 _compile_targets(fi.fullpath, opts, args.targets)
+                any_file = true
             }
+        }
+
+        if !any_file {
+            log.warnf("No shader files found in %q, ensure you use correct file suffixes", args.path)
         }
 
     } else {
