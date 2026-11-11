@@ -1,6 +1,7 @@
 // Markdown cheatsheet generator
 package ravn_build_cheatsheet
 
+import "core:debug/trace"
 import "core:log"
 import doc "core:odin/doc-format"
 import "core:fmt"
@@ -27,6 +28,9 @@ Package_Entry :: struct {
 
 main :: proc() {
     context.logger = base.make_logger()
+    context.assertion_failure_proc = trace.assertion_failure_proc
+
+    log.info("Running odin doc...")
 
     state, stdout, stderr, err := os.process_exec({
         command = {
