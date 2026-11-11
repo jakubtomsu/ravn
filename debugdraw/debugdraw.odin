@@ -212,15 +212,15 @@ init :: proc(
         return false
     }
 
-    if !gpu.create_bind_layout(&_state.bind_layout, gpu.Bind_Layout_Desc{{
-        {0, .Constants, {.Vertex}, {}},
-    }}) {
+    if !gpu.create_bind_layout(&_state.bind_layout, gpu.Bind_Layout_Desc{
+        {.Constants, {.Vertex}, {}},
+    }) {
         return false
     }
 
     if !gpu.create_bind_group(&_state.binds, gpu.Bind_Group_Desc{
         layout = _state.bind_layout,
-        slots = {{0, _state.consts, {}}},
+        slots = {{_state.consts, {}}},
     }) {
         return false
     }
