@@ -8,7 +8,7 @@
 - [collision](#collision) - 43 procedures
 - [debugdraw](#debugdraw) - 32 procedures
 - [geometry](#geometry) - 41 procedures
-- [gpu](#gpu) - 70 procedures
+- [gpu](#gpu) - 71 procedures
 - [imgui](#imgui) - 1 procedures
 - [input](#input) - 24 procedures
 - [platform](#platform) - 28 procedures
@@ -323,6 +323,7 @@ create_shader(handle: ^Shader_Handle, data: []byte, kind: Shader_Kind, name := #
 create_constants(handle: ^Resource_Handle, item_size: i32, item_num: i32 = 1, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
 make_texture_desc(format: Texture_Format, size: [3]i32, usage: Usage = .Default, #any_int mips: int = 1, flags: bit_set[Texture_Flag] = {}) -> (result: Texture_Desc)
 create_texture_2d(handle: ^Resource_Handle, desc: Texture_Desc, data: []byte = nil, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
+create_texture_3d(handle: ^Resource_Handle, desc: Texture_Desc, data: []byte = nil, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
 create_buffer(handle: ^Resource_Handle, kind: Buffer_Kind, #any_int stride: int, #any_int size: int = 0, usage: Usage = .Default, data: []u8 = nil, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool) // Must set size or data.
 resize_swapchain(window: rawptr, size: [2]i32) -> (ok: bool)
 resize_texture(handle: ^Resource_Handle, size: [3]i32) -> (ok: bool) // Recreates and clears the texture! Use purely as an util for keeping the old handle.
