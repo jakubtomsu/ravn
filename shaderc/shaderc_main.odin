@@ -20,7 +20,7 @@ main :: proc() {
     }
 
     args := Args{}
-    args.targets = {.HLSL, WGSL}
+    args.targets = {.HLSL, .WGSL}
     flags.parse_or_exit(&args, os.args)
 
     if .Invalid in args.targets {
