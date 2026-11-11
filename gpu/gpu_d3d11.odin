@@ -1217,6 +1217,7 @@ when BACKEND == BACKEND_D3D11 {
     _end_graphics_pass :: proc() {
         _state.prev_graphics_pip = {}
         _unbind_cs_rw_resources()
+        _state.device_context->IASetInputLayout(nil)
         _unbind_vertex_buffers()
         _unbind_index_buffers()
         _unbind_shaders({.Vertex, .Pixel, .Compute})
