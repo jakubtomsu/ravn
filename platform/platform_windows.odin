@@ -75,6 +75,7 @@ when BACKEND == BACKEND_WINDOWS {
         perf_counter_start:     windows.LARGE_INTEGER,
         prev_wm_char:           windows.wchar_t,
         cursor_icons:           [Cursor_Icon]windows.HCURSOR,
+        mouse_capture_active:   bool,
     }
 
     _Window :: struct {
@@ -223,7 +224,19 @@ when BACKEND == BACKEND_WINDOWS {
     }
 
     _set_mouse_relative :: proc(window: Window, relative: bool) {
-        if relative {
+        if relative && is_window_focused(window) {
+            _win32_set_mouse_capture(window, true)
+        } else {
+            _win32_set_mouse_capture(window, false)
+        }
+    }
+
+    _win32_set_mouse_capture :: proc(window: Window, active: bool) {
+        if active == _state.mouse_capture_active {
+            return
+        }
+
+        if active {
             rect := get_window_rect(window)
             set_mouse_pos_window_relative(window, rect.size / 2)
 
@@ -258,6 +271,8 @@ when BACKEND == BACKEND_WINDOWS {
 
             windows.RegisterRawInputDevices(&rid, 1, size_of(rid))
 
+            _state.mouse_capture_active = true
+
         } else {
             windows.ClipCursor(nil)
 
@@ -269,6 +284,8 @@ when BACKEND == BACKEND_WINDOWS {
             }
 
             windows.RegisterRawInputDevices(&rid, 1, size_of(rid))
+
+            _state.mouse_capture_active = false
         }
     }
 
@@ -583,6 +600,18 @@ when BACKEND == BACKEND_WINDOWS {
         result = -1
 
         switch msg {
+        case windows.WM_ACTIVATEAPP:
+            active := wparam != 0
+            if active && _state.mouse_relative {
+                _win32_set_mouse_capture({hwnd = hwnd}, true)
+            } else if !active {
+                _win32_set_mouse_capture({hwnd = hwnd}, false)
+            }
+
+            if _state.mouse_relative {
+                _set_cursor_visible(_state.mouse_visible || !active)
+            }
+
         case
             windows.WM_CLOSE,
             windows.WM_DESTROY:
