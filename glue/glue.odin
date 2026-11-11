@@ -1,12 +1,12 @@
 package ravn_glue
 
 import "../gpu"
-import "../shader_compiler"
+import "../shaderc"
 
 when gpu.BACKEND == gpu.BACKEND_D3D11 {
-    SHADER_TARGET :: shader_compiler.Target.DXBC
+    SHADER_TARGET :: shaderc.Target.DXBC
 } else when gpu.BACKEND == gpu.BACKEND_WGPU {
-    SHADER_TARGET :: shader_compiler.Target.WGSL
+    SHADER_TARGET :: shaderc.Target.WGSL
 } else {
-    SHADER_TARGET :: shader_compiler.Target.Invalid
+    SHADER_TARGET :: shaderc.Target.Invalid
 }
