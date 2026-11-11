@@ -16,7 +16,6 @@ main :: proc() {
 @(require) import "../collision"
 @(require) import "../curve"
 @(require) import "../debugdraw"
-@(require) import "../debugdraw/build_shaders"
 @(require) import "../util"
 @(require) import "../input"
 @(require) import "../entities"
