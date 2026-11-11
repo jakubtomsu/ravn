@@ -729,16 +729,60 @@ _find_free_or_destroy_existing :: proc(
     return true
 }
 
+@(require_results)
 make_bind_layout_for_group :: proc(desc: Bind_Group_Desc) -> (result: Bind_Layout_Desc) {
     for slot, i in desc.slots {
         layout_slot: Bind_Layout_Slot_Desc
+
         if slot.resource != {} {
-            
+            res, res_ok := _get_resource(slot.resource)
+            if !res_ok {
+                log.errorf("Invalid resource handle provided at slot %v", i)
+                continue
+            }
+
+            #partial switch res.kind {
+            case .Constants:
+                if res.consts_desc.item_num > 1 {
+                    layout_slot.kind = .Constants_Dynamic
+                } else {
+                    layout_slot.kind = .Constants
+                }
+
+            case .Buffer:
+                if res.buf_desc.kind == .Storage {
+                    layout_slot.kind = .RW_Resource_Buffer
+                } else {
+                    layout_slot.kind = .Resource_Buffer
+                }
+
+            case .Texture2D:
+                if .RW_Resource in res.tex_desc.flags {
+                    layout_slot.kind = .RW_Resource_Texture_2D
+                    layout_slot.format = res.tex_desc.format
+                } else {
+                    layout_slot.kind = .Resource_Texture_2D
+                }
+
+            case .Texture3D:
+                if .RW_Resource in res.tex_desc.flags {
+                    layout_slot.kind = .RW_Resource_Texture_3D
+                    layout_slot.format = res.tex_desc.format
+                } else {
+                    layout_slot.kind = .Resource_Texture_3D
+                }
+
+            case .Invalid:
+                log.errorf("Invalid resource kind at slot %v", i)
+            }
         } else {
             layout_slot.kind = .Sampler
         }
+
         append(&result, layout_slot)
     }
+
+    return result
 }
 
 @(require_results)
