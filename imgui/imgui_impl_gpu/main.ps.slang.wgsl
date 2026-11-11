@@ -1,6 +1,6 @@
-@binding(1) @group(0) var texture0_0 : texture_2d<f32>;
+@binding(1) @group(0) var params_tex_0 : texture_2d<f32>;
 
-@binding(2) @group(0) var sampler0_0 : sampler;
+@binding(2) @group(0) var params_smp_0 : sampler;
 
 struct pixelOutput_0
 {
@@ -16,7 +16,7 @@ struct pixelInput_0
 @fragment
 fn ps_main( _S1 : pixelInput_0, @builtin(position) pos_0 : vec4<f32>) -> pixelOutput_0
 {
-    var _S2 : pixelOutput_0 = pixelOutput_0( _S1.col_0 * (textureSample((texture0_0), (sampler0_0), (_S1.uv_0))) );
+    var _S2 : pixelOutput_0 = pixelOutput_0( _S1.col_0 * (textureSample((params_tex_0), (params_smp_0), (_S1.uv_0))) );
     return _S2;
 }
 
