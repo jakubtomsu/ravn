@@ -12,12 +12,12 @@ Palette_Color :: enum u8 {
 }
 
 RAVN_DARK_PALETTE :: [Palette_Color][4]f32{
-    .Bg          = {0.00, 0.00, 0.07, 1.00},
+    .Bg          = {0.07, 0.08, 0.10, 1.00},
     .Panel       = {0.13, 0.14, 0.16, 1.00},
     .Outline     = {0.28, 0.29, 0.33, 1.00},
-    .Accent      = {0.30, 0.65, 0.30, 1.00},
-    .AccentHover = {0.30, 0.70, 0.35, 1.00},
-    .Text        = {0.94, 0.95, 0.86, 1.00},
+    .Accent      = {0.20, 0.55, 0.30, 1.00},
+    .AccentHover = {0.20, 0.60, 0.35, 1.00},
+    .Text        = {0.90, 0.90, 0.80, 1.00},
 }
 
 DARK_PALETTE :: [Palette_Color][4]f32{
@@ -32,12 +32,12 @@ DARK_PALETTE :: [Palette_Color][4]f32{
 set_palette_style :: proc(palette := RAVN_DARK_PALETTE, style: ^imgui.Style = nil) {
     style := style
     style = style == nil ? imgui.GetStyle() : style
-    
+
     imgui.StyleColorsDark(style)
-    
+
     style.WindowPadding *= 2
     style.FramePadding *= 1.1
-    
+
     style.WindowRounding = 0
     style.ChildRounding = 0
     style.PopupRounding = 0
@@ -50,7 +50,7 @@ set_palette_style :: proc(palette := RAVN_DARK_PALETTE, style: ^imgui.Style = ni
     style.MenuItemRounding = 0
     style.SelectableRounding = 0
     style.DragDropTargetRounding = 0
-    
+
     style.Colors[imgui.Col.Text]                      = palette[.Text]
     style.Colors[imgui.Col.TextDisabled]              = palette[.Outline]
     style.Colors[imgui.Col.WindowBg]                  = _alpha(palette[.Bg], 0.95)
@@ -70,7 +70,7 @@ set_palette_style :: proc(palette := RAVN_DARK_PALETTE, style: ^imgui.Style = ni
     style.Colors[imgui.Col.ScrollbarGrabHovered]      = palette[.Accent]
     style.Colors[imgui.Col.ScrollbarGrabActive]       = palette[.AccentHover]
     style.Colors[imgui.Col.CheckMark]                 = palette[.AccentHover]
-    style.Colors[imgui.Col.CheckboxSelectedBg]        = _alpha(palette[.Accent], 0.40) 
+    style.Colors[imgui.Col.CheckboxSelectedBg]        = _alpha(palette[.Accent], 0.40)
     style.Colors[imgui.Col.SliderGrab]                = palette[.Accent]
     style.Colors[imgui.Col.SliderGrabActive]          = palette[.AccentHover]
     style.Colors[imgui.Col.Button]                    = _alpha(palette[.Accent], 0.60)
@@ -114,9 +114,9 @@ set_palette_style :: proc(palette := RAVN_DARK_PALETTE, style: ^imgui.Style = ni
     style.Colors[imgui.Col.NavWindowingHighlight]     = _alpha(palette[.Text], 0.70)
     style.Colors[imgui.Col.NavWindowingDimBg]         = _alpha(palette[.Bg], 0.80)
     style.Colors[imgui.Col.ModalWindowDimBg]          = _alpha(palette[.Bg], 0.60)
-    
+
     return
-    
+
     _alpha :: proc(v: [4]f32, a: f32) -> [4]f32 {
         return {**v.xyz, a}
     }
