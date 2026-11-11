@@ -38,7 +38,8 @@ Layer_Mask :: [4]u64
 ID :: u64
 
 State :: struct #align(4096) {
-    init_allocator:     runtime.Allocator,
+    allocator:          runtime.Allocator,
+    state_allocator:    runtime.Allocator,
 
     arenas:             base.Static_Pool(MAX_ARENAS, Arena, Arena_Handle),
     meshes:             base.Static_Pool(MAX_MESHES, Mesh, Mesh_Handle),
@@ -146,9 +147,16 @@ Contact :: struct {
 }
 
 
-init :: proc(state: ^State, allocator := context.allocator) {
+init :: proc(state: ^State = nil, allocator := context.allocator) {
+    state := state
+    
+    if state == nil {
+        state = new(State, allocator)
+        state.state_allocator = allocator
+    }
+    
     _state = state
-    _state.init_allocator = allocator
+    _state.allocator = allocator
     base.pool_clear(&_state.arenas)
     base.pool_clear(&_state.meshes)
 
@@ -164,8 +172,8 @@ init :: proc(state: ^State, allocator := context.allocator) {
 
 shutdown :: proc() {
     for step in _state.step_data {
-        delete(step.tlas.nodes, _state.init_allocator)
-        delete(step.tlas.indices, _state.init_allocator)
+        delete(step.tlas.nodes, _state.allocator)
+        delete(step.tlas.indices, _state.allocator)
     }
 
     for arena in _state.arenas.data {
@@ -173,6 +181,12 @@ shutdown :: proc() {
             delete(arena.data, arena.backing)
         }
     }
+    
+    if _state.state_allocator != {} {
+        free(_state, _state.state_allocator)
+    }
+    
+    _state = nil
 }
 
 
