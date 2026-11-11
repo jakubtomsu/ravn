@@ -972,10 +972,10 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _destroy_bind_group :: proc(state: Bind_Group_State) {
-        for it in state.smps  do it->Release()
-        for it in state.cbufs do it->Release()
-        for it in state.srvs  do it->Release()
-        for it in state.uavs  do it->Release()
+        for it in state.smps  { if it != nil { it->Release() } }
+        for it in state.cbufs { if it != nil { it->Release() } }
+        for it in state.srvs  { if it != nil { it->Release() } }
+        for it in state.uavs  { if it != nil { it->Release() } }
         _d3d11_messages()
     }
 

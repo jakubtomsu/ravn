@@ -963,7 +963,7 @@ when BACKEND == BACKEND_WGPU {
             baseMipLevel = 0,
             mipLevelCount = u32(desc.mips),
             baseArrayLayer = 0,
-            arrayLayerCount = 0,
+            arrayLayerCount = 1,
             aspect = wgpu.TextureAspect.All,
             usage = usage_flags,
         })
@@ -1021,7 +1021,7 @@ when BACKEND == BACKEND_WGPU {
                 wgpu.TextureDestroy(res.tex)
             }
 
-        case .Texture2D:
+        case .Texture3D:
             wgpu.TextureDestroy(res.tex)
         }
     }
@@ -1415,7 +1415,7 @@ when BACKEND == BACKEND_WGPU {
 
     _wgpu_log_callback :: proc "c" (level: wgpu.LogLevel, msg: wgpu.StringView, userdata: rawptr) {
         context = _state.init_context
-        log.log(wgpu.ConvertWGPUToOdinLogLevel(level), "WGPU: %s", msg)
+        log.logf(wgpu.ConvertWGPUToOdinLogLevel(level), "WGPU: %s", msg)
     }
 
     _wgpu_wait :: proc(future: wgpu.Future) {

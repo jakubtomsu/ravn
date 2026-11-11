@@ -64,10 +64,10 @@ _test_gpu :: proc(t: ^testing.T) {
         testing.expect(t, create_buffer(&res_buf_idx, .Index, 2, 0, .Immutable, data = slice.to_bytes([]u16{0, 1, 2, 3})))
         testing.expect(t, create_buffer(&res_buf_storage, .Storage, 4, 1024, .Dynamic))
 
-        testing.expect(t, create_texture_2d(&res_tex_2d, make_texture_desc(.RGBA_U8, {256, 256, 1}, .Default)))
+        testing.expect(t, create_texture_2d(&res_tex_2d, make_texture_desc(.RGBA_U8_Norm, {256, 256, 1}, .Default)))
         testing.expect(t, create_texture_2d(&res_tex_depth, make_texture_desc(.Depth_F32, {1920, 1080, 1}, .Default, flags = {.Render_Texture})))
-        testing.expect(t, create_texture_2d(&res_uav, make_texture_desc(.R_U32, {64, 64, 1}, .Default, flags = {.RW_Resource})))
-        testing.expect(t, create_texture_3d(&res_tex_3d, make_texture_desc(.RGBA_F32, {32, 32, 32}, .Default)))
+        testing.expect(t, create_texture_2d(&res_uav, make_texture_desc(.R_F32, {64, 64, 1}, .Default, flags = {.RW_Resource})))
+        testing.expect(t, create_texture_3d(&res_tex_3d, make_texture_desc(.RGBA_S8_Norm, {32, 32, 32}, .Default)))
 
         testing.expect(t, create_constants(&res_cbuf, 64, 1))
         testing.expect(t, create_constants(&res_cbuf_dyn, 256, 4)) // Dynamic cbuf with multiple items
@@ -89,7 +89,7 @@ _test_gpu :: proc(t: ^testing.T) {
         testing.expect(t, create_bind_layout(&layout_comp, {slots = {
             {index = 1, kind = .Constants_Dynamic, stages = {.Compute}},
             {index = 4, kind = .Resource_Buffer, stages = {.Compute}},
-            {index = 8, kind = .RW_Resource_Texture_2D, stages = {.Compute}, format = .R_U32},
+            {index = 8, kind = .RW_Resource_Texture_2D, stages = {.Compute}, format = .R_F32},
         }}))
 
         testing.expect(t, create_bind_group(&group_comp, {layout = layout_comp, slots = {
