@@ -1,8 +1,6 @@
 # RAVN Shader Compiler
 
-Abstracts other tools:
-- d3dcompiler
-- slang
+Abstracts interface to slang and d3dcompiler.
 
 ## Setup
 - Windows: copy `slang-compiler.dll` into your project

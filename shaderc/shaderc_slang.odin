@@ -65,58 +65,37 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
     }
 }
 
-_compile_slang :: proc(
-    state:          ^State,
+_slang_compile :: proc(
     name:           string,
     source:         string,
     opts:           Options,
-) -> (result: Blob, ok: bool) {
-    assert(state.slang.global_session != nil)
-
-    // Implements something like the following slangc command:
-    // slangc.exe name.hlsl -target wgsl -entry vs_main -stage vertex -o shader.wgsl -fvk-b-shift 0 0 -fvk-t-shift 8 0 -fvk-s-shift 16 0
+) -> (result: []byte, ok: bool) {
+    assert(_state.slang.global_session != nil)
 
     format: slang.CompileTarget
     profile_name: cstring
-    switch state.target {
+    switch opts.target {
     case .Invalid, .DXBC:
         assert(false)
     case .WGSL:
         format = .WGSL
         profile_name = "wgsl_1_0"
+    case .HLSL:
+        format = .HLSL
+        profile_name = "sm_5_0"
     case .SPIRV:
         format = .SPIRV
         profile_name = "spirv_1_5"
     }
 
+    options := [?]slang.CompilerOptionEntry {
+        { .Optimization, {.Int, i32(opts.release ? slang.OptimizationLevel.HIGH : slang.OptimizationLevel.NONE), 0, nil, nil}},
+    }
+
     target_desc := slang.TargetDesc{
         structureSize = size_of(slang.TargetDesc),
         format = format,
-        profile = state.slang.global_session->findProfile(profile_name),
-    }
-
-    // Hardcoded for now...
-
-    CONSTANTS_BIND_SLOTS :: 8
-    SAMPLER_BIND_SLOTS :: 8
-    RESOURCE_BIND_SLOTS :: 32
-    RW_RESOURCE_BIND_SLOTS :: 32
-
-    SAMPLER_SLOT_SHIFT :: 0
-    CONSTANTS_SLOT_SHIFT :: SAMPLER_SLOT_SHIFT + SAMPLER_BIND_SLOTS
-    RESOURCE_SLOT_SHIFT :: CONSTANTS_SLOT_SHIFT + CONSTANTS_BIND_SLOTS
-    RW_RESOURCE_SLOT_SHIFT :: RESOURCE_SLOT_SHIFT + RESOURCE_BIND_SLOTS
-
-
-    // NOTE: this is broken
-    // https://github.com/shader-slang/slang/issues/10441
-    options := [?]slang.CompilerOptionEntry {
-        { .Stage, {.Int, i32(slang.Stage.VERTEX), 0, nil, nil}},
-        { .Optimization, {.Int, i32(opts.release ? slang.OptimizationLevel.HIGH : slang.OptimizationLevel.NONE), 0, nil, nil}},
-        // { .VulkanBindShift, {.Int, pack_vk_shift(slang.HLSLToVulkanLayoutBindingKind.Sampler, 0), SAMPLER_SLOT_SHIFT, nil, nil}},
-        // { .VulkanBindShift, {.Int, pack_vk_shift(slang.HLSLToVulkanLayoutBindingKind.ConstantBuffer, 0), CONSTANTS_SLOT_SHIFT, nil, nil}},
-        // { .VulkanBindShift, {.Int, pack_vk_shift(slang.HLSLToVulkanLayoutBindingKind.ShaderResource, 0), RESOURCE_SLOT_SHIFT, nil, nil}},
-        // { .VulkanBindShift, {.Int, pack_vk_shift(slang.HLSLToVulkanLayoutBindingKind.UnorderedAccess, 0), RW_RESOURCE_SLOT_SHIFT, nil, nil}},
+        profile = _state.slang.global_session->findProfile(profile_name),
     }
 
     file_system: _Slang_IFileSystem = {
@@ -135,7 +114,7 @@ _compile_slang :: proc(
         },
         ctx = context,
         opts = opts,
-        state = state,
+        state = _state,
     }
 
     session_desc := slang.SessionDesc{
@@ -149,11 +128,11 @@ _compile_slang :: proc(
     }
 
     session: ^slang.ISession
-    _slang_check(state.slang.global_session->createSession(session_desc, &session))
+    _slang_check(_state.slang.global_session->createSession(session_desc, &session))
 
     cname := strings.clone_to_cstring(name, context.temp_allocator)
 
-    source_blob := state.slang.createBlob(raw_data(source), len(source))
+    source_blob := _state.slang.createBlob(raw_data(source), len(source))
     diag: ^slang.IBlob
     module := session->loadModuleFromSource(cname, cname, source_blob, &diag)
 
@@ -189,21 +168,15 @@ _compile_slang :: proc(
         return {}, false
     }
 
-    result.data = _slang_blob_buf(code)
-    result._slang = {
-        blob = code,
-    }
+    result = _slang_blob_buf(code)
+
+    code->release()
 
     return result, true
-
-    pack_vk_shift :: proc(#any_int kind: u8, set: u32) -> i32 {
-        return transmute(i32)((u32(kind) << 24) | (set & 0x00FFFFFF))
-    }
 }
 
 _slang_blob_destroy :: proc(blob: ^_Slang_Blob) {
     if blob.blob != nil {
-        blob.blob->release()
     }
 }
 

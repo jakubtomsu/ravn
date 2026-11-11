@@ -13,8 +13,8 @@ when ODIN_OS == .Windows {
 }
 
 _state: ^State
+
 State :: struct {
-    target:             Target,
     slang:              _Slang_State,
     allocator:          runtime.Allocator,
 }
@@ -22,6 +22,7 @@ State :: struct {
 Target :: enum u8 {
     Invalid = 0,
     DXBC,
+    HLSL,
     WGSL,
     SPIRV,
 }
@@ -34,6 +35,7 @@ Stage :: enum u8 {
 }
 
 Options :: struct {
+    target:         Target,
     stage:          Stage,
     defines:        [][2]string,
     release:        bool,
@@ -42,24 +44,18 @@ Options :: struct {
     user:           rawptr,
 }
 
-Blob :: struct {
-    _dxbc:  _DXBC_Blob,
-    _slang: _Slang_Blob,
-    data:   []byte,
-}
-
 Include_Proc :: #type proc (path: string, opts: Options) -> (string, bool)
 
 DEFAULT_OPTIONS :: Options{
+    target = DEFAULT_TARGET,
     include_proc = file_system_include_proc,
     include_dirs = {
         ".",
     },
 }
 
-// If this returns false the shader compiler is not available. Do not call any other procedures.
 @(require_results)
-init :: proc(target: Target, state_ptr: ^State = nil, allocator := context.allocator) -> bool {
+init :: proc(state_ptr: ^State = nil, allocator := context.allocator) -> bool {
     if state_ptr == nil {
         _state = new(State, allocator)
         _state.allocator = allocator
@@ -67,21 +63,11 @@ init :: proc(target: Target, state_ptr: ^State = nil, allocator := context.alloc
         _state = state_ptr
     }
 
-    _state.target = target
-
-    switch target {
-    case .Invalid:
+    if !_slang_init(&_state.slang) {
         return false
-
-    case .DXBC:
-        // Requires d3d11compiler DLL
-        return ODIN_OS == .Windows
-
-    case .WGSL, .SPIRV:
-        return _slang_init(&_state.slang)
     }
 
-    return false
+    return true
 }
 
 shutdown :: proc() {
@@ -97,6 +83,7 @@ get_target_file_ext :: proc(target: Target) -> string {
     case .Invalid:  return "invalid"
     case .DXBC:     return "dxbc"
     case .WGSL:     return "wgsl"
+    case .HLSL:     return "hlsl"
     case .SPIRV:    return "spv"
     }
     assert(false)
@@ -108,7 +95,7 @@ compile :: proc {
     compile_from_source,
 }
 
-compile_from_path :: proc(path: string, opts: Options = DEFAULT_OPTIONS, loc := #caller_location) -> (result: Blob, ok: bool) {
+compile_from_path :: proc(path: string, opts: Options = DEFAULT_OPTIONS, loc := #caller_location) -> (result: []byte, ok: bool) {
     data, err := os.read_entire_file_from_path(path, context.temp_allocator)
     if err != nil {
         log.error("Failed to read shader file:", err)
@@ -122,46 +109,61 @@ compile_from_source :: proc(
     source:         string,
     opts:           Options = DEFAULT_OPTIONS,
     loc := #caller_location,
-) -> (result: Blob, ok: bool) {
+) -> (result: []byte, ok: bool) {
     opts := opts
 
     assert(_state != nil)
+    assert(opts.target != .Invalid)
+
+    if opts.target == .Invalid {
+        log.error("Invalid target")
+        return nil, false
+    }
 
     if opts.stage == .Invalid {
-        if strings.contains(name, ".vs") {
+        if strings.contains(name, ".vs.") {
             opts.stage = .Vertex
-        } else if strings.contains(name, ".ps") {
+        } else if strings.contains(name, ".ps.") {
             opts.stage = .Pixel
-        } else if strings.contains(name, ".cs") {
+        } else if strings.contains(name, ".cs.") {
             opts.stage = .Compute
         }
     }
 
     assert(opts.stage != .Invalid, "You must specify shader stage")
 
-    switch _state.target {
+    switch opts.target {
     case .Invalid:
         assert(false)
+        return nil, false
 
     case .DXBC:
         when ODIN_OS == .Windows {
-            result, ok = _compile_dxbc(name, source, opts)
+            slang_opts := opts
+            slang_opts.target = .HLSL
+            hlsl, hlsl_ok := _slang_compile(name, source, slang_opts)
+            if !hlsl_ok {
+                log.error("Failed to compile to HLSL")
+                return nil, false
+            }
+
+            d3d_opts := opts
+            result, ok = _d3dcompiler_compile_hlsl_to_dxbc(name, string(hlsl), opts)
         } else {
-            assert(false)
+            log.error("Cannot compile to DXBC, d3dcompiler not available on this platform")
+            return nil, false
         }
 
-    case .WGSL, .SPIRV:
-        result, ok = _compile_slang(_state, name, source, opts)
+    case .WGSL, .SPIRV, .HLSL:
+        result, ok = _slang_compile(name, source, opts)
     }
 
-    return result, ok
-}
+    if !ok {
+        log.error("Failed to compile")
+        return nil, false
+    }
 
-destroy_blob :: proc(blob: ^Blob) {
-    assert(blob != nil)
-    _dxbc_blob_destroy(&blob._dxbc)
-    _slang_blob_destroy(&blob._slang)
-    blob^ = {}
+    return result, true
 }
 
 file_system_include_proc : Include_Proc : proc(path: string, opts: Options) -> (string, bool) {
