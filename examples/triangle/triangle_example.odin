@@ -42,8 +42,8 @@ main :: proc() {
     gpu.create_graphics_pipeline(&pip, gpu.make_graphics_pipeline_desc(
         vs = vs,
         ps = ps,
-        vertex_layouts = { 0 = gpu.make_vertex_layout(Vertex, .Vertex) },
-        out_colors = { 0 = .Swapchain },
+        vertex_layouts = { gpu.make_vertex_layout(Vertex, .Vertex) },
+        color_formats = { .Swapchain },
     )) or_else panic("pip")
 
     vbuf: gpu.Resource_Handle

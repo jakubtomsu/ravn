@@ -90,7 +90,7 @@ main :: proc() {
             0 = gpu.make_vertex_layout(Vertex, .Vertex),
             1 = gpu.make_vertex_layout(Instance, .Instance),
         },
-        out_colors = {0 = .Swapchain},
+        color_formats = {.Swapchain},
     )) or_else panic("pip")
 
     sdl.ShowWindow(window)

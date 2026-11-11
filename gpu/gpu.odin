@@ -181,12 +181,12 @@ Graphics_Pipeline_Desc :: struct #align(64) #all_or_none {
     depth_comparison:   Comparison_Op,
     depth_write:        bool,
     depth_bias:         i32,
+    depth_format:       Texture_Format,
     ps:                 Shader_Handle,
     vs:                 Shader_Handle,
     index_format:       Index_Format,
     blends:             [MAX_BOUND_RENDER_TEXTURES]Blend_Desc,
-    color_format:       [MAX_BOUND_RENDER_TEXTURES]Texture_Format,
-    depth_format:       Texture_Format,
+    color_formats:      [MAX_BOUND_RENDER_TEXTURES]Texture_Format,
     bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
     vertex_layouts:     [MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc,
 }
@@ -614,7 +614,7 @@ begin_frame :: proc() -> (ok: bool) {
     assert(_state != nil)
     assert(_state.init_done)
     assert(!_state.in_frame)
-    assert(_state.encoder == {})
+    assert(_state.encoder.mode == .None)
     _state.encoder = {}
     _state.in_frame = true
     if _state.has_swapchain {
@@ -626,7 +626,7 @@ begin_frame :: proc() -> (ok: bool) {
 end_frame :: proc(sync: bool = true, loc := #caller_location) {
     assert(_state != nil)
     assert(_state.in_frame)
-    assert(_state.encoder == {})
+    assert(_state.encoder.mode == .None)
     if _state.has_swapchain {
         assert(_state.swapchain_size != 0, "Swapchain must be initialized. Call resize_swapchain().")
     }
@@ -646,22 +646,19 @@ end_frame :: proc(sync: bool = true, loc := #caller_location) {
 make_graphics_pipeline_desc :: proc(
     ps:                 Shader_Handle,
     vs:                 Shader_Handle,
-    bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {},
-    vertex_layouts:     [MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc,
-    out_colors:         []Texture_Format,
-    out_depth:          Texture_Format = .Invalid,
-    blends:             []Blend_Desc = {},
+    bind_layouts:       [dynamic; MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {},
+    vertex_layouts:     [dynamic; MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc,
+    color_formats:      [dynamic; MAX_BOUND_RENDER_TEXTURES]Texture_Format,
+    blends:             [dynamic; MAX_BOUND_RENDER_TEXTURES]Blend_Desc = {},
     index_format:       Index_Format = .Invalid,
     topo:               Topology = .Triangles,
     cull:               Cull_Mode = .None,
     fill:               Fill_Mode = .Solid,
+    depth_format:       Texture_Format = .Invalid,
     depth_comparison:   Comparison_Op = .Always,
     depth_write:        bool = false,
     depth_bias:         i32 = 0,
 ) -> (result: Graphics_Pipeline_Desc) {
-    assert(len(result.color_format) >= len(out_colors))
-    assert(len(result.blends) >= len(blends))
-
     result = {
         ps = ps,
         vs = vs,
@@ -672,15 +669,17 @@ make_graphics_pipeline_desc :: proc(
         depth_comparison = depth_comparison,
         depth_write = depth_write,
         depth_bias = depth_bias,
-        depth_format = out_depth,
-        bind_layouts = bind_layouts,
-        vertex_layouts = vertex_layouts,
-        color_format = {},
+        depth_format = depth_format,
+        bind_layouts = {},
+        vertex_layouts = {},
+        color_formats = {},
         blends = {},
     }
 
-    copy(result.color_format[:], out_colors)
-    copy(result.blends[:], blends)
+    for it, i in bind_layouts { result.bind_layouts[i] = it }
+    for it, i in vertex_layouts { result.vertex_layouts[i] = it }
+    for it, i in color_formats { result.color_formats[i] = it }
+    for it, i in blends { result.blends[i] = it }
 
     return result
 }
@@ -1783,7 +1782,7 @@ validate_graphics_pipeline_desc :: proc(id: base.Debug_ID, desc: Graphics_Pipeli
     base.assert_id(id, vs_res.kind == .Vertex, "Shader bound to vertex stage must be a vertex shader", loc = loc)
     base.assert_id(id, ps_res.kind == .Pixel, "Shader bound to pixel stage must be a pixel shader", loc = loc)
 
-    base.assert_id(id, desc.color_format != {} || desc.depth_format != {}, loc = loc)
+    base.assert_id(id, len(desc.color_formats) != 0 || desc.depth_format != {}, loc = loc)
 
     depth_params_set := desc.depth_write != {} ||
         desc.depth_bias != {} ||
@@ -1798,14 +1797,14 @@ validate_graphics_pipeline_desc :: proc(id: base.Debug_ID, desc: Graphics_Pipeli
     }
 
     num_colors := 0
-    for col in desc.color_format {
+    for col in desc.color_formats {
         if col == .Invalid {
             break
         }
         num_colors += 1
     }
 
-    for col, i in desc.color_format {
+    for col, i in desc.color_formats {
         if i >= num_colors {
             base.assert_id(id, col == {}, loc = loc)
         }
@@ -1824,13 +1823,13 @@ validate_graphics_pipeline_desc :: proc(id: base.Debug_ID, desc: Graphics_Pipeli
 validate_graphics_pipeline_for_pass :: proc(id: base.Debug_ID, pip: Graphics_Pipeline_Desc, pass: Graphics_Pass_Desc, loc := #caller_location) {
     for col, i in pass.colors {
         if col.resource == SWAPCHAIN_HANDLE {
-            base.assert_id(id, pip.color_format[i] == .Swapchain, loc = loc)
+            base.assert_id(id, pip.color_formats[i] == .Swapchain, loc = loc)
         } else {
             _, res_ok := _get_resource(col.resource)
             if res_ok {
-                base.assert_id(id, pip.color_format[i] != .Invalid, loc = loc)
+                base.assert_id(id, pip.color_formats[i] != .Invalid, loc = loc)
             } else {
-                base.assert_id(id, pip.color_format[i] == .Invalid, loc = loc)
+                base.assert_id(id, pip.color_formats[i] == .Invalid, loc = loc)
             }
         }
     }

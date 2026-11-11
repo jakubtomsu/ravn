@@ -93,10 +93,10 @@ init :: proc(target_format: gpu.Texture_Format = .Swapchain, allocator := contex
     if !gpu.create_graphics_pipeline(&state.pip, gpu.make_graphics_pipeline_desc(
         ps = ps,
         vs = vs,
-        bind_layouts = {0 = state.bind_layout},
-        vertex_layouts = {0 = gpu.make_vertex_layout(Vertex, .Vertex)},
-        out_colors = {0 = target_format},
-        blends = {gpu.BLEND_ALPHA},
+        bind_layouts = { state.bind_layout },
+        vertex_layouts = { gpu.make_vertex_layout(Vertex, .Vertex) },
+        color_formats = { target_format },
+        blends = { gpu.BLEND_ALPHA },
         index_format = .U16,
     )) {
         log.error("Failed to create ImGui pipeline")

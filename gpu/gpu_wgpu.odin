@@ -519,7 +519,7 @@ when BACKEND == BACKEND_WGPU {
         color_targets_num := 0
         color_targets: [MAX_BOUND_RENDER_TEXTURES]wgpu.ColorTargetState
 
-        for color, i in desc.color_format {
+        for color, i in desc.color_formats {
             if color == .Invalid {
                 break
             }
