@@ -264,7 +264,7 @@ init :: proc(state: ^State = nil, allocator := context.allocator) {
 
     _init()
 
-    _state.mouse_visible = true
+    set_cursor_visible(true)
 }
 
 shutdown :: proc() {

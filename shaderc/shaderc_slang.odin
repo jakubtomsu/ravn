@@ -1,6 +1,6 @@
 #+vet explicit-allocators shadowing style
 #+build !js
-package ravn_shader_compiler
+package ravn_shaderc
 
 import "core:log"
 import "slang"

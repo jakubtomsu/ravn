@@ -138,7 +138,7 @@ DEFAULT_SHAPE_BUFFER_CAPS :: [Shape_Kind]int{
 
 init :: proc(
     state:              ^State = nil,
-    target_color:       gpu.Resource_Handle,
+    target_color:       gpu.Resource_Handle = gpu.SWAPCHAIN_HANDLE,
     target_depth:       gpu.Resource_Handle = {},
     depth_comparison:   gpu.Comparison_Op = .Always,
     depth_write         := false,

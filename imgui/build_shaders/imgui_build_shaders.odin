@@ -31,6 +31,6 @@ main :: proc() {
 compile_all :: proc(ext: string) {
     vs := shader_compiler.compile("imgui/imgui_impl_gpu/main.vs.hlsl") or_else panic("vs")
     ps := shader_compiler.compile("imgui/imgui_impl_gpu/main.ps.hlsl") or_else panic("ps")
-    os.write_entire_file(fmt.tprintf("imgui/imgui_impl_gpu/main.vs.%s", ext), vs.data, truncate = false) or_else panic("write")
-    os.write_entire_file(fmt.tprintf("imgui/imgui_impl_gpu/main.ps.%s", ext), ps.data, truncate = false) or_else panic("write")
+    os.write_entire_file(fmt.tprintf("imgui/imgui_impl_gpu/main.vs.%s", ext), vs.data) or_else panic("write")
+    os.write_entire_file(fmt.tprintf("imgui/imgui_impl_gpu/main.ps.%s", ext), ps.data) or_else panic("write")
 }

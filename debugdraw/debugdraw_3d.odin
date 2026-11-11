@@ -114,7 +114,7 @@ grid :: proc(
         line(
             pos + axis_a * f32(i) - axis_b * f32(segments.y),
             pos + axis_a * f32(i) + axis_b * f32(segments.y),
-            col = i == 0 ? col[0] : col[1],
+            col = i %% 10 == 0 ? col[0] : col[1],
             time = time,
         )
     }
@@ -123,7 +123,7 @@ grid :: proc(
         line(
             pos + axis_b * f32(i) - axis_a * f32(segments.x),
             pos + axis_b * f32(i) + axis_a * f32(segments.x),
-            col = i == 0 ? col[0] : col[1],
+            col = i %% 10 == 0 ? col[0] : col[1],
             time = time,
         )
     }

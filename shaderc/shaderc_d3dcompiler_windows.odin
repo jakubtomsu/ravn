@@ -1,6 +1,6 @@
 #+vet explicit-allocators shadowing style
 #+build windows
-package ravn_shader_compiler
+package ravn_shaderc
 
 import "base:runtime"
 import "core:sys/windows"

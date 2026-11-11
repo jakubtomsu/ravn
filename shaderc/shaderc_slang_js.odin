@@ -1,4 +1,4 @@
-package ravn_shader_compiler
+package ravn_shaderc
 
 _Slang_State :: struct {}
 
