@@ -2,6 +2,7 @@
 #+build windows
 package ravn_shaderc
 
+import "core:slice"
 import "base:runtime"
 import "core:sys/windows"
 import "core:strings"
@@ -9,15 +10,12 @@ import "core:log"
 import "vendor:directx/d3d11"
 import "vendor:directx/d3d_compiler"
 
-_DXBC_Blob :: struct {
-    blob: ^d3d11.IBlob,
-}
-
-_compile_dxbc :: proc(
+_d3dcompiler_compile_hlsl_to_dxbc :: proc(
     name:           string,
     source:         string,
     opts:           Options,
-) -> (result: Blob, ok: bool) {
+    allocator       := context.allocator,
+) -> (result: []byte, ok: bool) {
     entry_point_name: cstring
     target_name: cstring
 
@@ -102,18 +100,12 @@ _compile_dxbc :: proc(
         return {}, false
     }
 
-    result.data = (transmute([^]byte)binary->GetBufferPointer())[:binary->GetBufferSize()]
-    result._dxbc = {
-        blob = binary,
-    }
+    result = slice.clone((transmute([^]byte)binary->GetBufferPointer())[:binary->GetBufferSize()], allocator)
+
+
+    binary->Release()
 
     return result, true
-}
-
-_dxbc_blob_destroy :: proc(blob: ^_DXBC_Blob) {
-    if blob.blob != nil {
-        blob.blob->Release()
-    }
 }
 
 D3D_Include_Handler :: struct #all_or_none {

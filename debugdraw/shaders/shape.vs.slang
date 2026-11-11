@@ -1,4 +1,4 @@
-#include "common.hlsli"
+#include "common.slang"
 
 struct Vert {
     float4 pos : TEXCOORD0;
@@ -9,7 +9,7 @@ struct Vert {
     float4 inst_mat_z : TEXCOORD5;
 };
 
-cbuffer constants : register(b0) {
+cbuffer constants {
     float4x4 proj;
 };
 

@@ -376,9 +376,9 @@ when BACKEND == BACKEND_WGPU {
         log.debug("Creating WebGPU bind group layout")
 
         layout_entries: [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]wgpu.BindGroupLayoutEntry
-        for slot in desc.slots {
+        for slot, i in desc {
             entry := wgpu.BindGroupLayoutEntry{
-                binding = u32(slot.index + _bind_layout_slot_kind_shift(slot.kind)),
+                binding = u32(i),
                 visibility = _wgpu_stage_flags(slot.stages),
             }
 
@@ -432,10 +432,8 @@ when BACKEND == BACKEND_WGPU {
 
         group_entries: [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]wgpu.BindGroupEntry
         for slot, i in desc.slots {
-            layout_slot := bind_layout.desc.slots[i]
-
             entry := wgpu.BindGroupEntry{
-                binding = u32(slot.index + _bind_layout_slot_kind_shift(layout_slot.kind)),
+                binding = u32(i),
             }
 
             if slot.resource != {} {
@@ -1161,7 +1159,8 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]byte) {
-        temp := _combine_buffer_writes_temp(buffers)
+        _wgpu_COPY_BUFFER_ALIGNMENT :: 4
+        temp := _combine_buffer_writes_temp(buffers, size_pad = _wgpu_COPY_BUFFER_ALIGNMENT)
 
         wgpu.QueueWriteBuffer(_state.queue,
             res.buf,

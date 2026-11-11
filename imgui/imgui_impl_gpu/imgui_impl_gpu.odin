@@ -49,24 +49,38 @@ init :: proc(target_format: gpu.Texture_Format = .Swapchain, allocator := contex
     plio.Renderer_TextureMaxWidth = gpu.MAX_TEXTURE_2D_SIZE
     plio.Renderer_TextureMaxHeight = gpu.MAX_TEXTURE_2D_SIZE
 
-    if !gpu.create_bind_layout(&state.bind_layout, gpu.Bind_Layout_Desc{slots = {
-        {0, .Constants, {.Vertex}, {}},
-        {1, .Resource_Texture_2D, {.Pixel}, {}},
-        {2, .Sampler, {.Pixel}, {}},
-    }}) {
+    if !gpu.create_bind_layout(&state.bind_layout, gpu.Bind_Layout_Desc{
+        {.Constants, {.Vertex}, {}},
+        {.Resource_Texture_2D, {.Pixel}, {}},
+        {.Sampler, {.Pixel}, {}},
+    }) {
         log.error("Failed to create ImGui bind layout")
         return false
+    }
+
+    vs_bin: []byte
+    ps_bin: []byte
+
+    switch gpu.BACKEND {
+    case gpu.BACKEND_D3D11:
+        vs_bin = #load("main.vs.slang.dxbc")
+        ps_bin = #load("main.ps.slang.dxbc")
+    case gpu.BACKEND_WGPU:
+        vs_bin = #load("main.vs.slang.wgsl")
+        ps_bin = #load("main.ps.slang.wgsl")
+    case:
+        panic("Missing shaders for the current GPU backend")
     }
 
     vs: gpu.Shader_Handle
     ps: gpu.Shader_Handle
 
-    if !gpu.create_shader(&vs, #load("main.vs.dxbc"), .Vertex) {
+    if !gpu.create_shader(&vs, vs_bin, .Vertex) {
         log.error("Failed to create vertex shader")
         return false
     }
 
-    if !gpu.create_shader(&ps, #load("main.ps.dxbc"), .Pixel) {
+    if !gpu.create_shader(&ps, ps_bin, .Pixel) {
         log.error("Failed to create pixel shader")
         return false
     }
@@ -259,14 +273,11 @@ _get_bind_group :: proc(state: ^State, tex: gpu.Resource_Handle) -> gpu.Bind_Gro
         return binds
     }
 
-    if !gpu.create_bind_group(&binds, gpu.Bind_Group_Desc{
-        layout = state.bind_layout,
-        slots = {
-            {0, state.cbuf, {}},
-            {1, tex, {}},
-            {2, {}, gpu.make_sampler_desc({.Min, .Mag, .Mip})},
-        },
-    }) {
+    if !gpu.create_bind_group(&binds, gpu.Bind_Group_Desc{layout = state.bind_layout, slots = {
+        {state.cbuf, {}},
+        {tex, {}},
+        {{}, gpu.make_sampler_desc({.Min, .Mag, .Mip})},
+    }}) {
         log.error("Failed to create bind group for texture:", tex)
         return {}
     }

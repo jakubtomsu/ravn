@@ -47,6 +47,11 @@ MAX_DISPATCH_SIZE           :: 1024 * 16 // per dimension
 MAX_VERTEX_LAYOUT_SLOTS   :: 16
 MAX_BOUND_RENDER_TEXTURES :: 4
 
+BIND_GROUP_CONSTANTS_SLOT_SHIFT :: 0
+BIND_GROUP_SAMPLER_SLOT_SHIFT :: BIND_GROUP_CONSTANTS_SLOT_SHIFT + MAX_BIND_GROUP_CONSTANTS
+BIND_GROUP_RESOURCE_SLOT_SHIFT :: BIND_GROUP_SAMPLER_SLOT_SHIFT + MAX_BIND_GROUP_SAMPLERS
+BIND_GROUP_RW_RESOURCE_SLOT_SHIFT :: BIND_GROUP_RESOURCE_SLOT_SHIFT + MAX_BIND_GROUP_RESOURCES
+
 // Special handle to internal swapchain texture. Not an actual resource.
 SWAPCHAIN_HANDLE :: Resource_Handle{index = max(base.Handle_Index), gen = 0}
 
@@ -202,9 +207,7 @@ Compute_Pipeline_Desc :: struct {
     bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
 }
 
-Bind_Layout_Desc :: struct {
-    slots:  [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]Bind_Layout_Slot_Desc,
-}
+Bind_Layout_Desc :: [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]Bind_Layout_Slot_Desc
 
 Bind_Layout_Slot_Kind :: enum u8 {
     Sampler,
@@ -221,7 +224,6 @@ Bind_Layout_Slot_Kind :: enum u8 {
 }
 
 Bind_Layout_Slot_Desc :: struct {
-    index:  i32,
     kind:   Bind_Layout_Slot_Kind,
     stages: bit_set[Shader_Kind],
     format: Texture_Format, // only needed for RW resources!
@@ -234,7 +236,6 @@ Bind_Group_Desc :: struct {
 }
 
 Bind_Group_Slot_Desc :: struct {
-    index:      i32,
     resource:   Resource_Handle,
     sampler:    Sampler_Desc,
 }
@@ -728,6 +729,22 @@ _find_free_or_destroy_existing :: proc(
     return true
 }
 
+/* Creates a binding layout used for bind groups and pipelines.
+
+Each slot corresponds to one resource in your shader. The slot index
+is based on it's index in the array.
+The recommended approach on the shader side is to use slang parameter
+blocks: https://docs.shader-slang.org/en/stable/parameter-blocks.html.
+Parameter blocks work even when constant buffer data are mixed in with
+regular resources or samplers.
+
+Alternatively, you can use [[vk::binding()]] or HLSL register() to set
+indices manually.
+
+NOTE: currently there is no support for sparse bindings. You can use
+multiple bind groups though.
+
+*/
 @(require_results)
 create_bind_layout :: proc(
     handle:     ^Bind_Layout_Handle,
@@ -741,7 +758,7 @@ create_bind_layout :: proc(
     id := base.create_debug_id(name, loc, context.allocator)
     defer if !ok do base.destroy_debug_id(&id, context.allocator)
 
-    for &slot in desc.slots {
+    for &slot in desc {
         if slot.stages == {} {
             if _is_bind_layout_slot_rw(slot.kind) {
                 slot.stages = {.Compute}
@@ -800,13 +817,13 @@ create_bind_group :: proc(
         return false
     }
 
-    for slot in desc.slots {
+    for slot, i in desc.slots {
         res := _get_resource(slot.resource) or_continue
         if res.kind == .Constants {
-            state.consts[slot.index] = slot.resource
-            state.consts_sizes[slot.index] = u16(res.consts_desc.item_size)
+            state.consts[i] = slot.resource
+            state.consts_sizes[i] = u16(res.consts_desc.item_size)
             if res.consts_desc.item_num > 1 {
-                state.consts_dyn += {int(slot.index)}
+                state.consts_dyn += {i}
             }
         }
     }
@@ -1703,16 +1720,9 @@ validate_pass_desc :: proc(id: base.Debug_ID, desc: Graphics_Pass_Desc, loc := #
 }
 
 validate_bind_layout_desc :: proc(id: base.Debug_ID, desc: Bind_Layout_Desc, loc := #caller_location) {
-    base.assert_id(id, len(desc.slots) > 0, "Bind_Group layout must have at least one slot", loc = loc)
+    base.assert_id(id, len(desc) > 0, "Bind_Group layout must not be empty", loc = loc)
 
-    used: bit_set[0..<NUM_TOTAL_BIND_GROUP_SLOTS]
-    for slot in desc.slots {
-        base.assert_id(id, slot.index >= 0 && slot.index < _bind_layout_slot_kind_num(slot.kind),
-            "Bind_Group layout slot index out of range for its kind", loc = loc)
-
-        base.assert_id(id, int(slot.index) not_in used, "Duplicate bind_group layout slot index", loc = loc)
-        used += {int(slot.index)}
-
+    for slot in desc {
         base.assert_id(id, .Invalid not_in slot.stages, "Bind_Group layout slot has an invalid shader stage", loc = loc)
 
         if _is_bind_layout_slot_rw(slot.kind) {
@@ -1720,7 +1730,7 @@ validate_bind_layout_desc :: proc(id: base.Debug_ID, desc: Bind_Layout_Desc, loc
             base.assert_id(id, .Vertex not_in slot.stages, "RW bind_group layout slot cannot be visible to the vertex stage", loc = loc)
         }
 
-        if _bind_layout_slot_requires_layout(slot.kind) {
+        if _bind_layout_slot_requires_format(slot.kind) {
             base.assert_id(id, slot.format != .Invalid, "RW texture bind_group layout slot requires a format", loc = loc)
             base.assert_id(id, !is_texture_format_depth_stencil(slot.format), "RW texture bind_group layout slot cannot use a depth format", loc = loc)
         } else {
@@ -1734,29 +1744,24 @@ validate_bind_group_desc :: proc(id: base.Debug_ID, desc: Bind_Group_Desc, loc :
     base.assert_id(id, layout_ok, "Bind_Group reference an invalid layout", loc = loc)
 
     // A bind group must fill exactly the slots declared by its layout, no more, no less.
-    base.assert_id(id, len(desc.slots) == len(layout.desc.slots), "Bind_Group must fill exactly the layout's slots", loc = loc)
+    base.assert_id(id, len(desc.slots) == len(layout.desc), "Bind_Group must fill exactly the layout's slots", loc = loc)
 
-    used: [NUM_TOTAL_BIND_GROUP_SLOTS]bool
-    for slot in desc.slots {
-        layout_slot, layout_slot_ok := _find_bind_layout_slot(layout.desc, slot.index)
-        base.assert_id(id, layout_slot_ok, "Bind_Group slot index not present in the layout", loc = loc)
-
-        base.assert_id(id, !used[slot.index], "Duplicate bind_group slot index", loc = loc)
-        used[slot.index] = true
+    for slot, i in desc.slots {
+        layout_slot := layout.desc[i]
 
         if layout_slot.kind == .Sampler {
             base.assert_id(id, slot.resource == {}, "A sampler slot must not bind a resource", loc = loc)
-            continue
-        }
+        } else {
+            base.assert_id(id, slot.resource != {}, "A resource slot must bind a resource", loc = loc)
+            base.assert_id(id, slot.sampler == {}, "A resource slot must not bind a sampler", loc = loc)
 
-        base.assert_id(id, slot.resource != {}, "A resource slot must bind a resource", loc = loc)
+            res, res_ok := _get_resource(slot.resource)
+            base.assert_id(id, res_ok, "Bind_Group slot references an invalid resource", loc = loc)
+            base.assert_id(id, res.kind == _bind_layout_slot_resource_kind(layout_slot.kind), "Bound resource kind does not match the layout slot", loc = loc)
 
-        res, res_ok := _get_resource(slot.resource)
-        base.assert_id(id, res_ok, "Bind_Group slot references an invalid resource", loc = loc)
-        base.assert_id(id, res.kind == _bind_layout_slot_resource_kind(layout_slot.kind), "Bound resource kind does not match the layout slot", loc = loc)
-
-        if layout_slot.kind == .Constants_Dynamic {
-        base.assert_id(id, res.consts_desc.item_num > 1, "A Constants_Dynamic slot expects a multi-item constant buffer", loc = loc)
+            if layout_slot.kind == .Constants_Dynamic {
+                base.assert_id(id, res.consts_desc.item_num > 1, "A Constants_Dynamic slot expects a multi-item constant buffer", loc = loc)
+            }
         }
     }
 }
@@ -1881,8 +1886,8 @@ _get_bind_group :: proc(handle: Bind_Group_Handle) -> (^Bind_Group_State, bool) 
 }
 
 @(require_results)
-_combine_buffer_writes_temp :: proc(buffers: [][]byte) -> (result: []byte) {
-    if len(buffers) == 1 {
+_combine_buffer_writes_temp :: proc(buffers: [][]byte, size_pad: int) -> (result: []byte) {
+    if len(buffers) == 1 && len(buffers[0]) %% size_pad == 0 {
         return buffers[0]
     }
 
@@ -1891,7 +1896,10 @@ _combine_buffer_writes_temp :: proc(buffers: [][]byte) -> (result: []byte) {
         sum_len += len(buf)
     }
 
-    result = runtime.make_aligned([]byte, sum_len, 4096, context.temp_allocator)
+    size := runtime.align_forward(sum_len, size_pad)
+    assert(size %% size_pad == 0)
+
+    result = runtime.make_aligned([]byte, size, 4096, context.temp_allocator)
 
     write_ptr := uintptr(raw_data(result))
     for buf in buffers {
@@ -1924,7 +1932,7 @@ _is_bind_layout_slot_rw :: proc(kind: Bind_Layout_Slot_Kind) -> bool {
 }
 
 @(require_results)
-_bind_layout_slot_requires_layout :: proc(kind: Bind_Layout_Slot_Kind) -> bool {
+_bind_layout_slot_requires_format :: proc(kind: Bind_Layout_Slot_Kind) -> bool {
     #partial switch kind {
     case .RW_Resource_Texture_2D,
         .RW_Resource_Texture_2D_Array,
@@ -1932,54 +1940,6 @@ _bind_layout_slot_requires_layout :: proc(kind: Bind_Layout_Slot_Kind) -> bool {
         return true
     }
     return false
-}
-
-@(require_results)
-_bind_layout_slot_kind_num :: proc(kind: Bind_Layout_Slot_Kind) -> i32 {
-    switch kind {
-    case .Sampler:
-        return MAX_BIND_GROUP_SAMPLERS
-
-    case .Constants, .Constants_Dynamic:
-        return MAX_BIND_GROUP_CONSTANTS
-
-    case .Resource_Buffer,
-        .Resource_Texture_2D,
-        .Resource_Texture_2D_Array,
-        .Resource_Texture_3D:
-        return MAX_BIND_GROUP_RESOURCES
-
-    case .RW_Resource_Buffer,
-        .RW_Resource_Texture_2D,
-        .RW_Resource_Texture_2D_Array,
-        .RW_Resource_Texture_3D:
-        return MAX_BIND_GROUP_RW_RESOURCES
-    }
-    return 0
-}
-
-@(require_results)
-_bind_layout_slot_kind_shift :: proc(kind: Bind_Layout_Slot_Kind) -> i32 {
-    switch kind {
-    case .Sampler:
-        return BIND_GROUP_SAMPLER_SLOT_SHIFT
-
-    case .Constants, .Constants_Dynamic:
-        return BIND_GROUP_CONSTANTS_SLOT_SHIFT
-
-    case .Resource_Buffer,
-        .Resource_Texture_2D,
-        .Resource_Texture_2D_Array,
-        .Resource_Texture_3D:
-        return BIND_GROUP_RESOURCE_SLOT_SHIFT
-
-    case .RW_Resource_Buffer,
-        .RW_Resource_Texture_2D,
-        .RW_Resource_Texture_2D_Array,
-        .RW_Resource_Texture_3D:
-        return BIND_GROUP_RW_RESOURCE_SLOT_SHIFT
-    }
-    return 0
 }
 
 @(require_results)
@@ -2004,16 +1964,6 @@ _bind_layout_slot_resource_kind :: proc(kind: Bind_Layout_Slot_Kind) -> Resource
         return .Texture3D
     }
     return .Invalid
-}
-
-@(require_results)
-_find_bind_layout_slot :: proc(desc: Bind_Layout_Desc, index: i32) -> (Bind_Layout_Slot_Desc, bool) {
-    for slot in desc.slots {
-        if slot.index == index {
-            return slot, true
-        }
-    }
-    return {}, false
 }
 
 @(require_results)

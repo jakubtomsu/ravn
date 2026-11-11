@@ -261,7 +261,7 @@ when BACKEND == BACKEND_D3D11 {
         layout, layout_ok := _get_bind_layout(desc.layout)
         assert(layout_ok)
 
-        for slot in layout.desc.slots {
+        for slot in layout.desc {
             switch slot.kind {
             case .Sampler:
                 result.smp_stages += slot.stages
@@ -296,30 +296,31 @@ when BACKEND == BACKEND_D3D11 {
 
                 case .Constants:
                     assert(res.buf != nil)
-                    resize(&result.cbufs, slot.index + 1)
-                    result.cbufs[slot.index] = res.buf
+                    append(&result.cbufs, res.buf)
+                    res.buf->AddRef()
 
                 case .Buffer:
                     assert(res.srv != nil)
-                    resize(&result.srvs, slot.index + 1)
-                    result.srvs[slot.index] = res.srv
+                    append(&result.srvs, res.srv)
+                    res.srv->AddRef()
 
                 case .Texture2D, .Texture3D:
-                    if _is_bind_layout_slot_rw(layout.desc.slots[i].kind) {
+                    if _is_bind_layout_slot_rw(layout.desc[i].kind) {
                         assert(res.uav != nil)
-                        resize(&result.uavs, slot.index + 1)
-                        result.uavs[slot.index] = res.uav
+                        append(&result.uavs, res.uav)
+                        res.uav->AddRef()
                     } else {
                         assert(res.srv != nil)
-                        resize(&result.srvs, slot.index + 1)
-                        result.srvs[slot.index] = res.srv
+                        append(&result.srvs, res.srv)
+                        res.srv->AddRef()
                     }
                 }
 
             } else {
                 assert(slot.sampler != {})
-                resize(&result.smps, slot.index + 1)
-                result.smps[slot.index] = _getref_or_create_sampler(id, slot.sampler).smp
+                smp := _getref_or_create_sampler(id, slot.sampler).smp
+                append(&result.smps, smp)
+                smp->AddRef()
             }
         }
 
@@ -1349,7 +1350,7 @@ when BACKEND == BACKEND_D3D11 {
             _state.device_context->Unmap(res.buf, 0)
 
         case .Default:
-            temp := _combine_buffer_writes_temp(buffers)
+            temp := _combine_buffer_writes_temp(buffers, size_pad = 0)
 
             _state.device_context->UpdateSubresource(
                 pDstResource = res.buf,

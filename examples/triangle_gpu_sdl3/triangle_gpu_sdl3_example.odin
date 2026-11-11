@@ -3,15 +3,15 @@ package triangle_gpu_sdl3_example
 import "core:log"
 import "../../base"
 import "../../gpu"
-import "../../shader_compiler"
+import "../../shaderc"
 import sdl "vendor:sdl3"
 import "core:math"
 import "core:slice"
 
 when gpu.BACKEND == gpu.BACKEND_WGPU {
-    SHADER_TARGET :: shader_compiler.Target.WGSL
+    SHADER_TARGET :: shaderc.Target.WGSL
 } else {
-    SHADER_TARGET :: shader_compiler.Target.DXBC
+    SHADER_TARGET :: shaderc.Target.DXBC
 }
 
 MAX_INSTS :: 256
@@ -44,11 +44,11 @@ main :: proc() {
     gpu_state := new(gpu.State)
     gpu.init(gpu_state, native_window)
 
-    if !shader_compiler.init(SHADER_TARGET) {
+    if !shaderc.init() {
         panic("No shader compiler")
     }
-    ps_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Pixel}) or_else panic("ps_blob")
-    vs_blob := shader_compiler.compile("triangle.hlsl", _shader_code, {stage = .Vertex}) or_else panic("vs_blob")
+    ps_blob := shaderc.compile("triangle.hlsl", _shader_code, {target = SHADER_TARGET, stage = .Pixel}) or_else panic("ps_blob")
+    vs_blob := shaderc.compile("triangle.hlsl", _shader_code, {target = SHADER_TARGET, stage = .Vertex}) or_else panic("vs_blob")
 
     vbuf: gpu.Resource_Handle
     inst_buf: gpu.Resource_Handle
@@ -66,10 +66,10 @@ main :: proc() {
         255, 255, 0, 255, 255, 255, 255, 255,
     }) or_else panic("tex")
 
-    gpu.create_bind_layout(&layout, {slots = {
-        {index=0, kind=.Resource_Texture_2D, stages={.Pixel}},
-        {index=1, kind=.Sampler, stages={.Pixel}},
-    }}) or_else panic("layout")
+    gpu.create_bind_layout(&layout, {
+        {kind=.Resource_Texture_2D, stages={.Pixel}},
+        {kind=.Sampler, stages={.Pixel}},
+    }) or_else panic("layout")
 
     // gpu.create_bind_group(&binds, {
     //     layout = layout,
@@ -78,8 +78,8 @@ main :: proc() {
     //     },
     // }) or_else panic("binds")
 
-    gpu.create_shader(&ps, ps_blob.data, .Pixel) or_else panic("ps")
-    gpu.create_shader(&vs, vs_blob.data, .Vertex) or_else panic("vs")
+    gpu.create_shader(&ps, ps_blob, .Pixel) or_else panic("ps")
+    gpu.create_shader(&vs, vs_blob, .Vertex) or_else panic("vs")
 
     gpu.create_graphics_pipeline(&pip, gpu.make_graphics_pipeline_desc(
         ps = ps,

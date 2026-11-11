@@ -6,7 +6,7 @@ import "core:slice"
 import "../../glue"
 import "../../gpu"
 import "../../platform"
-import "../../shader_compiler"
+import "../../shaderc"
 
 Vertex :: struct {
     pos:    [3]f32,
@@ -29,14 +29,14 @@ main :: proc() {
     gpu.init(window = platform.get_native_window_ptr(window))
     defer gpu.shutdown()
 
-    if !shader_compiler.init(glue.SHADER_TARGET) {
+    if !shaderc.init() {
         return
     }
 
-    vs_bin := shader_compiler.compile(#file, VS, {stage = .Vertex}) or_else panic("VS")
-    ps_bin := shader_compiler.compile(#file, PS, {stage = .Pixel}) or_else panic("PS")
-    ps: gpu.Shader_Handle; gpu.create_shader(&ps, ps_bin.data, .Pixel) or_else panic("shader create")
-    vs: gpu.Shader_Handle; gpu.create_shader(&vs, vs_bin.data, .Vertex) or_else panic("shader create")
+    vs_bin := shaderc.compile("main.vs.slang", VS, {target = glue.SHADER_TARGET, stage = .Vertex}) or_else panic("VS")
+    ps_bin := shaderc.compile("main.ps.slang", PS, {target = glue.SHADER_TARGET, stage = .Pixel}) or_else panic("PS")
+    ps: gpu.Shader_Handle; gpu.create_shader(&ps, ps_bin, .Pixel) or_else panic("shader")
+    vs: gpu.Shader_Handle; gpu.create_shader(&vs, vs_bin, .Vertex) or_else panic("shader")
 
     pip: gpu.Graphics_Pipeline_Handle
     gpu.create_graphics_pipeline(&pip, gpu.make_graphics_pipeline_desc(
@@ -83,20 +83,20 @@ main :: proc() {
 }
 
 SHARED :: """
-    struct VS_Out {
+    struct Vert_Out {
         float4 pos : SV_Position;
         float4 col : TEXCOORD0;
     };
 """
 
 VS :: SHARED + """
-    struct VS_In {
+    struct Vert_In {
         float3 pos : TEXCOORD0;
         float4 col : TEXCOORD1;
     };
 
-    VS_Out vs_main(VS_In vert) {
-        VS_Out o;
+    Vert_Out vs_main(Vert_In vert) {
+        Vert_Out o;
         o.pos = float4(vert.pos, 1.0);
         o.col = vert.col;
         return o;
@@ -104,7 +104,7 @@ VS :: SHARED + """
     """
 
 PS :: SHARED + """
-    float4 ps_main(VS_Out vert) : SV_Target {
+    float4 ps_main(Vert_Out vert) : SV_Target {
         return vert.col;
     }
     """
