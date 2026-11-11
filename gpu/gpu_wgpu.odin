@@ -376,9 +376,9 @@ when BACKEND == BACKEND_WGPU {
         log.debug("Creating WebGPU bind group layout")
 
         layout_entries: [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]wgpu.BindGroupLayoutEntry
-        for slot in desc.slots {
+        for slot, i in desc {
             entry := wgpu.BindGroupLayoutEntry{
-                binding = u32(slot.index + _bind_layout_slot_kind_shift(slot.kind)),
+                binding = u32(i),
                 visibility = _wgpu_stage_flags(slot.stages),
             }
 
@@ -432,10 +432,8 @@ when BACKEND == BACKEND_WGPU {
 
         group_entries: [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]wgpu.BindGroupEntry
         for slot, i in desc.slots {
-            layout_slot := bind_layout.desc.slots[i]
-
             entry := wgpu.BindGroupEntry{
-                binding = u32(slot.index + _bind_layout_slot_kind_shift(layout_slot.kind)),
+                binding = u32(i),
             }
 
             if slot.resource != {} {
@@ -963,7 +961,7 @@ when BACKEND == BACKEND_WGPU {
             baseMipLevel = 0,
             mipLevelCount = u32(desc.mips),
             baseArrayLayer = 0,
-            arrayLayerCount = 0,
+            arrayLayerCount = 1,
             aspect = wgpu.TextureAspect.All,
             usage = usage_flags,
         })
@@ -1021,7 +1019,7 @@ when BACKEND == BACKEND_WGPU {
                 wgpu.TextureDestroy(res.tex)
             }
 
-        case .Texture2D:
+        case .Texture3D:
             wgpu.TextureDestroy(res.tex)
         }
     }
@@ -1415,7 +1413,7 @@ when BACKEND == BACKEND_WGPU {
 
     _wgpu_log_callback :: proc "c" (level: wgpu.LogLevel, msg: wgpu.StringView, userdata: rawptr) {
         context = _state.init_context
-        log.log(wgpu.ConvertWGPUToOdinLogLevel(level), "WGPU: %s", msg)
+        log.logf(wgpu.ConvertWGPUToOdinLogLevel(level), "WGPU: %s", msg)
     }
 
     _wgpu_wait :: proc(future: wgpu.Future) {

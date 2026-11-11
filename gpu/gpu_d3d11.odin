@@ -261,7 +261,7 @@ when BACKEND == BACKEND_D3D11 {
         layout, layout_ok := _get_bind_layout(desc.layout)
         assert(layout_ok)
 
-        for slot in layout.desc.slots {
+        for slot in layout.desc {
             switch slot.kind {
             case .Sampler:
                 result.smp_stages += slot.stages
@@ -296,30 +296,25 @@ when BACKEND == BACKEND_D3D11 {
 
                 case .Constants:
                     assert(res.buf != nil)
-                    resize(&result.cbufs, slot.index + 1)
-                    result.cbufs[slot.index] = res.buf
+                    append(&result.cbufs, res.buf)
 
                 case .Buffer:
                     assert(res.srv != nil)
-                    resize(&result.srvs, slot.index + 1)
-                    result.srvs[slot.index] = res.srv
+                    append(&result.srvs, res.srv)
 
                 case .Texture2D, .Texture3D:
-                    if _is_bind_layout_slot_rw(layout.desc.slots[i].kind) {
+                    if _is_bind_layout_slot_rw(layout.desc[i].kind) {
                         assert(res.uav != nil)
-                        resize(&result.uavs, slot.index + 1)
-                        result.uavs[slot.index] = res.uav
+                        append(&result.uavs, res.uav)
                     } else {
                         assert(res.srv != nil)
-                        resize(&result.srvs, slot.index + 1)
-                        result.srvs[slot.index] = res.srv
+                        append(&result.srvs, res.srv)
                     }
                 }
 
             } else {
                 assert(slot.sampler != {})
-                resize(&result.smps, slot.index + 1)
-                result.smps[slot.index] = _getref_or_create_sampler(id, slot.sampler).smp
+                append(&result.smps, _getref_or_create_sampler(id, slot.sampler).smp)
             }
         }
 
@@ -972,10 +967,10 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _destroy_bind_group :: proc(state: Bind_Group_State) {
-        for it in state.smps  do it->Release()
-        for it in state.cbufs do it->Release()
-        for it in state.srvs  do it->Release()
-        for it in state.uavs  do it->Release()
+        for it in state.smps  { if it != nil { it->Release() } }
+        for it in state.cbufs { if it != nil { it->Release() } }
+        for it in state.srvs  { if it != nil { it->Release() } }
+        for it in state.uavs  { if it != nil { it->Release() } }
         _d3d11_messages()
     }
 
