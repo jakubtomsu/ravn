@@ -1870,8 +1870,8 @@ _get_bind_group :: proc(handle: Bind_Group_Handle) -> (^Bind_Group_State, bool) 
 }
 
 @(require_results)
-_combine_buffer_writes_temp :: proc(buffers: [][]byte) -> (result: []byte) {
-    if len(buffers) == 1 {
+_combine_buffer_writes_temp :: proc(buffers: [][]byte, size_pad: int) -> (result: []byte) {
+    if len(buffers) == 1 && len(buffers[0]) %% size_pad == 0 {
         return buffers[0]
     }
 
@@ -1880,7 +1880,10 @@ _combine_buffer_writes_temp :: proc(buffers: [][]byte) -> (result: []byte) {
         sum_len += len(buf)
     }
 
-    result = runtime.make_aligned([]byte, sum_len, 4096, context.temp_allocator)
+    size := runtime.align_forward(sum_len, size_pad)
+    assert(size %% size_pad == 0)
+
+    result = runtime.make_aligned([]byte, size, 4096, context.temp_allocator)
 
     write_ptr := uintptr(raw_data(result))
     for buf in buffers {
