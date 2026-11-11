@@ -1,11 +1,11 @@
-#include "common.hlsli"
+#include "common.slang"
 
 struct Vert {
     float3 pos : TEXCOORD0;
     float4 col : TEXCOORD1;
 };
 
-cbuffer constants : register(b0) {
+cbuffer constants {
     float4x4 proj;
 };
 
