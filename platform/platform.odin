@@ -1,6 +1,7 @@
 #+vet explicit-allocators shadowing unused
 package ravn_platform
 
+import "core:log"
 import "core:strings"
 import "base:runtime"
 
@@ -41,7 +42,6 @@ State :: struct {
     mouse_visible:          bool,
 
     event_queue:            _Event_Queue,
-    event_counter:          i32,
 }
 
 Rect :: struct {
@@ -448,11 +448,8 @@ poll_window_events :: proc(window: Window) -> (event: Event, should_continue: bo
     _event_queue_clear()
 
     if !_poll_window_events(window) {
-        _state.event_counter = 0
         return nil, false
     }
-
-    _state.event_counter += 1
 
     // maybe new events are queued up, just not returned
     event, should_continue = _event_queue_pop()
@@ -460,7 +457,6 @@ poll_window_events :: proc(window: Window) -> (event: Event, should_continue: bo
         return event, true
     }
 
-    _state.event_counter = 0
     return nil, false
 }
 
@@ -491,6 +487,8 @@ _event_queue_push :: proc(event: Event, loc := #caller_location) {
     if _state.event_queue.len < len(_state.event_queue.events) {
         _state.event_queue.events[(_state.event_queue.offset + _state.event_queue.len) % len(_state.event_queue.events)] = event
         _state.event_queue.len += 1
+    } else {
+        log.warn("Platform event queue full")
     }
 }
 

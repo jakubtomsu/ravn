@@ -904,12 +904,7 @@ when BACKEND == BACKEND_WINDOWS {
     }
 
     _poll_window_events :: proc(window: Window) -> (ok: bool) {
-        MAX_EVENTS :: 16
-        if _state.event_counter >= MAX_EVENTS {
-            return false
-        }
-
-        if _state.event_counter == 0 && _state.mouse_relative {
+        if _state.mouse_relative {
             _win32_process_raw_input()
         }
 
