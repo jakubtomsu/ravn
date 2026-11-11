@@ -1351,7 +1351,7 @@ when BACKEND == BACKEND_D3D11 {
             _state.device_context->Unmap(res.buf, 0)
 
         case .Default:
-            temp := _combine_buffer_writes_temp(buffers, size_pad = 0)
+            temp := _combine_buffer_writes_temp(buffers, size_align = 1)
 
             _state.device_context->UpdateSubresource(
                 pDstResource = res.buf,

@@ -1160,7 +1160,7 @@ when BACKEND == BACKEND_WGPU {
 
     _update_buffer :: proc(res: ^Resource_State, offset: int, buffers: [][]byte) {
         _wgpu_COPY_BUFFER_ALIGNMENT :: 4
-        temp := _combine_buffer_writes_temp(buffers, size_pad = _wgpu_COPY_BUFFER_ALIGNMENT)
+        temp := _combine_buffer_writes_temp(buffers, size_align = _wgpu_COPY_BUFFER_ALIGNMENT)
 
         wgpu.QueueWriteBuffer(_state.queue,
             res.buf,

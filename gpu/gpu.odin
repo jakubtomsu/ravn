@@ -1885,8 +1885,9 @@ _get_bind_group :: proc(handle: Bind_Group_Handle) -> (^Bind_Group_State, bool) 
 }
 
 @(require_results)
-_combine_buffer_writes_temp :: proc(buffers: [][]byte, size_pad: int) -> (result: []byte) {
-    if len(buffers) == 1 && len(buffers[0]) %% size_pad == 0 {
+_combine_buffer_writes_temp :: proc(buffers: [][]byte, size_align: int) -> (result: []byte) {
+    assert(size_align >= 1)
+    if len(buffers) == 1 && len(buffers[0]) %% size_align == 0 {
         return buffers[0]
     }
 
@@ -1895,8 +1896,8 @@ _combine_buffer_writes_temp :: proc(buffers: [][]byte, size_pad: int) -> (result
         sum_len += len(buf)
     }
 
-    size := runtime.align_forward(sum_len, size_pad)
-    assert(size %% size_pad == 0)
+    size := runtime.align_forward(sum_len, size_align)
+    assert(size %% size_align == 0)
 
     result = runtime.make_aligned([]byte, size, 4096, context.temp_allocator)
 
