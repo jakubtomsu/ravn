@@ -729,6 +729,22 @@ _find_free_or_destroy_existing :: proc(
     return true
 }
 
+/* Creates a binding layout used for bind groups and pipelines.
+
+Each slot corresponds to one resource in your shader. The slot index
+is based on it's index in the array.
+The recommended approach on the shader side is to use slang parameter
+blocks: https://docs.shader-slang.org/en/stable/parameter-blocks.html.
+Parameter blocks work even when constant buffer data are mixed in with
+regular resources or samplers.
+
+Alternatively, you can use [[vk::binding()]] or HLSL register() to set
+indices manually.
+
+NOTE: currently there is no support for sparse bindings. You can use
+multiple bind groups though.
+
+*/
 @(require_results)
 create_bind_layout :: proc(
     handle:     ^Bind_Layout_Handle,
