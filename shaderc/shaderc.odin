@@ -95,20 +95,26 @@ compile :: proc {
     compile_from_source,
 }
 
-compile_from_path :: proc(path: string, opts: Options = DEFAULT_OPTIONS, loc := #caller_location) -> (result: []byte, ok: bool) {
+compile_from_path :: proc(
+    path:       string,
+    opts:       Options = DEFAULT_OPTIONS,
+    loc         := #caller_location,
+    allocator   := context.allocator,
+) -> (result: []byte, ok: bool) {
     data, err := os.read_entire_file_from_path(path, context.temp_allocator)
     if err != nil {
         log.error("Failed to read shader file:", err)
         return {}, false
     }
-    return compile_from_source(path, string(data), opts)
+    return compile_from_source(path, string(data), opts, allocator = allocator)
 }
 
 compile_from_source :: proc(
-    name:           string,
-    source:         string,
-    opts:           Options = DEFAULT_OPTIONS,
-    loc := #caller_location,
+    name:       string,
+    source:     string,
+    opts:       Options = DEFAULT_OPTIONS,
+    loc         := #caller_location,
+    allocator   := context.allocator,
 ) -> (result: []byte, ok: bool) {
     opts := opts
 
@@ -141,21 +147,21 @@ compile_from_source :: proc(
         when ODIN_OS == .Windows {
             slang_opts := opts
             slang_opts.target = .HLSL
-            hlsl, hlsl_ok := _slang_compile(name, source, slang_opts)
+            hlsl, hlsl_ok := _slang_compile(name, source, slang_opts, allocator = allocator)
             if !hlsl_ok {
                 log.error("Failed to compile to HLSL")
                 return nil, false
             }
 
             d3d_opts := opts
-            result, ok = _d3dcompiler_compile_hlsl_to_dxbc(name, string(hlsl), opts)
+            result, ok = _d3dcompiler_compile_hlsl_to_dxbc(name, string(hlsl), opts, allocator = allocator)
         } else {
             log.error("Cannot compile to DXBC, d3dcompiler not available on this platform")
             return nil, false
         }
 
     case .WGSL, .SPIRV, .HLSL:
-        result, ok = _slang_compile(name, source, opts)
+        result, ok = _slang_compile(name, source, opts, allocator = allocator)
     }
 
     if !ok {

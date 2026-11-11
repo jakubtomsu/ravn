@@ -2,6 +2,7 @@
 #+build windows
 package ravn_shaderc
 
+import "core:slice"
 import "base:runtime"
 import "core:sys/windows"
 import "core:strings"
@@ -13,6 +14,7 @@ _d3dcompiler_compile_hlsl_to_dxbc :: proc(
     name:           string,
     source:         string,
     opts:           Options,
+    allocator       := context.allocator,
 ) -> (result: []byte, ok: bool) {
     entry_point_name: cstring
     target_name: cstring
@@ -98,7 +100,8 @@ _d3dcompiler_compile_hlsl_to_dxbc :: proc(
         return {}, false
     }
 
-    result = (transmute([^]byte)binary->GetBufferPointer())[:binary->GetBufferSize()]
+    result = slice.clone((transmute([^]byte)binary->GetBufferPointer())[:binary->GetBufferSize()], allocator)
+
 
     binary->Release()
 

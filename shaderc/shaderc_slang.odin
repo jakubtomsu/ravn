@@ -2,6 +2,7 @@
 #+build !js
 package ravn_shaderc
 
+import "core:slice"
 import "core:log"
 import "slang"
 import "base:runtime"
@@ -69,6 +70,7 @@ _slang_compile :: proc(
     name:           string,
     source:         string,
     opts:           Options,
+    allocator       := context.allocator,
 ) -> (result: []byte, ok: bool) {
     assert(_state.slang.global_session != nil)
 
@@ -168,7 +170,7 @@ _slang_compile :: proc(
         return {}, false
     }
 
-    result = _slang_blob_buf(code)
+    result = slice.clone(_slang_blob_buf(code), allocator)
 
     code->release()
 
