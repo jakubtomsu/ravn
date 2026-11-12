@@ -14,7 +14,7 @@ from types import TracebackType
 
 BIN_MAGIC = b"rscn"
 
-VERSION = 0
+VERSION = 1
 
 bl_info = {
     "name": "RAVN Scene Exporter",
@@ -86,6 +86,7 @@ skeleton_dtype = np.dtype([
 ])
 
 bone_dtype = np.dtype([
+    ('skeleton', np.uint32, 1),
     ('name_range', np.uint32, 2),
     ('parent', np.uint32, 1),
     ('pos', np.float32, 3),
@@ -94,6 +95,7 @@ bone_dtype = np.dtype([
 ])
 
 anim_dtype = np.dtype([
+    ('skeleton', np.uint32, 1),
     ('name_range', np.uint32, 2),
     ('curve_range', np.uint32, 2),
 ])
@@ -126,7 +128,7 @@ spline_vert_dtype = np.dtype([
 ])
 
 anim_curve_dtype = np.dtype([
-    ('name_range', np.uint32, 2),
+    ('bone', np.uint32, 1),
     ('pos_range', np.uint32, 2),
     ('rot_range', np.uint32, 2),
     ('scale_range', np.uint32, 2),
@@ -384,6 +386,7 @@ def export_rscn(context, out_name):
     str_map = {}
     skeleton_map = {}
     node_map = {}
+    bone_map = {}
 
     str_buf  = AppendBuffer(np.uint8)
     node_buf = AppendBuffer(node_dtype)
@@ -435,6 +438,8 @@ def export_rscn(context, out_name):
 
         bones = []
 
+        skeleton_index = skeleton_buf.len
+
         for bone in obj.pose.bones:
             rot_mat = conv_mat @ bone.matrix.to_3x3() @ conv_mat_inv
             rot_quat = rot_mat.to_quaternion()
@@ -447,6 +452,7 @@ def export_rscn(context, out_name):
             bone_name_range = get_interned_str(str_map, str_buf, norm_name(bone.name))
 
             bone_entry = np.zeros(1, dtype=bone_dtype)
+            bone_entry[0]['skeleton'] = skeleton_index
             bone_entry[0]['name_range'] = bone_name_range
             bone_entry[0]['parent'] = 0 # later
             bone_entry[0]['pos'] = conv_mat @ bone.head
@@ -465,15 +471,17 @@ def export_rscn(context, out_name):
         for depth, b, bone in bones:
             b[0]['parent'] = bone_offsets[bone.parent.name] if bone.parent else 0xffffffff
 
-        for b in bones:
-            bone_buf.append(b[1])
+        for depth, b, bone in bones:
+            bone_map[bone.name] = bone_buf.append(b)
 
         name_range = get_interned_str(str_map, str_buf, norm_name(obj.name))
 
         entry = np.zeros(1, dtype=skeleton_dtype)
         entry[0]['name_range'] = name_range
         entry[0]['bone_range'] = np.array((bone_start, len(bones)), dtype=np.uint32)
-        skeleton_map[obj.name] = skeleton_buf.append(entry)
+        index = skeleton_buf.append(entry)
+        assert index == skeleton_index
+        skeleton_map[obj.name] = index
 
     prof("Skeletons")
 
@@ -530,9 +538,8 @@ def export_rscn(context, out_name):
                         bone_curves[bone_name] = bone_curve
 
         anim_curve_offset = anim_curve_buf.len
+        skeleton_index = -1
         for name, curves in bone_curves.items():
-            bone_name_range = get_interned_str(str_map, str_buf, norm_name(name))
-
             for frame, value in curves['pos'].items():
                 curves['pos'][frame] = conv_mat_np @ value
             for frame, value in curves['rot'].items():
@@ -550,8 +557,17 @@ def export_rscn(context, out_name):
             rot_offset = anim_float4_frame_buf.append(rot_data)
             scale_offset = anim_float3_frame_buf.append(scale_data)
 
+            bone_index = -1
+            if name in bone_map:
+                bone_index = bone_map[name]
+                bone_skeleton_index = bone_buf.buffers[bone_index][0]['skeleton']
+                if skeleton_index != -1:
+                    assert bone_skeleton_index == skeleton_index
+                else:
+                    skeleton_index = bone_skeleton_index
+
             curve_entry = np.zeros(1, dtype=anim_curve_dtype)
-            curve_entry[0]['name_range'] = bone_name_range
+            curve_entry[0]['bone'] = bone_index
             curve_entry[0]['pos_range'] = np.array([pos_offset, len(pos_data)], dtype=np.uint32)
             curve_entry[0]['rot_range'] = np.array([rot_offset, len(rot_data)], dtype=np.uint32)
             curve_entry[0]['scale_range'] = np.array([scale_offset, len(scale_data)], dtype=np.uint32)
@@ -559,7 +575,10 @@ def export_rscn(context, out_name):
 
         name_range = get_interned_str(str_map, str_buf, norm_name(action.name))
 
+        # skeleton = skeleton_map
+
         entry = np.zeros(1, dtype=anim_dtype)
+        entry[0]['skeleton'] = skeleton_index
         entry[0]['name_range'] = name_range
         entry[0]['curve_range'] = np.array([anim_curve_offset, len(bone_curves)], dtype=np.uint32)
         anim_buf.append(entry)

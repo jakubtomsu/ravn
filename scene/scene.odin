@@ -8,7 +8,7 @@ import "core:os"
 import "base:intrinsics"
 
 MAGIC :: (u32('r') << 0) | (u32('s') << 8) | (u32('c') << 16) | (u32('n') << 24)
-VERSION :: 0
+VERSION :: 1
 
 INVALID_PARENT :: 0xffff_ffff
 
@@ -109,16 +109,12 @@ Skeleton :: struct #packed {
 }
 
 Bone :: struct #packed {
+    skeleton:   u32,
     name_range: [2]u32,
     parent:     u32,
     pos:        [3]f32,
     length:     f32,
     rot:        quaternion128,
-}
-
-Anim :: struct #packed {
-    name_range:  [2]u32,
-    curve_range: [2]u32,
 }
 
 Mesh_Vert :: struct #packed {
@@ -137,19 +133,14 @@ Skin_Vert :: struct #packed {
     weights: [4]u8,
 }
 
-Spline :: struct #packed {
-    name_range: [2]u32,
-    vert_range: [2]u32,
-}
-
-Spline_Vert :: struct #packed {
-    pos:  [3]f32,
-    rad:  f32,
-    tilt: f32,
+Anim :: struct #packed {
+    skeleton:       u32,
+    name_range:     [2]u32,
+    curve_range:    [2]u32,
 }
 
 Anim_Curve :: struct #packed {
-    name_range:  [2]u32,
+    bone:           u32,
     pos_range:   [2]u32,
     rot_range:   [2]u32,
     scale_range: [2]u32,
@@ -163,6 +154,18 @@ Anim_Float3_Frame :: struct #packed {
 Anim_Float4_Frame :: struct #packed {
     time:  u32,
     value: [4]f32,
+}
+
+
+Spline :: struct #packed {
+    name_range: [2]u32,
+    vert_range: [2]u32,
+}
+
+Spline_Vert :: struct #packed {
+    pos:  [3]f32,
+    rad:  f32,
+    tilt: f32,
 }
 
 load :: proc {
