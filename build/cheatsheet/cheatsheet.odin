@@ -27,7 +27,7 @@ Package_Entry :: struct {
 }
 
 main :: proc() {
-    context.logger = base.make_logger()
+    context.logger = log.create_console_logger()
     context.assertion_failure_proc = trace.assertion_failure_proc
 
     log.info("Running odin doc...")

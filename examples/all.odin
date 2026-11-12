@@ -26,6 +26,7 @@ main :: proc() {
 @(require) import "../imgui/imgui_impl_platform"
 @(require) import "../imgui/imgui_util"
 // @(require) import "../build"
+@(require) import "../build/cheatsheet"
 
 @(require) import audio_simple_example "audio_simple"
 @(require) import debugdraw_example "debugdraw"

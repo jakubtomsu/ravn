@@ -3,12 +3,12 @@
 
 ## Packages
 
-- [base](#base) - 63 procedures
+- [base](#base) - 62 procedures
 - [bvh](#bvh) - 18 procedures
 - [collision](#collision) - 43 procedures
 - [debugdraw](#debugdraw) - 32 procedures
 - [entities](#entities) - 19 procedures
-- [geometry](#geometry) - 41 procedures
+- [geometry](#geometry) - 39 procedures
 - [gpu](#gpu) - 71 procedures
 - [imgui](#imgui) - 1 procedures
 - [imgui_impl_gpu](#imgui_impl_gpu) - 5 procedures
@@ -25,7 +25,6 @@
 ### base.odin
 
 ```odin
-make_logger() -> runtime.Logger
 is_finite_f32(x: f32) -> bool // Quickly checks if x is not NaN or Inf
 is_finite_vec(v: [$N]f32) -> bool
 hash_fnv64a(data: []byte, seed: u64) -> u64
@@ -140,7 +139,7 @@ surface_area(min, max: [3]f32) -> f32
 ### collision.odin
 
 ```odin
-init(state: ^State, allocator := context.allocator)
+init(state: ^State = nil, allocator := context.allocator)
 shutdown()
 is_step_in_progress() -> bool
 get_step_state() -> ^Step_State
@@ -289,6 +288,19 @@ get_triangle_dist_sq(pos: [3]f32, tri: [3][3]f32) -> (dist: f32)
 get_triangle_dist_grad(pos: [3]f32, tri: [3][3]f32) -> (dist: f32, grad: [3]f32)
 ```
 
+### geometry_overlap.odin
+
+```odin
+test_point_vs_aabb(pos: [3]f32, min, max: [3]f32) -> bool
+test_point_vs_aabb_simd_single(pos: #simd[4]f32, min, _max: #simd[4]f32) -> bool
+test_point_vs_sphere(pos: [3]f32, center: [3]f32, rad: f32) -> bool
+test_point_vs_capsule(pos: [3]f32, points: [2][3]f32, rad: f32) -> bool
+test_sphere_vs_sphere(pos_a: [3]f32, rad_a: f32, pos_b: [3]f32, rad_b: f32) -> bool
+test_sphere_vs_box(pos: [3]f32, rad: f32, center, extent: [3]f32) -> bool
+test_sphere_vs_triangle(pos: [3]f32, rad: f32, tri: [3][3]f32) -> bool
+test_aabb_vs_aabb(a_min, a_max: [3]f32, b_min, b_max: [3]f32) -> bool
+```
+
 ### geometry_sweep.odin
 
 ```odin
@@ -310,21 +322,6 @@ sweep_sphere_vs_triangle(pos: [3]f32, move: [3]f32, rad: f32, tri: [3][3]f32, ra
 dot_simd(a, b: [3]#simd[LANES]f32) -> #simd[LANES]f32
 cross_simd(a, b: [3]#simd[LANES]f32) -> [3]#simd[LANES]f32
 length2_simd(a: [3]#simd[LANES]f32) -> #simd[LANES]f32
-approx_rsqrt(x: f32) -> f32
-approx_sqrt(x: f32) -> f32
-```
-
-### geometry_test.odin
-
-```odin
-test_point_vs_aabb(pos: [3]f32, min, max: [3]f32) -> bool
-test_point_vs_aabb_simd_single(pos: #simd[4]f32, min, _max: #simd[4]f32) -> bool
-test_point_vs_sphere(pos: [3]f32, center: [3]f32, rad: f32) -> bool
-test_point_vs_capsule(pos: [3]f32, points: [2][3]f32, rad: f32) -> bool
-test_sphere_vs_sphere(pos_a: [3]f32, rad_a: f32, pos_b: [3]f32, rad_b: f32) -> bool
-test_sphere_vs_box(pos: [3]f32, rad: f32, center, extent: [3]f32) -> bool
-test_sphere_vs_triangle(pos: [3]f32, rad: f32, tri: [3][3]f32) -> bool
-test_aabb_vs_aabb(a_min, a_max: [3]f32, b_min, b_max: [3]f32) -> bool
 ```
 
 ### geometry_voronoi.odin
@@ -344,7 +341,7 @@ init(state: ^State = nil, window: rawptr, allocator := context.allocator) -> boo
 shutdown()
 begin_frame() -> (ok: bool) // return value of false means skip frame
 end_frame(sync: bool = true, loc := #caller_location)
-make_graphics_pipeline_desc(ps: Shader_Handle, vs: Shader_Handle, bind_layouts: [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {}, vertex_layouts: [MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc, out_colors: []Texture_Format, out_depth: Texture_Format = .Invalid, blends: []Blend_Desc = {}, index_format: Index_Format = .Invalid, topo: Topology = .Triangles, cull: Cull_Mode = .None, fill: Fill_Mode = .Solid, depth_comparison: Comparison_Op = .Always, depth_write: bool = false, depth_bias: i32 = 0) -> (result: Graphics_Pipeline_Desc)
+make_graphics_pipeline_desc(ps: Shader_Handle, vs: Shader_Handle, bind_layouts: [dynamic; MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {}, vertex_layouts: [dynamic; MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc, color_formats: [dynamic; MAX_BOUND_RENDER_TEXTURES]Texture_Format, blends: [dynamic; MAX_BOUND_RENDER_TEXTURES]Blend_Desc = {}, index_format: Index_Format = .Invalid, topo: Topology = .Triangles, cull: Cull_Mode = .None, fill: Fill_Mode = .Solid, depth_format: Texture_Format = .Invalid, depth_comparison: Comparison_Op = .Always, depth_write: bool = false, depth_bias: i32 = 0) -> (result: Graphics_Pipeline_Desc)
 make_compute_pipeline_desc(cs: Shader_Handle, layouts: [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle) -> (result: Compute_Pipeline_Desc)
 create_bind_layout(handle: ^Bind_Layout_Handle, desc: Bind_Layout_Desc, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool) // Creates a binding layout used for bind groups and pipelines.
 create_bind_group(handle: ^Bind_Group_Handle, desc: Bind_Group_Desc, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
