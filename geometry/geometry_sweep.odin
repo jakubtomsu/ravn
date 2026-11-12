@@ -1,13 +1,14 @@
-// Swept shape intersection tests.
-// Swept point is the same as raycast.
-//
-// The move+range instead of traditional ray dir allows the procs to work both as ray and line intersection.
 #+vet shadowing
 package ravn_geometry
 
 import "core:math/linalg"
 import "base:intrinsics"
 import "core:simd/x86"
+
+// Swept shape intersection tests.
+// Swept point is the same as raycast.
+//
+// The move+range instead of traditional ray dir allows the procs to work both as ray and line intersection.
 
 LANES :: 8
 
@@ -20,7 +21,7 @@ sweep_point_vs_plane :: proc "contextless" (
     normal: [3]f32,
     dist:   f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     denom := linalg.vector_dot(normal, move)
     t = (dist - linalg.vector_dot(normal, pos)) * (1.0 / denom)
     ok = t >= 0 && t <= range && abs(denom) > 1e-10
@@ -34,7 +35,7 @@ sweep_point_vs_sphere :: proc "contextless" (
     center: [3]f32,
     rad:    f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     m := pos - center
     b := linalg.vector_dot(m, move)
     c := linalg.vector_length2(m) - rad * rad
@@ -47,6 +48,7 @@ sweep_point_vs_sphere :: proc "contextless" (
 
     t = -b - intrinsics.sqrt(discr)
     t *= 1.0 / move_len2
+    t = max(t, 0.0)
     ok = t <= range
 
     return ok ? t : range, ok
@@ -75,12 +77,10 @@ sweep_point_vs_sphere_simd :: proc "contextless" (
 
     t = -b - intrinsics.sqrt(discr)
     t *= move_len2_inv
+    t = intrinsics.simd_max(t, 0.0)
 
     ok &= intrinsics.simd_lanes_le(t, range)
-
-    t = intrinsics.simd_select(ok, t, range)
-
-    return t, ok
+    return intrinsics.simd_select(ok, t, range), ok
 }
 
 // NOTE: rays running exactly parallel to one of the planes return miss.
@@ -92,17 +92,16 @@ sweep_point_vs_aabb :: proc "contextless" (
     aabb_min:   [3]f32,
     aabb_max:   [3]f32,
     range:      f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     inv_move := 1.0 / move
 
     t1 := (aabb_min - pos) * inv_move
     t2 := (aabb_max - pos) * inv_move
 
-    tmin := max(min(t1.x, t2.x), min(t1.y, t2.y), min(t1.z, t2.z))
+    tmin := max(min(t1.x, t2.x), min(t1.y, t2.y), min(t1.z, t2.z), 0.0)
     tmax := min(max(t1.x, t2.x), max(t1.y, t2.y), max(t1.z, t2.z))
 
-    ok = tmax >= max(0.0, tmin) && tmin < range
-
+    ok = tmax >= tmin && tmin < range
     return ok ? tmin : range, ok
 }
 
@@ -114,18 +113,17 @@ sweep_point_vs_aabb_simd_single :: #force_inline proc "contextless" (
     aabb_min:   #simd[4]f32,
     aabb_max:   #simd[4]f32,
     range:      f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     t1 := (aabb_min - pos) * inv_move
     t2 := (aabb_max - pos) * inv_move
 
     mins := transmute([4]f32)intrinsics.simd_min(t1, t2)
     maxs := transmute([4]f32)intrinsics.simd_max(t1, t2)
-    tmin := max(mins.x, mins.y, mins.z)
+    tmin := max(mins.x, mins.y, mins.z, 0.0)
     tmax := min(maxs.x, maxs.y, maxs.z)
 
-    ok = tmax >= max(0.0, tmin) && tmin < range
-
-    return tmin, ok
+    ok = tmax >= tmin && tmin < range
+    return ok ? tmin : range, ok
 }
 
 
@@ -156,13 +154,9 @@ sweep_point_vs_aabb_simd :: proc "contextless" (
         ),
     )
 
-    ok =
-        intrinsics.simd_lanes_ge(tmax, intrinsics.simd_max(tmin, 0.0)) &
-        intrinsics.simd_lanes_lt(tmin, range)
-
-    t = intrinsics.simd_select(ok, tmin, range)
-
-    return t, ok
+    ok = intrinsics.simd_lanes_ge(tmax, intrinsics.simd_max(tmin, 0.0)) &
+         intrinsics.simd_lanes_lt(tmin, range)
+    return intrinsics.simd_select(ok, tmin, range), ok
 }
 
 @(require_results)
@@ -251,10 +245,12 @@ sweep_point_vs_triangle_slab :: proc "contextless" (
     ac := tri[2] - tri[0]
 
     normal := linalg.vector_cross3(ab, ac)
+    normal_len2 := linalg.length2(normal)
+    normal_inv_len2 := 1.0 / intrinsics.sqrt(normal_len2)
     denom := linalg.vector_dot(move, normal)
     inv_denom := 1.0 / denom
 
-    nrad := normal * approx_rsqrt(linalg.length2(normal)) * rad
+    nrad := normal * normal_inv_len2 * rad
     nrad = denom < 0 ? nrad : -nrad
 
     rel := tri[0] + nrad - pos
@@ -283,7 +279,7 @@ sweep_point_vs_uncapped_cylinder :: proc "contextless" (
     points: [2][3]f32,
     rad:    f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     d  := points[1] - points[0]
     m  := pos - points[0]
     dd := linalg.vector_length2(d)
@@ -300,8 +296,7 @@ sweep_point_vs_uncapped_cylinder :: proc "contextless" (
         return range, false
     }
 
-    // t = (-b - intrinsics.sqrt(discr)) / a
-    t = (-b - approx_sqrt(discr)) / a
+    t = max((-b - intrinsics.sqrt(discr)) / a, 0)
 
     curr_md := md + t * nd
     ok = t >= 0 && t <= range && curr_md >= 0 && curr_md <= dd
@@ -353,7 +348,7 @@ sweep_point_vs_cylinder :: proc "contextless" (
     points: [2][3]f32,
     rad:    f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     d := points[1] - points[0]
     m := pos - points[0]
     n := move * range
@@ -432,7 +427,7 @@ sweep_point_vs_capsule :: proc "contextless" (
     points: [2][3]f32,
     rad:    f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     d := points[1] - points[0]
     m := pos - points[0]
     n := move * range
@@ -507,7 +502,7 @@ sweep_sphere_vs_aabb :: proc "contextless" (
     aabb_min:   [3]f32,
     aabb_max:   [3]f32,
     range:      f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     move := move
     inv_move := 1.0 / move
     center := (aabb_min + aabb_max) * 0.5
@@ -516,10 +511,10 @@ sweep_sphere_vs_aabb :: proc "contextless" (
 
     t1 := (aabb_min - rad - pos) * inv_move
     t2 := (aabb_max + rad - pos) * inv_move
-    tmin := max(min(t1.x, t2.x), min(t1.y, t2.y), min(t1.z, t2.z))
+    tmin := max(min(t1.x, t2.x), min(t1.y, t2.y), min(t1.z, t2.z), 0.0)
     tmax := min(max(t1.x, t2.x), max(t1.y, t2.y), max(t1.z, t2.z))
 
-    if !(tmax >= max(0.0, tmin) && tmin < range) {
+    if !(tmax >= tmin && tmin < range) {
         return range, false
     }
 
@@ -564,7 +559,7 @@ sweep_sphere_vs_triangle :: proc "contextless" (
     rad:    f32,
     tri:    [3][3]f32,
     range:  f32 = 1,
-) -> (t: f32, ok: bool) #optional_ok #no_bounds_check {
+) -> (t: f32, ok: bool) #no_bounds_check {
     v01 := tri[1] - tri[0]
     v02 := tri[2] - tri[0]
 
@@ -662,36 +657,5 @@ length2_simd :: #force_inline proc "contextless" (a: [3]#simd[LANES]f32) -> #sim
     } else {
         aa := a * a
         return aa.x + aa.y + aa.z
-    }
-}
-
-
-@(require_results)
-approx_rsqrt :: #force_inline proc "contextless" (x: f32) -> f32 {
-    when ODIN_ARCH == .amd64 {
-        return _approx_rsqrt_scalar_sse(x)
-    } else {
-        return 1.0 / intrinsics.sqrt(x)
-    }
-}
-
-@(require_results)
-approx_sqrt :: #force_inline proc "contextless" (x: f32) -> f32 {
-    when ODIN_ARCH == .amd64 {
-        return _approx_sqrt_scalar_sse(x)
-    } else {
-        return intrinsics.sqrt(x)
-    }
-}
-
-when ODIN_ARCH == .amd64 {
-    @(require_results, enable_target_feature="sse")
-    _approx_rsqrt_scalar_sse :: proc "contextless" (x: f32) -> f32 {
-        return intrinsics.simd_extract(x86._mm_rsqrt_ss(x), 0)
-    }
-
-    @(require_results, enable_target_feature="sse")
-    _approx_sqrt_scalar_sse :: proc "contextless" (x: f32) -> f32 {
-        return x * intrinsics.simd_extract(x86._mm_rsqrt_ss(x), 0)
     }
 }

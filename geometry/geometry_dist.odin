@@ -2,7 +2,6 @@ package ravn_geometry
 
 import "base:intrinsics"
 import "core:math/linalg"
-import "../base"
 
 // https://iquilezles.org/articles/distgradfunctions3d/
 // https://iquilezles.org/articles/distfunctions/
