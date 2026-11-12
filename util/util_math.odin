@@ -303,7 +303,7 @@ _wrap_octahedral :: proc "contextless" (v: [2]f32) -> [2]f32 {
 encode_octahedral :: proc "contextless" (n: [3]f32) -> [2]f32 {
     n := n
     n /= (abs(n.x) + abs(n.y) + abs(n.z))
-    n.xy = n.z >= 0.0 ? n.xy : cast([2]f32)_wrap_octahedral(n.xy)
+    n.xy = n.z >= 0.0 ? n.xy : _wrap_octahedral(n.xy)
     return n.xy * 0.5 + 0.5
 }
 

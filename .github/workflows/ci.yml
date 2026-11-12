@@ -30,7 +30,7 @@ jobs:
         shell: cmd
         run: |
           set "PATH=%CD%\Odin;%PATH%"
-          odin check examples -define:GPU_BACKEND=Dummy -define:PLATFORM_BACKEND=Dummy
+          odin check examples -define:GPU_BACKEND=Dummy -define:PLATFORM_BACKEND=Dummy -vet-atomic-access -vet-cast -vet-nil-deref -vet-semicolon -vet-shadowing -vet-style -vet-unused -vet-unused-imports -vet-unused-variables -vet-uninitialized -vet-using-param -vet-using-stmt -vet-when-shadowing
           odin check examples -define:GPU_BACKEND=D3D11
           odin check examples -define:GPU_BACKEND=WGPU
           odin check examples -define:PLATFORM_BACKEND=SDL3

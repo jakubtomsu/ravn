@@ -383,7 +383,7 @@ when BACKEND == BACKEND_D3D11 {
             pShaderBytecodeWithInputSignature = raw_data(vs.data),
             BytecodeLength = uint(len(vs.data)),
             ppInputLayout = &result.il,
-        ));
+        ))
 
         result.desc = desc
         append(&_state.input_layouts, result)
@@ -1500,7 +1500,7 @@ when BACKEND == BACKEND_D3D11 {
         level: log.Level = .Error
         message := "none"
 
-        switch transmute(u32)res {
+        switch cast(u32)res {
         case 0:
             return true
 

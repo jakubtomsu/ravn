@@ -3,7 +3,6 @@ package ravn_geometry
 
 import "core:math/linalg"
 import "base:intrinsics"
-import "core:simd/x86"
 
 // Swept shape intersection tests.
 // Swept point is the same as raycast.
@@ -560,9 +559,6 @@ sweep_sphere_vs_triangle :: proc "contextless" (
     tri:    [3][3]f32,
     range:  f32 = 1,
 ) -> (t: f32, ok: bool) #no_bounds_check {
-    v01 := tri[1] - tri[0]
-    v02 := tri[2] - tri[0]
-
     t = range
 
     tri_t, uv, tri_ok := #force_inline sweep_point_vs_triangle_slab(pos, move, tri, rad, t)

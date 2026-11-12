@@ -3,8 +3,6 @@
 // This can be a starting point when writing a new backend from scratch.
 package ravn_platform
 
-import "base:runtime"
-
 when BACKEND == BACKEND_DUMMY {
 
     _State :: struct { _: u8 }

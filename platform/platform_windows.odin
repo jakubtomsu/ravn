@@ -697,7 +697,7 @@ when BACKEND == BACKEND_WINDOWS {
 
             if _WIN32_IS_HIGH_SURROGATE(ch) {
                 _state.prev_wm_char = ch
-                return 0;
+                return 0
             }
 
             buf: [2]windows.wchar_t
@@ -705,10 +705,10 @@ when BACKEND == BACKEND_WINDOWS {
 
             if _WIN32_IS_LOW_SURROGATE(ch) && _state.prev_wm_char != 0 {
                 buf = {_state.prev_wm_char, ch}
-                buf_len = 2;
+                buf_len = 2
             } else {
-                buf = {ch, 0};
-                buf_len = 1;
+                buf = {ch, 0}
+                buf_len = 1
             }
 
             _state.prev_wm_char = 0

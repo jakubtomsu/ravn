@@ -139,9 +139,9 @@ decode_frame :: proc(buf: ^Buffer, desc: ^Desc, sample_data: []i16) -> u32 {
         history := read_u64(buf)
         weights := read_u64(buf)
         for i in 0..<LMS_LEN {
-            desc.lms[c].history[i] = i32(transmute(i16)(u16(history >> 48)))
+            desc.lms[c].history[i] = i32(cast(i16)(u16(history >> 48)))
             history <<= 16
-            desc.lms[c].weights[i] = i32(transmute(i16)(u16(weights >> 48)))
+            desc.lms[c].weights[i] = i32(cast(i16)(u16(weights >> 48)))
             weights <<= 16
         }
     }

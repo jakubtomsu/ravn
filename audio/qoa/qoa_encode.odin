@@ -76,7 +76,7 @@ encode_frame :: proc(buf: ^Buffer, desc: ^Desc, sample_data: []i16, frame_len: i
         u64(desc.num_channels)   << 56 |
         u64(desc.sample_rate) << 32 |
         u64(frame_len)       << 16 |
-        u64(frame_size)
+        u64(frame_size),
     )
 
     for c in 0..<num_channels {

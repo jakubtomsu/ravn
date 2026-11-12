@@ -43,7 +43,7 @@ LanguageVersion :: enum u32 {
     _2025 = 2025,
     _2026 = 2026,
     LATEST = _2026,
-};
+}
 
 #assert(size_of(GlobalSessionDesc) == 80)
 GlobalSessionDesc :: struct {
@@ -84,7 +84,7 @@ Global_VTable :: struct {
         path: cstring,
         source: cstring,
         sourceSize: uint,
-        outDiagnostics: ^^IBlob = nil
+        outDiagnostics: ^^IBlob = nil,
     ) -> ^IModule,
 
     // Load a module from IR data.
@@ -705,7 +705,7 @@ HLSLToVulkanLayoutBindingKind :: enum i32 {
     ///
     /// ConstantBufferViews, CBuffer
     ConstantBuffer,
-};
+}
 
 LayoutRules :: enum u32 {
     DEFAULT,

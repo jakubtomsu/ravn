@@ -2,7 +2,6 @@
 package audio_wav
 
 import "core:log"
-import "base:runtime"
 
 RIFF_CHUNK_ID: [4]byte: "RIFF"
 FORMAT_CHUNK_ID: [4]byte: "fmt "

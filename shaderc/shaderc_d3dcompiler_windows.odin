@@ -100,7 +100,7 @@ _d3dcompiler_compile_hlsl_to_dxbc :: proc(
         return {}, false
     }
 
-    result = slice.clone((transmute([^]byte)binary->GetBufferPointer())[:binary->GetBufferSize()], allocator)
+    result = slice.clone((cast([^]byte)binary->GetBufferPointer())[:binary->GetBufferSize()], allocator)
 
 
     binary->Release()

@@ -643,7 +643,7 @@ get_sound_playing :: proc(handle: Sound_Handle) -> bool {
     if !ok {
         return false
     }
-    return bool(sound.playing)
+    return bool(intrinsics.atomic_load(&sound.playing))
 }
 
 set_sound_playing :: proc(handle: Sound_Handle, playing: bool) -> bool {
@@ -787,7 +787,7 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
         case .Used:
         }
 
-        if !sound.playing {
+        if !intrinsics.atomic_load(&sound.playing) {
             continue
         }
 
@@ -1068,7 +1068,7 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
     out_buf_index := 0
 
     for ; out_buf_index + 7 < len(out_buf_f32); out_buf_index += 8 {
-        vec_ptr := transmute(^#simd[8]f32)&out_buf_f32[out_buf_index]
+        vec_ptr := cast(^#simd[8]f32)&out_buf_f32[out_buf_index]
         vec := intrinsics.unaligned_load(vec_ptr)
         vec = fast_tanh_simd(vec)
         intrinsics.unaligned_store(vec_ptr, vec)
@@ -1169,7 +1169,7 @@ sample_base_signal :: proc(
 
     case .Raw_U8:
         if mono {
-            samples := (cast([^]u8)frame_bytes)[:frame_num][frame_range[0] : frame_range[1]]
+            samples := frame_bytes[:frame_num][frame_range[0] : frame_range[1]]
             time = _sample_signal_fallback(samples, out_buf, time, delta_range = delta_range, loop = loop)
         } else {
             samples := (cast([^][2]u8)frame_bytes)[:frame_num][frame_range[0] : frame_range[1]]
@@ -1542,7 +1542,7 @@ atomic_load_components_acquire_vec :: proc(v: ^$T/[$N]$V) -> (result: T) {
 }
 
 atomic_store_components_release_vec :: proc(dst: ^$T/[$N]$V, v: T) {
-    for &res, i in dst {
+    for _, i in dst {
         intrinsics.atomic_store_explicit(&dst[i], v[i], .Release)
     }
 }

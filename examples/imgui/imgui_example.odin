@@ -2,11 +2,9 @@ package ravn_imgui_example
 
 import "core:log"
 import "core:debug/trace"
-import "../../base"
 import "../../gpu"
 import "../../platform"
 import "../../imgui"
-import "../../imgui/imgui_impl_gpu"
 import "../../imgui/imgui_impl_platform"
 import "../../imgui/imgui_util"
 

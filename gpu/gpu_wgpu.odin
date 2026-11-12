@@ -27,7 +27,6 @@ when BACKEND == BACKEND_WGPU {
         surface:                wgpu.Surface,
         surface_texture:        wgpu.SurfaceTexture,
         surface_view:           wgpu.TextureView,
-        config:                 wgpu.SurfaceConfiguration,
         queue:                  wgpu.Queue,
         command_encoder:        wgpu.CommandEncoder,
         render_pass_encoder:    wgpu.RenderPassEncoder,
@@ -726,7 +725,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _resize_swapchain :: proc(window: rawptr, size: [2]i32) -> (ok: bool) {
-        _state.config = wgpu.SurfaceConfiguration {
+        wgpu.SurfaceConfigure(_state.surface, &wgpu.SurfaceConfiguration {
             nextInChain = &wgpu.SurfaceConfigurationExtras{
                 chain = { sType = .SurfaceConfigurationExtras, },
                 desiredMaximumFrameLatency = 1,
@@ -738,9 +737,7 @@ when BACKEND == BACKEND_WGPU {
             height      = u32(size.y),
             presentMode = .Fifo,
             alphaMode   = .Auto,
-        }
-
-        wgpu.SurfaceConfigure(_state.surface, &_state.config)
+        })
 
         if _state.surface == nil {
             return false

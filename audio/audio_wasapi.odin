@@ -2,7 +2,6 @@
 package ravn_audio
 
 import "core:log"
-import "../base"
 import "base:intrinsics"
 import "core:sys/windows"
 import "vendor:windows/wasapi"
@@ -57,7 +56,7 @@ when BACKEND == BACKEND_WASAPI {
                 device_format.SubFormat == wasapi.KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
         )
 
-        format := (cast(^wasapi.WAVEFORMATEXTENSIBLE)device_format)^
+        format := device_format^
         format.Samples.wValidBitsPerSample = 32
         format.Format.nChannels = 2
         format.dwChannelMask = {.FRONT_LEFT, .FRONT_RIGHT}
@@ -126,8 +125,8 @@ when BACKEND == BACKEND_WASAPI {
         _state.audio_client->Stop()
         windows.WaitForSingleObject(_state.thread, 2000)
         windows.CloseHandle(_state.thread)
-        _state.render_client->Release();
-        _state.audio_client->Release();
+        _state.render_client->Release()
+        _state.audio_client->Release()
         windows.CloseHandle(_state.buffer_event)
         windows.CoUninitialize()
     }
@@ -169,8 +168,6 @@ when BACKEND == BACKEND_WASAPI {
     _wasapi_thread_routine :: proc "system" (_: rawptr) -> windows.DWORD {
         context = _state.init_context
 
-        phase: f32
-
         for _state.running {
             assert(_state != nil)
 
@@ -185,7 +182,7 @@ when BACKEND == BACKEND_WASAPI {
 
     _wasapi_check :: proc(hr: windows.HRESULT, expr := #caller_expression, loc := #caller_location) -> bool {
         if !windows.SUCCEEDED(hr) {
-            log.errorf("WASAPI Error: %v (%x)", transmute(wasapi.Result)hr, transmute(u32)hr, location = loc)
+            log.errorf("WASAPI Error: %v (%x)", transmute(wasapi.Result)hr, cast(u32)hr, location = loc)
             return false
         }
         return true

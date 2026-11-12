@@ -6,14 +6,13 @@ import "core:math/linalg"
 import "core:debug/trace"
 import "core:time"
 import "../../debugdraw"
-import "../../base"
 import "../../gpu"
 import "../../platform"
 import "../../input"
 
 main :: proc() {
     context.logger = log.create_console_logger()
-    context.assertion_failure_proc = trace.assertion_failure_proc;
+    context.assertion_failure_proc = trace.assertion_failure_proc
 
     platform.init()
     defer platform.shutdown()

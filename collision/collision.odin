@@ -149,12 +149,12 @@ Contact :: struct {
 
 init :: proc(state: ^State = nil, allocator := context.allocator) {
     state := state
-    
+
     if state == nil {
         state = new(State, allocator)
         state.state_allocator = allocator
     }
-    
+
     _state = state
     _state.allocator = allocator
     base.pool_clear(&_state.arenas)
@@ -181,11 +181,11 @@ shutdown :: proc() {
             delete(arena.data, arena.backing)
         }
     }
-    
+
     if _state.state_allocator != {} {
         free(_state, _state.state_allocator)
     }
-    
+
     _state = nil
 }
 
@@ -518,7 +518,7 @@ add_mesh_shape :: proc(
     #any_int layer: u8 = 0,
     #any_int id:    u64 = 0,
 ) {
-    mesh, ok := get_mesh(handle)
+    _, ok := get_mesh(handle)
     if !ok {
         log.error("Invalid handle:", handle)
         return
@@ -585,8 +585,6 @@ collide_sphere :: proc(
     ITERS :: 2
     for _ in 0..<ITERS {
         for contact in contacts {
-            shape := &step.shape_data[contact.shape]
-
             normal_mass: f32 = 1.0 // / (1.0 / mass + 1.0 / shape.mass)
             // normal_vel := dot(vel - shape.vel, contact.normal)
 
@@ -618,10 +616,7 @@ collide_sphere_swept :: proc(
     step := get_step_state()
     range := linalg.length(vel * step.delta)
 
-    overlap_pos: [3]f32
-    contacts: []Contact
-
-    for i in 0..<max_sweeps {
+    for _ in 0..<max_sweeps {
         // overlap_pos, vel, contacts = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
         // if len(contacts) > 0 {
         //     pos = overlap_pos
@@ -1095,7 +1090,6 @@ generate_filtered_sphere_vs_triangle_contacts :: proc(
     void_set: [128][3]f32
     void_len: i32
 
-    inv_rad := 1.0 / rad
     void_loop: for sort in sort_info[:num_tris] {
         feature := features[sort.index]
         tri := triangles[sort.index]

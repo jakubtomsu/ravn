@@ -9,7 +9,6 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:path/filepath"
-import "../../base"
 
 OUT_PATH :: "CHEATSHEET.md"
 
@@ -57,7 +56,7 @@ main :: proc() {
             "-in-source-order",
             "-out:./cheatsheet.odin-doc",
 
-        }
+        },
     }, allocator = context.allocator)
 
     if err != nil {
@@ -101,7 +100,7 @@ main :: proc() {
 
     md := generate_cheatsheet_markdown(pkgs)
 
-    if err := os.write_entire_file(OUT_PATH, transmute([]byte)md); err != nil {
+    if write_err := os.write_entire_file(OUT_PATH, transmute([]byte)md); write_err != nil {
         log.errorf("failed to write '%s': %v", OUT_PATH, err)
         os.exit(1)
     }

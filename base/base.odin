@@ -1,7 +1,5 @@
 package ravn_base
 
-import "base:runtime"
-
 RELEASE :: #config(RELEASE, false)
 
 Handle_Gen :: u8

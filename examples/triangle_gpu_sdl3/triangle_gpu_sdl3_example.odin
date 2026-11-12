@@ -2,7 +2,6 @@ package triangle_gpu_sdl3_example
 
 import "core:debug/trace"
 import "core:log"
-import "../../base"
 import "../../gpu"
 import "../../shaderc"
 import sdl "vendor:sdl3"
@@ -55,7 +54,6 @@ main :: proc() {
     vbuf: gpu.Resource_Handle
     inst_buf: gpu.Resource_Handle
     layout: gpu.Bind_Layout_Handle
-    binds: gpu.Bind_Group_Handle
     pip: gpu.Graphics_Pipeline_Handle
     ps: gpu.Shader_Handle
     vs: gpu.Shader_Handle
@@ -72,13 +70,6 @@ main :: proc() {
         {kind=.Resource_Texture_2D, stages={.Pixel}},
         {kind=.Sampler, stages={.Pixel}},
     }) or_else panic("layout")
-
-    // gpu.create_bind_group(&binds, {
-    //     layout = layout,
-    //     slots = {
-    //         {index = 0, resource = vbuf},
-    //     },
-    // }) or_else panic("binds")
 
     gpu.create_shader(&ps, ps_blob, .Pixel) or_else panic("ps")
     gpu.create_shader(&vs, vs_blob, .Vertex) or_else panic("vs")
@@ -126,7 +117,6 @@ main :: proc() {
             colors = {0 = {resource = gpu.SWAPCHAIN_HANDLE, clear_mode = .Clear, clear_val = {0.01, 0.1, 0.2, 1}}},
         })
 
-        // gpu.set_bind_group(0, binds)
         gpu.set_graphics_pipeline(pip)
         gpu.set_vertex_buffer(0, vbuf)
         gpu.set_vertex_buffer(1, inst_buf)

@@ -39,7 +39,6 @@ get_box_dist_grad :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: [3]f3
     g := max(w.x, w.y, w.z)
     q := linalg.max(w, 0.0)
     l := linalg.vector_length(q)
-    f: [3]f32
     if g > 0 {
         dist = l
         grad = q / l

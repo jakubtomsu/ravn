@@ -70,7 +70,7 @@ init_prims :: proc(bvh: ^BVH, prims: [][2][3]f32) {
         bvh.nodes_used = 2
         bvh.nodes[0] = {
             first = 0,
-            len = i32(len(prims))
+            len = i32(len(prims)),
         }
     } else {
         bvh.nodes[0] = {
@@ -217,8 +217,6 @@ build_sah :: proc(bvh: ^BVH, curr_index := 0) #no_bounds_check {
             p0 := bvh.prims[bvh.indices[int(node.first) + p0_offs]]
 
             p0_center := (p0[0] + p0[1]) * 0.5
-
-            costs: [3]f32
 
             left_mins: [3][3]f32 = max(f32)
             left_maxs: [3][3]f32 = min(f32)

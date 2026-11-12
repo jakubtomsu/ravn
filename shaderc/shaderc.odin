@@ -154,7 +154,8 @@ compile_from_source :: proc(
             }
 
             d3d_opts := opts
-            result, ok = _d3dcompiler_compile_hlsl_to_dxbc(name, string(hlsl), opts, allocator = allocator)
+            d3d_opts.include_proc = nil
+            result, ok = _d3dcompiler_compile_hlsl_to_dxbc(name, string(hlsl), d3d_opts, allocator = allocator)
         } else {
             log.error("Cannot compile to DXBC, d3dcompiler not available on this platform")
             return nil, false
