@@ -266,7 +266,7 @@ when BACKEND == BACKEND_D3D11 {
             case .Sampler:
                 result.smp_stages += slot.stages
 
-            case .Constants, .Constants_Dynamic:
+            case .Constants:
                 result.cbuf_stages += slot.stages
 
             case .Resource_Buffer,
@@ -703,7 +703,7 @@ when BACKEND == BACKEND_D3D11 {
 
     _create_constants :: proc(id: base.Debug_ID, desc: Constants_Desc) -> (result: _Resource_State, ok: bool) {
         d3d_desc := d3d11.BUFFER_DESC{
-            ByteWidth = u32(desc.item_size * desc.item_num),
+            ByteWidth = u32(desc.size),
             Usage = .DYNAMIC,
             BindFlags = {.CONSTANT_BUFFER},
             CPUAccessFlags = {.WRITE},
@@ -1033,14 +1033,16 @@ when BACKEND == BACKEND_D3D11 {
         if .Compute in shaders do _state.device_context->CSSetSamplers(StartSlot = u32(start_slot), NumSamplers = u32(len(smps)), ppSamplers = raw_data(smps))
     }
 
-    _set_constants :: proc(shaders: bit_set[Shader_Kind], cbufs: []^d3d11.IBuffer, offset_starts: []u32, offset_nums: []u32, start_slot: i32) {
+    _set_constants :: proc(shaders: bit_set[Shader_Kind], cbufs: []^d3d11.IBuffer, const_firsts: []u32, const_nums: []u32, start_slot: i32) {
+        assert(len(const_firsts) >= len(cbufs))
+        assert(len(const_nums) >= len(cbufs))
         if .Vertex in shaders {
             _state.device_context->VSSetConstantBuffers1(
                 StartSlot = u32(start_slot),
                 NumBuffers = u32(len(cbufs)),
                 ppConstantBuffers = raw_data(cbufs),
-                pFirstConstant = raw_data(offset_starts),
-                pNumConstants = raw_data(offset_nums),
+                pFirstConstant = raw_data(const_firsts),
+                pNumConstants = raw_data(const_nums),
             )
         }
 
@@ -1049,8 +1051,8 @@ when BACKEND == BACKEND_D3D11 {
                 StartSlot = u32(start_slot),
                 NumBuffers = u32(len(cbufs)),
                 ppConstantBuffers = raw_data(cbufs),
-                pFirstConstant = raw_data(offset_starts),
-                pNumConstants = raw_data(offset_nums),
+                pFirstConstant = raw_data(const_firsts),
+                pNumConstants = raw_data(const_nums),
             )
         }
 
@@ -1059,8 +1061,8 @@ when BACKEND == BACKEND_D3D11 {
                 StartSlot = u32(start_slot),
                 NumBuffers = u32(len(cbufs)),
                 ppConstantBuffers = raw_data(cbufs),
-                pFirstConstant = raw_data(offset_starts),
-                pNumConstants = raw_data(offset_nums),
+                pFirstConstant = raw_data(const_firsts),
+                pNumConstants = raw_data(const_nums),
             )
         }
 
@@ -1226,7 +1228,9 @@ when BACKEND == BACKEND_D3D11 {
         _unbind_samplers({.Vertex, .Pixel, .Compute})
     }
 
-    _set_bind_group :: proc(slot: int, bind_group: ^Bind_Group_State, offsets: []u32) {
+    _set_bind_group :: proc(slot: int, bind_group: ^Bind_Group_State, constants_offsets: []u32) {
+        assert(len(constants_offsets) == len(bind_group.consts))
+
         if len(bind_group.smps) > 0 {
             _set_samplers(bind_group.smp_stages, bind_group.smps[:], start_slot = i32(MAX_BIND_GROUP_SAMPLERS * slot))
         }
@@ -1236,26 +1240,22 @@ when BACKEND == BACKEND_D3D11 {
         }
 
         if len(bind_group.cbufs) > 0 {
-            offset_starts: [MAX_BIND_GROUP_CONSTANTS]u32
-            offset_nums:   [MAX_BIND_GROUP_CONSTANTS]u32
+            const_firsts: [MAX_BIND_GROUP_CONSTANTS]u32
+            const_nums:   [MAX_BIND_GROUP_CONSTANTS]u32
 
-            index := 0
-            dyn_index := 0
-            for _, i in bind_group.consts {
-                offset_nums[index] = u32(bind_group.consts_sizes[i]) / 4
-                if i in bind_group.consts_dyn {
-                    assert(offsets[dyn_index] % 16 == 0)
-                    offset_starts[dyn_index] = offsets[dyn_index] / 16
-                }
-                index += 1
+            for offset, i in constants_offsets {
+                size := u32(bind_group.consts_sizes[i])
+                assert(size % 16 == 0)
+                const_firsts[i] = offset / 16
+                const_nums[i] = size / 4
             }
 
             _set_constants(
                 bind_group.cbuf_stages,
                 bind_group.cbufs[:],
                 start_slot = i32(MAX_BIND_GROUP_CONSTANTS * slot),
-                offset_starts = offset_starts[:],
-                offset_nums = offset_nums[:],
+                const_firsts = const_firsts[:],
+                const_nums = const_nums[:],
             )
         }
 

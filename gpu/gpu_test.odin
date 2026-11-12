@@ -86,7 +86,7 @@ _test_gpu :: proc(t: ^testing.T) {
         }}))
 
         testing.expect(t, create_bind_layout(&layout_comp, {
-            {kind = .Constants_Dynamic, stages = {.Compute}},
+            {kind = .Constants, stages = {.Compute}},
             {kind = .Resource_Buffer, stages = {.Compute}},
             // {kind = .RW_Resource_Texture_2D, stages = {.Compute}, format = .R_U32},
         }))

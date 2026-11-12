@@ -150,7 +150,7 @@ Instance :: struct {
 }
 
 @(rodata)
-_shader_code := #load("../../data/ravn.hlsli", string) + `
+_shader_code := `
 struct Vertex {
     float4 pos : TEXCOORD0;
     float4 col : TEXCOORD1;

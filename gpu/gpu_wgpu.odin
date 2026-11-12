@@ -199,7 +199,7 @@ when BACKEND == BACKEND_WGPU {
 
             log.debugf("WebGPU limits: %v", limits)
 
-            _state.uniform_offset_align = limits.minUniformBufferOffsetAlignment
+            assert(limits.minUniformBufferOffsetAlignment % CONSTANT_BUFFER_DYNAMIC_ALIGNMENT >= 0)
 
             _state.init_done = true
 
@@ -386,8 +386,6 @@ when BACKEND == BACKEND_WGPU {
             case .Sampler:
                 entry.sampler = wgpu.SamplerBindingLayout{type = .Filtering}
             case .Constants:
-                entry.buffer = wgpu.BufferBindingLayout{type = wgpu.BufferBindingType.Uniform}
-            case .Constants_Dynamic:
                 entry.buffer = wgpu.BufferBindingLayout{type = wgpu.BufferBindingType.Uniform, hasDynamicOffset = true}
             case .Resource_Buffer:
                 entry.buffer = wgpu.BufferBindingLayout{type = .ReadOnlyStorage}
@@ -446,7 +444,7 @@ when BACKEND == BACKEND_WGPU {
                     base.assert_id(id, false)
                 case .Constants:
                     entry.buffer = res.buf
-                    entry.size = u64(res.consts_desc.item_size)
+                    entry.size = u64(res.consts_desc.size)
                 case .Buffer:
                     base.assert_id(id, res.buf_desc.size % 4 == 0)
                     entry.size = u64(res.buf_desc.size)
@@ -748,12 +746,7 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _create_constants :: proc(id: base.Debug_ID, desc: Constants_Desc) -> (result: _Resource_State, ok: bool) {
-        size: u64
-        if desc.item_num > 1 {
-            size = u64(runtime.align_forward_int(int(desc.item_size), int(_state.uniform_offset_align))) * u64(desc.item_num)
-        } else {
-            size = u64(desc.item_size) * u64(desc.item_num)
-        }
+        size := u64(desc.size) * u64(desc.num)
 
         result.buf = wgpu.DeviceCreateBuffer(_state.device, &wgpu.BufferDescriptor{
             label = base.get_debug_id_name(id),
@@ -1171,33 +1164,12 @@ when BACKEND == BACKEND_WGPU {
     }
 
     _update_constants :: proc(res: ^Resource_State, data: []u8) {
-        if res.consts_desc.item_num == 1 {
-            wgpu.QueueWriteBuffer(_state.queue,
-                res.buf,
-                bufferOffset = 0,
-                data = raw_data(data),
-                size = uint(len(data)),
-            )
-        } else {
-            // Must respect alignment for dynamic offsets.
-            // NOTE: is many QueueWriteBuffer calls better than a single big with our own preallocated buffer?
-
-            item_size := int(res.consts_desc.item_size)
-            base.assert_id(res.id, len(data) % item_size == 0)
-
-            num_items := len(data) / item_size
-
-            aligned_size := runtime.align_forward_int(item_size, int(_state.uniform_offset_align))
-
-            for i in 0..<num_items {
-                wgpu.QueueWriteBuffer(_state.queue,
-                    res.buf,
-                    bufferOffset = u64(aligned_size * i),
-                    data = &data[item_size * i],
-                    size = uint(item_size),
-                )
-            }
-        }
+        wgpu.QueueWriteBuffer(_state.queue,
+            res.buf,
+            bufferOffset = 0,
+            data = raw_data(data),
+            size = uint(len(data)),
+        )
     }
 
     _update_texture_2d :: proc(res: ^Resource_State, data: []byte, slice: i32) {
@@ -1226,7 +1198,7 @@ when BACKEND == BACKEND_WGPU {
         )
     }
 
-    _set_bind_group :: proc(slot: int, bind_group: ^Bind_Group_State, offsets: []u32) {
+    _set_bind_group :: proc(slot: int, bind_group: ^Bind_Group_State, constants_offsets: []u32) {
         switch _state.encoder.mode {
         case .None:
             base.assert_id(bind_group.id, false)
@@ -1235,14 +1207,14 @@ when BACKEND == BACKEND_WGPU {
                 _state.render_pass_encoder,
                 groupIndex = u32(slot),
                 group = bind_group.bg,
-                dynamicOffsets = offsets[:],
+                dynamicOffsets = constants_offsets[:],
             )
         case .Compute:
             wgpu.ComputePassEncoderSetBindGroup(
                 _state.compute_pass_encoder,
                 groupIndex = u32(slot),
                 group = bind_group.bg,
-                dynamicOffsets = offsets[:],
+                dynamicOffsets = constants_offsets[:],
             )
         }
     }

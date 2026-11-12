@@ -135,12 +135,12 @@ Resource_State :: struct #all_or_none {
     id:                 base.Debug_ID,
 }
 
-Constants_Desc :: struct {
-    item_size:  i32,
-    item_num:   i32,
+Constants_Desc :: struct #all_or_none {
+    size:   i32,
+    num:    i32,
 }
 
-Texture_Desc :: struct {
+Texture_Desc :: struct #all_or_none {
     size:               [3]i32,
     format:             Texture_Format,
     usage:              Usage,
@@ -153,7 +153,7 @@ Texture_Flag :: enum u8 {
     RW_Resource,
 }
 
-Buffer_Desc :: struct {
+Buffer_Desc :: struct #all_or_none {
     size:   i32,
     stride: u16,
     kind:   Buffer_Kind,
@@ -168,9 +168,8 @@ Bind_Layout_State :: struct #all_or_none {
 
 Bind_Group_State :: struct #all_or_none {
     using native:   _Bind_Group_State,
-    consts:         [MAX_BIND_GROUP_CONSTANTS]Resource_Handle,
+    consts:         [dynamic; MAX_BIND_GROUP_CONSTANTS]Resource_Handle,
     consts_sizes:   [MAX_BIND_GROUP_CONSTANTS]u16,
-    consts_dyn:     bit_set[0..<MAX_BIND_GROUP_CONSTANTS],
     id:             base.Debug_ID,
 }
 
@@ -192,7 +191,7 @@ Graphics_Pipeline_Desc :: struct #align(64) #all_or_none {
 }
 
 // Layout of a single contiguous vertex data channel
-Vertex_Layout_Desc :: struct {
+Vertex_Layout_Desc :: struct #all_or_none {
     slots:  [MAX_VERTEX_LAYOUT_SLOTS]Vertex_Format,
     mode:   Vertex_Step_Mode,
 }
@@ -202,7 +201,7 @@ Vertex_Step_Mode :: enum u8 {
     Instance,
 }
 
-Compute_Pipeline_Desc :: struct {
+Compute_Pipeline_Desc :: struct #all_or_none {
     cs:                 Shader_Handle,
     bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
 }
@@ -212,7 +211,6 @@ Bind_Layout_Desc :: [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]Bind_Layout_Slot_Desc
 Bind_Layout_Slot_Kind :: enum u8 {
     Sampler,
     Constants,
-    Constants_Dynamic,
     Resource_Buffer,
     Resource_Texture_2D,
     Resource_Texture_2D_Array,
@@ -230,7 +228,7 @@ Bind_Layout_Slot_Desc :: struct {
 }
 
 // Describes a full set of resources accessible to a pipeline
-Bind_Group_Desc :: struct {
+Bind_Group_Desc :: struct #all_or_none {
     layout: Bind_Layout_Handle,
     slots:  [dynamic; NUM_TOTAL_BIND_GROUP_SLOTS]Bind_Group_Slot_Desc,
 }
@@ -270,7 +268,13 @@ Buffer_Kind :: enum u8 {
     Index,
 }
 
-Sampler_Desc :: struct {
+Mapped_Data :: struct #all_or_none {
+    ptr:            rawptr,
+    row_pitch:      u32,
+    depth_pitch:    u32,
+}
+
+Sampler_Desc :: struct #all_or_none {
     filter:         bit_set[Filter],
     bounds:         [3]Texture_Bounds,
     comparison:     Comparison_Op,
@@ -281,7 +285,7 @@ Sampler_Desc :: struct {
 }
 
 // Note: zero value of this structure means no blending
-Blend_Desc :: struct {
+Blend_Desc :: struct #all_or_none {
     src_color:  Blend_Factor,
     dst_color:  Blend_Factor,
     src_alpha:  Blend_Factor,
@@ -371,12 +375,6 @@ Usage :: enum u8 {
     Dynamic,
     // For GPU->CPU texture readback
     Staging,
-}
-
-Mapped_Data :: struct {
-    ptr:            rawptr,
-    row_pitch:      u32,
-    depth_pitch:    u32,
 }
 
 Topology :: enum u8 {
@@ -539,6 +537,7 @@ make_sampler_desc :: proc(
     mip_max:        f32 = 10,
     mip_bias:       f32 = 0,
     max_aniso:      i32 = 1,
+    comparison:     Comparison_Op = .Always,
 ) -> Sampler_Desc {
     return {
         filter = filter,
@@ -547,6 +546,7 @@ make_sampler_desc :: proc(
         mip_max = mip_max,
         mip_bias = mip_bias,
         max_aniso = u8(max_aniso),
+        comparison = comparison,
     }
 }
 
@@ -806,7 +806,6 @@ create_bind_group :: proc(
         native = {},
         consts = {},
         consts_sizes = {},
-        consts_dyn = {},
         id = id,
     }
 
@@ -816,14 +815,12 @@ create_bind_group :: proc(
         return false
     }
 
-    for slot, i in desc.slots {
+    for slot in desc.slots {
         res := _get_resource(slot.resource) or_continue
         if res.kind == .Constants {
-            state.consts[i] = slot.resource
-            state.consts_sizes[i] = u16(res.consts_desc.item_size)
-            if res.consts_desc.item_num > 1 {
-                state.consts_dyn += {i}
-            }
+            index := len(state.consts)
+            append(&state.consts, slot.resource)
+            state.consts_sizes[index] = u16(res.consts_desc.size)
         }
     }
 
@@ -929,30 +926,33 @@ create_shader :: proc(
 
 // MARK: Create Resources
 
+CONSTANT_BUFFER_ALIGNMENT :: 16
+CONSTANT_BUFFER_DYNAMIC_ALIGNMENT :: 256
+
 @(require_results)
 create_constants :: proc(
-    handle:     ^Resource_Handle,
-    item_size:  i32,
-    item_num:   i32 = 1, // set above 1 to enable multi const buffers with dynamic offsets.
-    name        := #caller_expression(handle),
-    loc         := #caller_location,
+    handle: ^Resource_Handle,
+    size:   i32, // Size of a single element
+    num:    i32 = 1, // Lets you specify non zero offsets when setting a bind group.
+    name    := #caller_expression(handle),
+    loc     := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
     id := base.create_debug_id(name, loc, _state.allocator)
     defer if !ok do base.destroy_debug_id(&id, _state.allocator)
 
-    base.assert_id(id, item_size > 0)
-    base.assert_id(id, item_num >= 1)
-    base.assert_id(id, item_size < MAX_CONSTANT_BUFFER_SIZE)
-    base.assert_id(id, item_size % 16 == 0)
+    base.assert_id(id, size >= 1)
+    base.assert_id(id, num >= 1)
+    base.assert_id(id, size * num <= MAX_CONSTANT_BUFFER_SIZE)
+    base.assert_id(id, size % CONSTANT_BUFFER_ALIGNMENT == 0)
 
-    if item_num > 1 {
-        base.assert_id(id, item_size % 256 == 0, "Dynamic constant buffers must be aligned to 256 bytes due to hardware reasons")
+    if num > 1 {
+        base.assert_id(id, size % CONSTANT_BUFFER_DYNAMIC_ALIGNMENT == 0)
     }
 
     desc := Constants_Desc{
-        item_size = item_size,
-        item_num = item_num,
+        size = size,
+        num = num,
     }
 
     _find_free_or_destroy_existing(id, &_state.resources, handle, _destroy_resource_state) or_return
@@ -1348,57 +1348,76 @@ end_graphics_pass :: proc() {
     _state.encoder = {}
 }
 
-set_bind_group :: proc(#any_int slot: int, handle: Bind_Group_Handle, offsets: []u32 = nil) {
+// constants_indices: specify index of which constant to use, per each bound constant buffer.
+set_bind_group :: proc(#any_int slot: int, handle: Bind_Group_Handle, constants_indices: []u32 = nil) {
     assert(_state != nil)
-    assert(_state.in_frame)
-    assert(_state.encoder.mode != .None)
-    assert(handle != {})
-    assert(slot >= 0)
-    assert(slot < MAX_PIPELINE_BIND_GROUPS)
     bind_group, bind_group_ok := _get_bind_group(handle)
     assert(bind_group_ok)
-    assert(len(offsets) == card(bind_group.consts_dyn), "Number of offsets doesn't match number of dynamic cbufs")
-    _set_bind_group(slot, bind_group, offsets)
+    base.assert_id(bind_group.id, _state.in_frame)
+    base.assert_id(bind_group.id, _state.encoder.mode != .None)
+    base.assert_id(bind_group.id, handle != {})
+    base.assert_id(bind_group.id, slot >= 0)
+    base.assert_id(bind_group.id, slot < MAX_PIPELINE_BIND_GROUPS)
+    base.assert_id(bind_group.id, len(constants_indices) <= len(bind_group.consts), "Too many constants indices")
+
+    for index, i in constants_indices {
+        cbuf, cbuf_ok := _get_resource(bind_group.consts[i])
+        base.assert_id(bind_group.id, cbuf_ok)
+        base.assert_id(bind_group.id, cbuf.kind == .Constants)
+        base.assert_id(bind_group.id, int(index) < int(cbuf.consts_desc.num), "Index out of bounds for constants")
+    }
+
+    offsets: [MAX_BIND_GROUP_CONSTANTS]u32
+
+    for index, i in constants_indices {
+        offsets[i] = index * u32(bind_group.consts_sizes[i])
+    }
+
+    _set_bind_group(
+        slot = slot,
+        bind_group = bind_group,
+        constants_offsets = offsets[:len(bind_group.consts)],
+    )
 }
 
 set_vertex_buffer :: proc(slot: int, handle: Resource_Handle, #any_int offset: int = 0) {
     assert(_state != nil)
-    assert(_state.in_frame)
-    assert(_state.encoder.mode == .Graphics)
-    assert(handle != {})
     buf, buf_ok := _get_resource(handle)
     assert(buf_ok)
+    base.assert_id(buf.id, _state.in_frame)
+    base.assert_id(buf.id, _state.encoder.mode == .Graphics)
+    base.assert_id(buf.id, handle != {})
     base.assert_id(buf.id, buf.kind == .Buffer)
     _set_vertex_buffer(slot, buf, offset)
 }
 
 set_index_buffer :: proc(handle: Resource_Handle, format: Index_Format, #any_int offset: int = 0) {
     assert(_state != nil)
-    assert(_state.in_frame)
-    assert(_state.encoder.mode == .Graphics)
-    assert(handle != {})
-    assert(format != .Invalid)
     buf, buf_ok := _get_resource(handle)
     assert(buf_ok)
+    base.assert_id(buf.id, _state.in_frame)
+    base.assert_id(buf.id, _state.encoder.mode == .Graphics)
+    base.assert_id(buf.id, handle != {})
+    base.assert_id(buf.id, format != .Invalid)
     base.assert_id(buf.id, buf.kind == .Buffer)
     _state.encoder.graphics_index_format = format
     _set_index_buffer(buf, format, offset)
 }
 
-set_graphics_pipeline :: proc(handle: Graphics_Pipeline_Handle) {
+set_graphics_pipeline :: proc(handle: Graphics_Pipeline_Handle, loc := #caller_location) {
     assert(_state != nil)
-    assert(_state.in_frame)
-    assert(_state.encoder.mode == .Graphics)
     if _state.encoder.graphics_pipeline == handle {
         return
     }
 
     pip, pip_ok := _get_graphics_pipeline(handle)
-
     if !pip_ok {
-        log.error("Invalid handle:", handle)
+        log.error("Invalid handle:", handle, location = loc)
         return
     }
+
+    base.assert_id(pip.id, _state.in_frame)
+    base.assert_id(pip.id, _state.encoder.mode == .Graphics)
 
     validate_graphics_pipeline_desc(pip.id, pip.desc)
     validate_graphics_pipeline_for_pass(pip.id, pip.desc, _state.encoder.graphics_pass_desc)
@@ -1461,15 +1480,10 @@ update_constants :: proc(handle: Resource_Handle, data: []byte, loc := #caller_l
         return
     }
 
-    assert(res.kind == .Constants, loc = loc)
-    assert(len(data) <= int(res.consts_desc.item_size) * int(res.consts_desc.item_num), loc = loc)
-    assert(len(data) % int(res.consts_desc.item_size) == 0, loc = loc)
-    assert(res.consts_desc.item_num >= 1, loc = loc)
+    base.assert_id(res.id, res.kind == .Constants, loc = loc)
+    base.assert_id(res.id, len(data) == int(res.consts_desc.size) * int(res.consts_desc.num), loc = loc)
 
-    data_clone := make([]byte, len(data), context.temp_allocator)
-    copy(data_clone, data)
-
-    _update_constants(res, data_clone)
+    _update_constants(res, data)
 }
 
 // "buffers" can be multiple separate slices of CPU memory, written consecutively to the GPU memory.
@@ -1478,16 +1492,17 @@ update_constants :: proc(handle: Resource_Handle, data: []byte, loc := #caller_l
 // compared to always allocating a temp buffer to combine the writes.
 update_buffer :: proc(handle: Resource_Handle, offset := 0, buffers: ..[]byte, loc := #caller_location) -> bool {
     assert(_state != nil)
-    assert(_state.in_frame)
-    assert(_state.encoder.mode == .None, "You must do all buffer updates outside passes", loc = loc)
-
-    if len(buffers) == 0 {
-        return false
-    }
 
     res, res_ok := _get_resource(handle)
     if !res_ok {
         log.error("Invalid handle:", handle)
+        return false
+    }
+
+    base.assert_id(res.id, _state.in_frame)
+    base.assert_id(res.id, _state.encoder.mode == .None, "You must do all buffer updates outside passes", loc = loc)
+
+    if len(buffers) == 0 {
         return false
     }
 
@@ -1496,11 +1511,11 @@ update_buffer :: proc(handle: Resource_Handle, offset := 0, buffers: ..[]byte, l
         total_len += len(buf)
     }
 
-    assert(res.kind == .Buffer, loc = loc)
-    assert(total_len <= int(res.buf_desc.size), loc = loc)
-    assert(res.buf_desc.usage != .Immutable, loc = loc)
+    base.assert_id(res.id, res.kind == .Buffer, loc = loc)
+    base.assert_id(res.id, total_len <= int(res.buf_desc.size), loc = loc)
+    base.assert_id(res.id, res.buf_desc.usage != .Immutable, loc = loc)
     if res.buf_desc.usage == .Dynamic {
-        assert(offset == 0, "Dynamic buffers must be written in one go")
+        base.assert_id(res.id, offset == 0, "Dynamic buffers must be written in one go")
     }
 
     _update_buffer(res, offset, buffers)
@@ -1757,10 +1772,6 @@ validate_bind_group_desc :: proc(id: base.Debug_ID, desc: Bind_Group_Desc, loc :
             res, res_ok := _get_resource(slot.resource)
             base.assert_id(id, res_ok, "Bind_Group slot references an invalid resource", loc = loc)
             base.assert_id(id, res.kind == _bind_layout_slot_resource_kind(layout_slot.kind), "Bound resource kind does not match the layout slot", loc = loc)
-
-            if layout_slot.kind == .Constants_Dynamic {
-                base.assert_id(id, res.consts_desc.item_num > 1, "A Constants_Dynamic slot expects a multi-item constant buffer", loc = loc)
-            }
         }
     }
 }
@@ -1945,11 +1956,8 @@ _bind_layout_slot_requires_format :: proc(kind: Bind_Layout_Slot_Kind) -> bool {
 @(require_results)
 _bind_layout_slot_resource_kind :: proc(kind: Bind_Layout_Slot_Kind) -> Resource_Kind {
     switch kind {
-    case .Sampler:
-        return .Invalid
-
-    case .Constants, .Constants_Dynamic:
-        return .Constants
+    case .Sampler:      return .Invalid
+    case .Constants:    return .Constants
 
     case .Resource_Buffer, .RW_Resource_Buffer:
         return .Buffer
