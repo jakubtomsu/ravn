@@ -189,7 +189,6 @@ when BACKEND == BACKEND_D3D11 {
 
         _d3d11_check(id, dxgi_adapter->GetParent(dxgi.IFactory2_UUID, cast(^rawptr)&_state.dxgi_factory)) or_return
 
-        // TODO: investigate more
         _d3d11_check(id, dxgi_device->SetMaximumFrameLatency(1)) or_return
 
         if !RELEASE {

@@ -727,13 +727,17 @@ when BACKEND == BACKEND_WGPU {
 
     _resize_swapchain :: proc(window: rawptr, size: [2]i32) -> (ok: bool) {
         _state.config = wgpu.SurfaceConfiguration {
+            nextInChain = &wgpu.SurfaceConfigurationExtras{
+                chain = { sType = .SurfaceConfigurationExtras, },
+                desiredMaximumFrameLatency = 1,
+            },
             device      = _state.device,
             usage       = { .RenderAttachment },
             format      = .BGRA8Unorm,
             width       = u32(size.x),
             height      = u32(size.y),
             presentMode = .Fifo,
-            alphaMode   = .Opaque,
+            alphaMode   = .Auto,
         }
 
         wgpu.SurfaceConfigure(_state.surface, &_state.config)
