@@ -30,6 +30,10 @@ main :: proc() {
     fmt.printf("Scene %q = ", args.path)
     fmt.println(to_string(scene, include_data = args.data))
 
+    if !validate(scene) {
+        log.error("Validation failed.")
+    }
+
     if args.stats {
         fmt.println("version                     =", scene.header.version)
         fmt.println("len(data)                   =", len(scene.data))

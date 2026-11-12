@@ -226,6 +226,10 @@ range_is_valid :: proc(data: []$T, range: [2]$Int) -> bool where intrinsics.type
     return start <= data_len && count <= data_len - start
 }
 
+is_in_range :: proc(range: [2]$Int, index: Int) -> bool where intrinsics.type_is_integer(Int) {
+    return index >= range[0] && index < range[0] + range[1]
+}
+
 // Range is offset + len
 get_range_slice :: proc(data: []$T, range: [2]$Int) -> []T where intrinsics.type_is_integer(Int) {
     if !range_is_valid(data, range) {

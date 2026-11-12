@@ -32,6 +32,8 @@ _tri :: proc(t: ^testing.T) {
 		},
 	}
 	"""
+	testing.expect(t, validate(load(EXPECT) or_else {}))
+	testing.expect(t, validate(sc))
 	_expect_equal_strings(t, EXPECT, str)
 }
 
