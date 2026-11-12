@@ -89,6 +89,7 @@ main :: proc() {
     }
 
     _compile :: proc(path: string, opts: Options) {
+        log.infof("Compiling %q for %v", path, opts.target)
         path := path
         path = os.get_absolute_path(path, context.temp_allocator) or_else path
         res, ok := compile_from_path(path, opts = opts)
