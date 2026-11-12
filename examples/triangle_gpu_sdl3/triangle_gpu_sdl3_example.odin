@@ -1,5 +1,6 @@
 package triangle_gpu_sdl3_example
 
+import "core:debug/trace"
 import "core:log"
 import "../../base"
 import "../../gpu"
@@ -23,10 +24,11 @@ verts := []Vertex{
 }
 
 main :: proc() {
+    context.logger = log.create_console_logger()
+    context.assertion_failure_proc = trace.assertion_failure_proc
+
     assert(sdl.Init({.VIDEO}))
     defer sdl.Quit()
-
-    context.logger = base.make_logger()
 
     sdl.SetHintWithPriority(sdl.HINT_RENDER_DRIVER, "direct3d11", .OVERRIDE)
     window := sdl.CreateWindow("Ravn GPU SDL3 Triangle", 1280, 780, {.HIGH_PIXEL_DENSITY, .HIDDEN, .RESIZABLE})

@@ -15,7 +15,6 @@ main :: proc() {
 @(require) import "../bvh"
 @(require) import "../collision"
 @(require) import "../geometry"
-@(require) import "../curve"
 @(require) import "../debugdraw"
 @(require) import "../util"
 @(require) import "../input"

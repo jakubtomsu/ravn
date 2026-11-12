@@ -1,5 +1,6 @@
 package ravn_audio_simple_example
 
+import "core:log"
 import "core:time"
 import "core:fmt"
 import "../../audio"
@@ -8,7 +9,7 @@ import "../../base"
 state: audio.State
 
 main :: proc() {
-    context.logger = base.make_logger()
+    context.logger = log.create_console_logger()
 
     audio_ok := audio.init(&state)
     assert(audio_ok)

@@ -1,5 +1,6 @@
 package ravn_imgui_example
 
+import "core:log"
 import "core:debug/trace"
 import "../../base"
 import "../../gpu"
@@ -10,7 +11,7 @@ import "../../imgui/imgui_impl_platform"
 import "../../imgui/imgui_util"
 
 main :: proc() {
-    context.logger = base.make_logger()
+    context.logger = log.create_console_logger()
     context.assertion_failure_proc = trace.assertion_failure_proc
 
     platform.init()

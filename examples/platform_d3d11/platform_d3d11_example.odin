@@ -1,5 +1,7 @@
 package ravn_platform_d3d11_example
 
+import "core:debug/trace"
+import "core:log"
 // D3D11 code based on:
 // https://gist.github.com/d7samurai/1e9a1f1a366740f7d8a3a20397fcfa6b
 
@@ -24,7 +26,8 @@ g_screen_size: [2]f32
 state: platform.State
 
 main :: proc() {
-    context.logger = base.make_logger()
+    context.logger = log.create_console_logger()
+    context.assertion_failure_proc = trace.assertion_failure_proc
 
     platform.init(&state)
     defer platform.shutdown()

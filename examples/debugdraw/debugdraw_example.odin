@@ -1,5 +1,6 @@
 package ravn_debugdraw_example
 
+import "core:log"
 import "core:math"
 import "core:math/linalg"
 import "core:debug/trace"
@@ -11,7 +12,7 @@ import "../../platform"
 import "../../input"
 
 main :: proc() {
-    context.logger = base.make_logger()
+    context.logger = log.create_console_logger()
     context.assertion_failure_proc = trace.assertion_failure_proc;
 
     platform.init()
