@@ -123,21 +123,21 @@ validate :: proc(scene: Scene) -> bool {
 			if seen_bones[c.bone] { log.errorf("Anim %d: duplicate curve for bone %d", i, c.bone); return false }
 			seen_bones[c.bone] = true
 
-			if !range_is_valid(scene.anim_float3_frame_data, c.pos_range) { log.errorf("Anim %d: curve %d pos_range invalid", i, c_idx); return false }
-			if !range_is_valid(scene.anim_float4_frame_data, c.rot_range) { log.errorf("Anim %d: curve %d rot_range invalid", i, c_idx); return false }
-			if !range_is_valid(scene.anim_float3_frame_data, c.scale_range) { log.errorf("Anim %d: curve %d scale_range invalid", i, c_idx); return false }
+			if !range_is_valid(scene.anim_frame_data, c.pos_range) { log.errorf("Anim %d: curve %d pos_range invalid", i, c_idx); return false }
+			if !range_is_valid(scene.anim_frame_data, c.rot_range) { log.errorf("Anim %d: curve %d rot_range invalid", i, c_idx); return false }
+			if !range_is_valid(scene.anim_frame_data, c.scale_range) { log.errorf("Anim %d: curve %d scale_range invalid", i, c_idx); return false }
 
-			pos_frames := get_range_slice(scene.anim_float3_frame_data, c.pos_range)
+			pos_frames := get_range_slice(scene.anim_frame_data, c.pos_range)
 			for f := 1; f < len(pos_frames); f += 1 {
 				if pos_frames[f].time <= pos_frames[f-1].time { log.errorf("Anim %d: curve %d pos frames not sorted at %d", i, c_idx, f); return false }
 			}
 
-			rot_frames := get_range_slice(scene.anim_float4_frame_data, c.rot_range)
+			rot_frames := get_range_slice(scene.anim_frame_data, c.rot_range)
 			for f := 1; f < len(rot_frames); f += 1 {
 				if rot_frames[f].time <= rot_frames[f-1].time { log.errorf("Anim %d: curve %d rot frames not sorted at %d", i, c_idx, f); return false }
 			}
 
-			scale_frames := get_range_slice(scene.anim_float3_frame_data, c.scale_range)
+			scale_frames := get_range_slice(scene.anim_frame_data, c.scale_range)
 			for f := 1; f < len(scale_frames); f += 1 {
 				if scale_frames[f].time <= scale_frames[f-1].time { log.errorf("Anim %d: curve %d scale frames not sorted at %d", i, c_idx, f); return false }
 			}

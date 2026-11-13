@@ -51,7 +51,6 @@ main :: proc() {
         fmt.println("len(spline_vert_data)       =", len(scene.spline_vert_data))
         fmt.println("len(index_data)             =", len(scene.index_data))
         fmt.println("len(anim_curve_data)        =", len(scene.anim_curve_data))
-        fmt.println("len(anim_float3_frame_data) =", len(scene.anim_float3_frame_data))
-        fmt.println("len(anim_float4_frame_data) =", len(scene.anim_float4_frame_data))
+        fmt.println("len(anim_frame_data)        =", len(scene.anim_frame_data))
     }
 }

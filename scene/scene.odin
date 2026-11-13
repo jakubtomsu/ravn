@@ -8,7 +8,9 @@ import "core:os"
 import "base:intrinsics"
 
 MAGIC :: (u32('r') << 0) | (u32('s') << 8) | (u32('c') << 16) | (u32('n') << 24)
-VERSION :: 1
+
+// Incremented every time a non-backward-compatible change occurs. Assets need to be re-exported.
+VERSION :: 2
 
 INVALID_PARENT :: 0xffff_ffff
 
@@ -30,8 +32,7 @@ Scene :: struct {
     spline_vert_data:       []Spline_Vert,
     index_data:             []u32,
     anim_curve_data:        []Anim_Curve,
-    anim_float3_frame_data: []Anim_Float3_Frame,
-    anim_float4_frame_data: []Anim_Float4_Frame,
+    anim_frame_data:        []Anim_Frame,
 }
 
 Error :: union #shared_nil {
@@ -71,8 +72,7 @@ Header :: struct #packed {
     spline_vert_range:       [2]u64,
     index_range:             [2]u64,
     anim_curve_range:        [2]u64,
-    anim_float3_frame_range: [2]u64,
-    anim_float4_frame_range: [2]u64,
+    anim_frame_range:       [2]u64,
 }
 
 Image :: struct #packed {
@@ -146,16 +146,10 @@ Anim_Curve :: struct #packed {
     scale_range: [2]u32,
 }
 
-Anim_Float3_Frame :: struct #packed {
-    time:  u32,
-    value: [3]f32,
-}
-
-Anim_Float4_Frame :: struct #packed {
-    time:  u32,
+Anim_Frame :: struct #packed {
+    time:  f32,
     value: [4]f32,
 }
-
 
 Spline :: struct #packed {
     name_range: [2]u32,
@@ -195,22 +189,21 @@ load_from_data :: proc(data: []byte) -> (scene: Scene, err: Error) {
         return {}, .Invalid_Version
     }
 
-    scene.string_data            = slice.reinterpret([]byte,                get_range_slice(data, header.string_range))
-    scene.node_data              = slice.reinterpret([]Node,                get_range_slice(data, header.node_range))
-    scene.image_data             = slice.reinterpret([]Image,               get_range_slice(data, header.image_range))
-    scene.mesh_data              = slice.reinterpret([]Mesh,                get_range_slice(data, header.mesh_range))
-    scene.skin_data              = slice.reinterpret([]Skin,                get_range_slice(data, header.skin_range))
-    scene.spline_data            = slice.reinterpret([]Spline,              get_range_slice(data, header.spline_range))
-    scene.skeleton_data          = slice.reinterpret([]Skeleton,            get_range_slice(data, header.skeleton_range))
-    scene.bone_data              = slice.reinterpret([]Bone,                get_range_slice(data, header.bone_range))
-    scene.anim_data              = slice.reinterpret([]Anim,                get_range_slice(data, header.anim_range))
-    scene.mesh_vert_data         = slice.reinterpret([]Mesh_Vert,           get_range_slice(data, header.mesh_vert_range))
-    scene.skin_vert_data         = slice.reinterpret([]Skin_Vert,           get_range_slice(data, header.skin_vert_range))
-    scene.spline_vert_data       = slice.reinterpret([]Spline_Vert,         get_range_slice(data, header.spline_vert_range))
-    scene.index_data             = slice.reinterpret([]u32,                 get_range_slice(data, header.index_range))
-    scene.anim_curve_data        = slice.reinterpret([]Anim_Curve,          get_range_slice(data, header.anim_curve_range))
-    scene.anim_float3_frame_data = slice.reinterpret([]Anim_Float3_Frame,   get_range_slice(data, header.anim_float3_frame_range))
-    scene.anim_float4_frame_data = slice.reinterpret([]Anim_Float4_Frame,   get_range_slice(data, header.anim_float4_frame_range))
+    scene.string_data           = slice.reinterpret([]byte,                 get_range_slice(data, header.string_range))
+    scene.node_data             = slice.reinterpret([]Node,                 get_range_slice(data, header.node_range))
+    scene.image_data            = slice.reinterpret([]Image,                get_range_slice(data, header.image_range))
+    scene.mesh_data             = slice.reinterpret([]Mesh,                 get_range_slice(data, header.mesh_range))
+    scene.skin_data             = slice.reinterpret([]Skin,                 get_range_slice(data, header.skin_range))
+    scene.spline_data           = slice.reinterpret([]Spline,               get_range_slice(data, header.spline_range))
+    scene.skeleton_data         = slice.reinterpret([]Skeleton,             get_range_slice(data, header.skeleton_range))
+    scene.bone_data             = slice.reinterpret([]Bone,                 get_range_slice(data, header.bone_range))
+    scene.anim_data             = slice.reinterpret([]Anim,                 get_range_slice(data, header.anim_range))
+    scene.mesh_vert_data        = slice.reinterpret([]Mesh_Vert,            get_range_slice(data, header.mesh_vert_range))
+    scene.skin_vert_data        = slice.reinterpret([]Skin_Vert,            get_range_slice(data, header.skin_vert_range))
+    scene.spline_vert_data      = slice.reinterpret([]Spline_Vert,          get_range_slice(data, header.spline_vert_range))
+    scene.index_data            = slice.reinterpret([]u32,                  get_range_slice(data, header.index_range))
+    scene.anim_curve_data       = slice.reinterpret([]Anim_Curve,           get_range_slice(data, header.anim_curve_range))
+    scene.anim_frame_data       = slice.reinterpret([]Anim_Frame,           get_range_slice(data, header.anim_frame_range))
 
     scene.header = header^
     scene.data = data

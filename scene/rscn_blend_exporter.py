@@ -14,7 +14,7 @@ from types import TracebackType
 
 BIN_MAGIC = b"rscn"
 
-VERSION = 1
+VERSION = 2
 
 bl_info = {
     "name": "RAVN Scene Exporter",
@@ -42,8 +42,7 @@ header_dtype = np.dtype([
     ('spline_vert_range', np.uint64, 2),
     ('index_range', np.uint64, 2),
     ('anim_curve_range', np.uint64, 2),
-    ('anim_float3_frame_range', np.uint64, 2),
-    ('anim_float4_frame_range', np.uint64, 2),
+    ('anim_frame_range', np.uint64, 2),
 ])
 
 image_dtype = np.dtype([
@@ -134,13 +133,8 @@ anim_curve_dtype = np.dtype([
     ('scale_range', np.uint32, 2),
 ])
 
-anim_float3_frame_dtype = np.dtype([
-    ('time',  np.uint32,  1),
-    ('value', np.float32, 3),
-])
-
-anim_float4_frame_dtype = np.dtype([
-    ('time',  np.uint32,  1),
+anim_frame_dtype = np.dtype([
+    ('time',  np.float32, 1),
     ('value', np.float32, 4),
 ])
 
@@ -403,8 +397,7 @@ def export_rscn(context, out_name):
     skin_vertex_buf = AppendBuffer(skin_vert_dtype)
     index_buf = AppendBuffer(np.uint32)
     spline_vert_buf = AppendBuffer(spline_vert_dtype)
-    anim_float3_frame_buf = AppendBuffer(anim_float3_frame_dtype)
-    anim_float4_frame_buf = AppendBuffer(anim_float4_frame_dtype)
+    anim_frame_buf = AppendBuffer(anim_frame_dtype)
 
     prof("start")
 
@@ -517,7 +510,7 @@ def export_rscn(context, out_name):
 
                         if transform_type == "location":
                             for point in fcurve.keyframe_points:
-                                val = bone_curve['pos'].get(int(point.co[0]), np.array([0, 0, 0], dtype=np.float32))
+                                val = bone_curve['pos'].get(int(point.co[0]), np.array([0, 0, 0, 0], dtype=np.float32))
                                 val[fcurve.array_index] = point.co[1]
                                 bone_curve['pos'][int(point.co[0])] = val
 
@@ -531,7 +524,7 @@ def export_rscn(context, out_name):
 
                         elif transform_type == "scale":
                             for point in fcurve.keyframe_points:
-                                val = bone_curve['scale'].get(int(point.co[0]), np.array([1, 1, 1], dtype=np.float32))
+                                val = bone_curve['scale'].get(int(point.co[0]), np.array([1, 1, 1, 0], dtype=np.float32))
                                 val[fcurve.array_index] = point.co[1]
                                 bone_curve['scale'][int(point.co[0])] = val
 
@@ -545,21 +538,21 @@ def export_rscn(context, out_name):
         skeleton_index = -1
         for name, curves in bone_curves.items():
             for frame, value in curves['pos'].items():
-                curves['pos'][frame] = conv_mat_np @ value
+                curves['pos'][frame][:3] = conv_mat_np @ value[:3]
             for frame, value in curves['rot'].items():
                 quat = mathutils.Quaternion((value[3], value[0], value[1], value[2]))
                 rot_mat = conv_mat @ quat.to_matrix() @ conv_mat_inv
                 quat = rot_mat.to_quaternion()
                 curves['rot'][frame] = np.array((quat.x, quat.y, quat.z, quat.w), dtype=np.float32)
             for frame, value in curves['scale'].items():
-                curves['scale'][frame] = conv_mat_np @ value
+                curves['scale'][frame][:3] = conv_mat_np @ value[:3]
 
-            pos_data = np.array(sorted(curves['pos'].items()), dtype=anim_float3_frame_dtype)
-            rot_data = np.array(sorted(curves['rot'].items()), dtype=anim_float4_frame_dtype)
-            scale_data = np.array(sorted(curves['scale'].items()), dtype=anim_float3_frame_dtype)
-            pos_offset = anim_float3_frame_buf.append(pos_data)
-            rot_offset = anim_float4_frame_buf.append(rot_data)
-            scale_offset = anim_float3_frame_buf.append(scale_data)
+            pos_data = np.array(sorted(curves['pos'].items()), dtype=anim_frame_dtype)
+            rot_data = np.array(sorted(curves['rot'].items()), dtype=anim_frame_dtype)
+            scale_data = np.array(sorted(curves['scale'].items()), dtype=anim_frame_dtype)
+            pos_offset = anim_frame_buf.append(pos_data)
+            rot_offset = anim_frame_buf.append(rot_data)
+            scale_offset = anim_frame_buf.append(scale_data)
 
             bone_index = -1
             if name in bone_map:
@@ -752,8 +745,7 @@ def export_rscn(context, out_name):
             ("spline_vert_range",       spline_vert_buf),
             ("index_range",             index_buf),
             ("anim_curve_range",        anim_curve_buf),
-            ("anim_float3_frame_range", anim_float3_frame_buf),
-            ("anim_float4_frame_range", anim_float4_frame_buf),
+            ("anim_frame_range",        anim_frame_buf),
         ]
 
         header[0]['magic'] = int.from_bytes(BIN_MAGIC, byteorder='little')
