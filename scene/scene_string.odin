@@ -14,8 +14,9 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
     // Images
     if len(scene.image_data) > 0 {
         fmt.sbprintln(&sb, "\timages = {")
-        for it in scene.image_data {
-            fmt.sbprintfln(&sb, "\t\t%q = {{ material=%q }},",
+        for it, i in scene.image_data {
+            fmt.sbprintfln(&sb, "\t\t[%i] %q = {{ material=%q }},",
+                i,
                 get_range_slice(scene.string_data, it.path_range),
                 get_range_slice(scene.string_data, it.mat_name_range),
             )
@@ -26,8 +27,9 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
     // Nodes
     if len(scene.node_data) > 0 {
         fmt.sbprintln(&sb, "\tnodes = {")
-        for it in scene.node_data {
-            fmt.sbprintfln(&sb, "\t\t%q = {{ parent=%q, material=%q, kind=%v, pos=%v, rot=%v, scale=%v }},",
+        for it, i in scene.node_data {
+            fmt.sbprintfln(&sb, "\t\t[%i] %q = {{ parent=%q, material=%q, kind=%v, pos=%v, rot=%v, scale=%v }},",
+                i,
                 get_range_slice(scene.string_data, it.name_range),
                 (it.parent == INVALID_PARENT) ? "<NONE>" : string(get_range_slice(scene.string_data, scene.node_data[it.parent].name_range)),
                 get_range_slice(scene.string_data, it.material_name_range),
@@ -43,8 +45,9 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
     // Meshes
     if len(scene.mesh_data) > 0 {
         fmt.sbprintln(&sb, "\tmeshes = {")
-        for it in scene.mesh_data {
-            fmt.sbprintf(&sb, "\t\t%q = {{",
+        for it, i in scene.mesh_data {
+            fmt.sbprintf(&sb, "\t\t[%i] %q = {{",
+                i,
                 get_range_slice(scene.string_data, it.name_range),
             )
             verts := get_range_slice(scene.mesh_vert_data, it.vert_range)
@@ -57,9 +60,10 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
     // Skins
     if len(scene.skin_data) > 0 {
         fmt.sbprintln(&sb, "\tskins = {")
-        for it in scene.skin_data {
+        for it, i in scene.skin_data {
             skel := scene.skeleton_data[it.skeleton]
-            fmt.sbprintf(&sb, "\t\t%q = {{ skeleton=%q,",
+            fmt.sbprintf(&sb, "\t\t[%i] %q = {{ skeleton=%q,",
+                i,
                 get_range_slice(scene.string_data, it.name_range),
                 get_range_slice(scene.string_data, skel.name_range),
             )
@@ -73,8 +77,8 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
     // Splines
     if len(scene.spline_data) > 0 {
         fmt.sbprintln(&sb, "\tsplines = {")
-        for it in scene.spline_data {
-            fmt.sbprintf(&sb, "\t\t%q = {{", get_range_slice(scene.string_data, it.name_range))
+        for it, i in scene.spline_data {
+            fmt.sbprintf(&sb, "\t\t[%i] %q = {{", i, get_range_slice(scene.string_data, it.name_range))
             verts := get_range_slice(scene.spline_vert_data, it.vert_range)
             if include_data {
                 fmt.sbprintfln(&sb, "\n\t\t\tverts = {{")
@@ -94,11 +98,12 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
     // Skeletons
     if len(scene.skeleton_data) > 0 {
         fmt.sbprintln(&sb, "\tskeletons = {")
-        for it in scene.skeleton_data {
-            fmt.sbprintfln(&sb, "\t\t%q = {{", get_range_slice(scene.string_data, it.name_range))
+        for it, i in scene.skeleton_data {
+            fmt.sbprintfln(&sb, "\t\t[%i] %q = {{", i, get_range_slice(scene.string_data, it.name_range))
             bones := get_range_slice(scene.bone_data, it.bone_range)
-            for b in bones {
-                fmt.sbprintfln(&sb, "\t\t\t%q = {{ parent=%q, pos=%v, length=%f, rot=%v }},",
+            for b, b_i in bones {
+                fmt.sbprintfln(&sb, "\t\t\t[%i] %q = {{ parent=%q, pos=%v, length=%f, rot=%v }},",
+                    b_i,
                     get_range_slice(scene.string_data, b.name_range),
                     (b.parent == INVALID_PARENT) ? "<NONE>" : string(get_range_slice(scene.string_data, scene.bone_data[b.parent].name_range)),
                     b.pos,
@@ -114,9 +119,9 @@ to_string :: proc(scene: Scene, include_data := false, allocator := context.allo
     // Animations
     if len(scene.anim_data) > 0 {
         fmt.sbprintln(&sb, "\tanims = {")
-        for it in scene.anim_data {
-            skel_name := get_range_slice(scene.string_data, scene.skeleton_data[it.skeleton].name_range)
-            fmt.sbprintfln(&sb, "\t\t%q = {{ skeleton = %q,", get_range_slice(scene.string_data, it.name_range), skel_name)
+        for it, i in scene.anim_data {
+            skel_name := it.skeleton != max(u32) ? string(get_range_slice(scene.string_data, scene.skeleton_data[it.skeleton].name_range)) : "INVALID"
+            fmt.sbprintfln(&sb, "\t\t[%i] %q = {{ skeleton = %q,", i, get_range_slice(scene.string_data, it.name_range), skel_name)
             curves := get_range_slice(scene.anim_curve_data, it.curve_range)
             for c in curves {
                 name := get_range_slice(scene.string_data, scene.bone_data[c.bone].name_range)

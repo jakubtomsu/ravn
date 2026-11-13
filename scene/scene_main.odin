@@ -13,9 +13,9 @@ main :: proc() {
     context.logger = log.create_console_logger()
 
     Args :: struct {
-        path:   string `args:"pos=0,required"`,
-        data:   bool,
-        stats:  bool,
+        path:   string `args:"pos=0,required" usage:"Path to a .rscn file"`,
+        data:   bool `usage:"Print large data (vertices, animations)"`,
+        stats:  bool `usage:"Show size statistics"`,
     }
 
     args: Args

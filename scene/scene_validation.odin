@@ -87,7 +87,7 @@ validate :: proc(scene: Scene) -> bool {
 		verts := get_range_slice(scene.skin_vert_data, skin.vert_range)
 		for v, v_idx in verts {
 			for b_idx in 0..<4 {
-				if u32(v.bones[b_idx]) >= skel.bone_range[1] {
+				if !is_in_range(skel.bone_range, u32(v.bones[b_idx])) && v.weights[b_idx] > 0 {
 					log.errorf("Skin %d: vert %d references invalid local bone %d", i, v_idx, v.bones[b_idx]); return false
 				}
 			}
@@ -115,7 +115,7 @@ validate :: proc(scene: Scene) -> bool {
 		for c, c_idx in curves {
 			if int(c.bone) >= len(scene.bone_data) { log.errorf("Anim %d: curve %d bone %d out of bounds", i, c_idx, c.bone); return false }
 
-			if is_in_range(skel.bone_range, c.bone) {
+			if !is_in_range(skel.bone_range, c.bone) {
 				log.errorf("Anim %d: curve %d bone %d is outside skeleton %d's bone_range [%d, %d)", i, c_idx, c.bone, anim.skeleton, skel.bone_range.x, skel.bone_range.x + skel.bone_range.y)
 				return false
 			}

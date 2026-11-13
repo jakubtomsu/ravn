@@ -537,6 +537,10 @@ def export_rscn(context, out_name):
 
                         bone_curves[bone_name] = bone_curve
 
+        if len(bone_curves) == 0:
+            # Not a skeletal anim
+            continue
+
         anim_curve_offset = anim_curve_buf.len
         skeleton_index = -1
         for name, curves in bone_curves.items():
@@ -574,8 +578,6 @@ def export_rscn(context, out_name):
             anim_curve_buf.append(curve_entry)
 
         name_range = get_interned_str(str_map, str_buf, norm_name(action.name))
-
-        # skeleton = skeleton_map
 
         entry = np.zeros(1, dtype=anim_dtype)
         entry[0]['skeleton'] = skeleton_index
