@@ -56,8 +56,8 @@ init :: proc(
 
 // Re-initialize the primitive buffer only and clears the existing nodes.
 init_prims :: proc(bvh: ^BVH, prims: [][2][3]f32) {
-    assert(len(bvh.nodes) >= len(prims))
-    assert(len(bvh.indices) >= len(prims))
+    assert(len(prims) <= len(bvh.nodes) * 2)
+    assert(len(prims) <= len(bvh.indices))
 
     bvh.prims = prims
 
@@ -294,7 +294,7 @@ build_binned :: proc(bvh: ^BVH, num_bins := 8, curr_index := 0) #no_bounds_check
         bins_max: [MAX_BINS][3][3]f32 = min(f32)
         bins_num: [MAX_BINS][3]i32 = 0
 
-        bin_scale := f32(num_bins) / (mid_max - mid_min + 1e-5)
+        bin_scale := f32(num_bins) / max(mid_max - mid_min, 1e-5)
 
         for i in 0..<int(node.len) {
             prim := bvh.prims[bvh.indices[int(node.first) + i]]
