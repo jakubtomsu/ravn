@@ -152,7 +152,8 @@ conv_mat_inv = conv_mat.inverted()
 
 conv_mat_np = np.array(conv_mat)
 conv_mat_inv_np = np.linalg.inv(conv_mat_np)
-
+conv_mat_4x4 = conv_mat.to_4x4()
+conv_mat_inv_4x4 = conv_mat_inv.to_4x4()
 
 def norm_name(name):
     out = []
@@ -433,23 +434,23 @@ def export_rscn(context, out_name):
 
         skeleton_index = skeleton_buf.len
 
-        for bone in obj.pose.bones:
+        for pose_bone in obj.pose.bones:
             # global to local
-            if bone.parent:
-                local_mat = bone.parent.matrix_local.inverted() @ bone.matrix_local
+            if pose_bone.parent:
+                local_mat = pose_bone.parent.bone.matrix_local.inverted() @ pose_bone.bone.matrix_local
             else:
-                local_mat = bone.matrix_local
+                local_mat = pose_bone.bone.matrix_local
 
             # Convert to engine coordinate space
-            local_mat_conv = conv_mat @ local_mat @ conv_mat_inv
+            local_mat_conv = conv_mat_4x4 @ local_mat @ conv_mat_inv_4x4
 
             depth = 0
-            curr_parent = bone.parent
+            curr_parent = pose_bone.parent
             while curr_parent != None:
                 depth += 1
                 curr_parent = curr_parent.parent
 
-            bone_name_range = get_interned_str(str_map, str_buf, norm_name(bone.name))
+            bone_name_range = get_interned_str(str_map, str_buf, norm_name(pose_bone.name))
 
             rot_quat = local_mat_conv.to_quaternion()
             bone_entry = np.zeros(1, dtype=bone_dtype)
@@ -457,10 +458,10 @@ def export_rscn(context, out_name):
             bone_entry[0]['name_range'] = bone_name_range
             bone_entry[0]['parent'] = 0 # later
             bone_entry[0]['pos'] = local_mat_conv.to_translation()
-            bone_entry[0]['length'] = bone.bone.length
+            bone_entry[0]['length'] = pose_bone.bone.length
             bone_entry[0]['rot'] = [rot_quat.x, rot_quat.y, rot_quat.z, rot_quat.w]
             print(bone_entry)
-            bones.append((depth, bone_entry, bone))
+            bones.append((depth, bone_entry, pose_bone))
 
         bones = sorted(bones, key=lambda x: x[0])
 
@@ -723,7 +724,7 @@ def export_rscn(context, out_name):
         entry[0]['material_name_range'] = mat_name
         entry[0]['kind'] = kind
         entry[0]['pos'] = pos
-        entry[0]['rot'] = rot
+        entry[0]['rot'] = [rot.x, rot.y, rot.z, rot.w]
         entry[0]['scale'] = scale
         node_map[obj.name] = node_buf.append(entry)
 
