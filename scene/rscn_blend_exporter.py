@@ -434,8 +434,15 @@ def export_rscn(context, out_name):
         skeleton_index = skeleton_buf.len
 
         for bone in obj.pose.bones:
-            rot_mat = conv_mat @ bone.matrix.to_3x3() @ conv_mat_inv
-            rot_quat = rot_mat.to_quaternion()
+            # global to local
+            if bone.parent:
+                local_mat = bone.parent.matrix_local.inverted() @ bone.matrix_local
+            else:
+                local_mat = bone.matrix_local
+
+            # Convert to engine coordinate space
+            local_mat_conv = conv_mat @ local_mat @ conv_mat_inv
+
             depth = 0
             curr_parent = bone.parent
             while curr_parent != None:
@@ -444,11 +451,12 @@ def export_rscn(context, out_name):
 
             bone_name_range = get_interned_str(str_map, str_buf, norm_name(bone.name))
 
+            rot_quat = local_mat_conv.to_quaternion()
             bone_entry = np.zeros(1, dtype=bone_dtype)
             bone_entry[0]['skeleton'] = skeleton_index
             bone_entry[0]['name_range'] = bone_name_range
             bone_entry[0]['parent'] = 0 # later
-            bone_entry[0]['pos'] = conv_mat @ bone.head
+            bone_entry[0]['pos'] = local_mat_conv.to_translation()
             bone_entry[0]['length'] = bone.bone.length
             bone_entry[0]['rot'] = [rot_quat.x, rot_quat.y, rot_quat.z, rot_quat.w]
             print(bone_entry)
