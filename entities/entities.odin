@@ -93,10 +93,10 @@ init :: proc(
     ents.allocator = allocator
 
     val_ti := runtime.type_info_core(type_info_of(Val_Union))
-    val_ti_union := val_ti.variant.(runtime.Type_Info_Union)
+    val_ti_union := val_ti.variant.(^runtime.Type_Info_Union)
 
     sub_ti := runtime.type_info_core(type_info_of(Sub_Union))
-    sub_ti_union := sub_ti.variant.(runtime.Type_Info_Union)
+    sub_ti_union := sub_ti.variant.(^runtime.Type_Info_Union)
 
     for val_var_ti, val_var_index in val_ti_union.variants {
         ents.sizes[val_var_index] = i64(val_var_ti.size)
@@ -118,7 +118,7 @@ init :: proc(
     ents.offsets = -1
     for sub_var_ti, sub_var_index in sub_ti_union.variants {
         for val_var_ti, val_var_index in val_ti_union.variants {
-            sti := runtime.type_info_core(val_var_ti).variant.(runtime.Type_Info_Struct) or_continue
+            sti := runtime.type_info_core(val_var_ti).variant.(^runtime.Type_Info_Struct) or_continue
 
             offs: i64 = -1
             for fi in 0..<sti.field_count {
