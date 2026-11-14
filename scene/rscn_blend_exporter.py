@@ -236,11 +236,10 @@ def get_mesh_loop_verts(mesh, dtype):
 
     return loop_verts, tri_vert_indices
 
-def get_mesh_skinning_data(mesh_obj, armature_obj, max_influences=4):
+def get_mesh_skinning_data(mesh_obj, bone_names, max_influences=4):
     mesh = mesh_obj.data
     num_verts = len(mesh.vertices)
 
-    bone_names = {b.name: i for i, b in enumerate(armature_obj.data.bones)}
     num_bones = len(bone_names)
 
     vg_idx_to_bone = {
@@ -380,6 +379,7 @@ def export_rscn(context, out_name):
 
     str_map = {}
     skeleton_map = {}
+    skeleton_bone_maps = {}
     node_map = {}
     bone_map = {}
 
@@ -467,8 +467,12 @@ def export_rscn(context, out_name):
 
         bone_start = bone_buf.len
         bone_offsets = {}
+        local_bone_map = {}
         for i, (_, _, bone) in enumerate(bones):
             bone_offsets[bone.name] = bone_start + i
+            local_bone_map[bone.name] = i
+
+        skeleton_bone_maps[obj.name] = local_bone_map
 
         for depth, b, bone in bones:
             b[0]['parent'] = bone_offsets[bone.parent.name] if bone.parent else 0xffffffff
@@ -519,23 +523,26 @@ def export_rscn(context, out_name):
 
                         if transform_type == "location":
                             for point in fcurve.keyframe_points:
-                                val = bone_curve['pos'].get(int(point.co[0]), np.array([0, 0, 0, 0], dtype=np.float32))
+                                t = float(point.co[0]) / context.scene.render.fps
+                                val = bone_curve['pos'].get(t, np.array([0, 0, 0, 0], dtype=np.float32))
                                 val[fcurve.array_index] = point.co[1]
-                                bone_curve['pos'][int(point.co[0])] = val
+                                bone_curve['pos'][t] = val
 
                         elif transform_type == "rotation_quaternion":
                             for point in fcurve.keyframe_points:
+                                t = float(point.co[0]) / context.scene.render.fps
                                 blender_index = fcurve.array_index # wxyz
                                 index = 3 if blender_index==0 else blender_index-1 # xyzw
-                                val = bone_curve['rot'].get(int(point.co[0]), np.array([0, 0, 0, 0], dtype=np.float32))
+                                val = bone_curve['rot'].get(t, np.array([0, 0, 0, 0], dtype=np.float32))
                                 val[index] = point.co[1]
-                                bone_curve['rot'][int(point.co[0])] = val
+                                bone_curve['rot'][t] = val
 
                         elif transform_type == "scale":
                             for point in fcurve.keyframe_points:
-                                val = bone_curve['scale'].get(int(point.co[0]), np.array([1, 1, 1, 0], dtype=np.float32))
+                                t = float(point.co[0]) / context.scene.render.fps
+                                val = bone_curve['scale'].get(t, np.array([1, 1, 1, 0], dtype=np.float32))
                                 val[fcurve.array_index] = point.co[1]
-                                bone_curve['scale'][int(point.co[0])] = val
+                                bone_curve['scale'][t] = val
 
                         bone_curves[bone_name] = bone_curve
 
@@ -618,7 +625,7 @@ def export_rscn(context, out_name):
 
         else:
             loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=skin_vert_dtype)
-            vert_bones, vert_weights = get_mesh_skinning_data(obj, armature)
+            vert_bones, vert_weights = get_mesh_skinning_data(obj, skeleton_bone_maps[armature.name])
 
             vert_weights = np.round(vert_weights * 255.0).astype(np.uint8)
 
@@ -691,7 +698,10 @@ def export_rscn(context, out_name):
         if obj.type == 'EMPTY':
             kind = NODE_KIND_NONE
         elif obj.type == 'MESH':
-            kind = NODE_KIND_MESH
+            if obj.find_armature() == None:
+                kind = NODE_KIND_MESH
+            else:
+                kind = NODE_KIND_SKIN
         elif obj.type == 'CURVE':
             kind = NODE_KIND_SPLINE
         else:
