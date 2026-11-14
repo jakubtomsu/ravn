@@ -98,8 +98,8 @@ compile :: proc {
 compile_from_path :: proc(
     path:       string,
     opts:       Options = DEFAULT_OPTIONS,
-    loc         := #caller_location,
     allocator   := context.allocator,
+    loc         := #caller_location,
 ) -> (result: []byte, ok: bool) {
     data, err := os.read_entire_file_from_path(path, context.temp_allocator)
     if err != nil {
@@ -113,8 +113,8 @@ compile_from_source :: proc(
     name:       string,
     source:     string,
     opts:       Options = DEFAULT_OPTIONS,
-    loc         := #caller_location,
     allocator   := context.allocator,
+    loc         := #caller_location,
 ) -> (result: []byte, ok: bool) {
     opts := opts
 
