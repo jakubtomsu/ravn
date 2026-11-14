@@ -1539,7 +1539,7 @@ update_texture_2d :: proc(handle: Resource_Handle, data: []byte, #any_int slice:
     return true
 }
 
-
+// offsets are measured in elements, not bytes
 draw_non_indexed :: proc(
     #any_int vertex_num: int,
     #any_int instance_num: int = 1,
@@ -1561,6 +1561,7 @@ draw_non_indexed :: proc(
     )
 }
 
+// offsets are measured in elements, not bytes
 draw_indexed :: proc(
     #any_int index_num: int,
     #any_int instance_num: int = 1,
