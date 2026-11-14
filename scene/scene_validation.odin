@@ -11,7 +11,7 @@ validate :: proc(scene: Scene) -> bool {
 
 	for node, i in scene.node_data {
 		if !range_is_valid(scene.string_data, node.name_range) { log.errorf("Node %d: name_range invalid", i); return false }
-		if !range_is_valid(scene.string_data, node.material_name_range) { log.errorf("Node %d: material_name_range invalid", i); return false }
+		if !range_is_valid(scene.string_data, node.mat_name_range) { log.errorf("Node %d: mat_name_range invalid", i); return false }
 
 		if node.parent != INVALID_PARENT {
 			if int(node.parent) >= len(scene.node_data) { log.errorf("Node %d: parent out of bounds", i); return false }

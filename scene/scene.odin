@@ -35,6 +35,8 @@ Scene :: struct {
     anim_frame_data:        []Anim_Frame,
 }
 
+String_Range :: distinct [2]u32
+
 Error :: union #shared_nil {
     Load_Error,
     os.Error,
@@ -76,41 +78,41 @@ Header :: struct #packed {
 }
 
 Image :: struct #packed {
-    path_range:     [2]u32,
-    mat_name_range: [2]u32,
+    path_range:     String_Range,
+    mat_name_range: String_Range,
 }
 
 Node :: struct #packed {
-    name_range: 			[2]u32,
-    parent:     			u32,
-    material_name_range:	[2]u32,
-    kind:       			Node_Kind,
-    pos:        			[3]f32,
-    rot:        			quaternion128,
-    scale:      			[3]f32,
+    name_range:     String_Range,
+    parent:     	u32,
+    mat_name_range: String_Range,
+    kind:       	Node_Kind,
+    pos:        	[3]f32,
+    rot:        	quaternion128,
+    scale:      	[3]f32,
 }
 
 Mesh :: struct #packed {
-    name_range:  [2]u32,
-    vert_range:  [2]u32,
-    index_range: [2]u32,
+    name_range:     String_Range,
+    vert_range:     [2]u32,
+    index_range:    [2]u32,
 }
 
 Skin :: struct #packed {
-    name_range:  [2]u32,
-    skeleton:    u32,
-    vert_range:  [2]u32,
-    index_range: [2]u32,
+    name_range:     String_Range,
+    skeleton:       u32,
+    vert_range:     [2]u32,
+    index_range:    [2]u32,
 }
 
 Skeleton :: struct #packed {
-    name_range: [2]u32,
+    name_range: String_Range,
     bone_range: [2]u32,
 }
 
 Bone :: struct #packed {
     skeleton:   u32,
-    name_range: [2]u32,
+    name_range: String_Range,
     parent:     u32,
     pos:        [3]f32,
     length:     f32,
@@ -135,7 +137,7 @@ Skin_Vert :: struct #packed {
 
 Anim :: struct #packed {
     skeleton:       u32,
-    name_range:     [2]u32,
+    name_range:     String_Range,
     curve_range:    [2]u32,
 }
 
@@ -152,7 +154,7 @@ Anim_Frame :: struct #packed {
 }
 
 Spline :: struct #packed {
-    name_range: [2]u32,
+    name_range: String_Range,
     vert_range: [2]u32,
 }
 
@@ -212,25 +214,25 @@ load_from_data :: proc(data: []byte) -> (scene: Scene, err: Error) {
 }
 
 // Range is offset + len
-range_is_valid :: proc(data: []$T, range: [2]$Int) -> bool where intrinsics.type_is_integer(Int) {
+range_is_valid :: proc(data: []$T, range: $R/[2]$Int) -> bool where intrinsics.type_is_integer(Int) {
     start := u64(range[0])
     count := u64(range[1])
     data_len := u64(len(data))
     return start <= data_len && count <= data_len - start
 }
 
-is_in_range :: proc(range: [2]$Int, index: Int) -> bool where intrinsics.type_is_integer(Int) {
+is_in_range :: proc(range: $R/[2]$Int, index: Int) -> bool where intrinsics.type_is_integer(Int) {
     return index >= range[0] && index < range[0] + range[1]
 }
 
 // Range is offset + len
-get_range_slice :: proc(data: []$T, range: [2]$Int) -> []T where intrinsics.type_is_integer(Int) {
+get_range_slice :: proc(data: []$T, range: $R/[2]$Int) -> []T where intrinsics.type_is_integer(Int) {
     if !range_is_valid(data, range) {
         return nil
     }
     return data[range[0]:][:range[1]]
 }
 
-get_string :: proc(scene: Scene, range: [2]u32) -> string {
+get_string :: proc(scene: Scene, range: String_Range) -> string {
     return string(get_range_slice(scene.string_data, range))
 }
