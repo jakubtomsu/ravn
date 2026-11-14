@@ -20,7 +20,7 @@ Arena :: struct #all_or_none {
     size:               i32,
     stride:             i32,
 
-    buf:                Resource_Handle,
+    resource:           Resource_Handle,
     submitted_offset:   u64,
     upload_buf:         []byte,
     upload_offset:      u64,
@@ -68,7 +68,7 @@ arena_create_raw :: proc(
         size = size,
         stride = stride,
 
-        buf = {},
+        resource = {},
         submitted_offset = 0,
         upload_buf = runtime.make_aligned([]byte, size, alignment = 4096, allocator = allocator),
         upload_offset = 0,
@@ -91,7 +91,7 @@ arena_create_raw :: proc(
 }
 
 arena_destroy :: proc(arena: ^Arena) {
-    destroy_resource(arena.buf)
+    destroy_resource(arena.resource)
     delete(arena.upload_buf, allocator = arena.upload_allocator)
     arena^ = {}
 }
@@ -104,7 +104,7 @@ arena_reset :: proc(arena: ^Arena) {
 @(require_results)
 _arena_create_buffer :: proc(arena: ^Arena, data: []byte, loc := #caller_location) -> bool {
     if !create_buffer(
-        handle = &arena.buf,
+        handle = &arena.resource,
         kind = arena.kind,
         stride = arena.stride,
         size = arena.size,
@@ -168,10 +168,10 @@ arena_submit :: proc(arena: ^Arena, loc := #caller_location) -> bool {
         }
 
     case .Default, .Dynamic:
-        assert(arena.buf != {})
+        assert(arena.resource != {})
         assert(arena.submitted_offset + arena.upload_offset <= u64(arena.size), "GPU Buffer full", loc = loc)
         update_buffer(
-            arena.buf,
+            arena.resource,
             offset = int(arena.submitted_offset),
             buffers = {
                 arena.upload_buf[:arena.upload_offset],
