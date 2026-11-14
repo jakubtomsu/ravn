@@ -43,6 +43,7 @@ validate :: proc(scene: Scene) -> bool {
 	for skel, i in scene.skeleton_data {
 		if !range_is_valid(scene.string_data, skel.name_range) { log.errorf("Skeleton %d: name_range invalid", i); return false }
 		if !range_is_valid(scene.bone_data, skel.bone_range) { log.errorf("Skeleton %d: bone_range invalid", i); return false }
+		if skel.bone_range.y >= u32(max(u8)) { log.errorf("Skeleton %d: more than max(u8) bones", i); return false }
 		for b_idx in 0..<skel.bone_range[1] {
 			global_b_idx := skel.bone_range[0] + b_idx
 			if scene.bone_data[global_b_idx].skeleton != u32(i) {
