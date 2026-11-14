@@ -59,7 +59,7 @@ _slang_init :: proc(state: ^_Slang_State) -> bool {
     _load_sym :: proc(state: ^_Slang_State, name: string) -> (rawptr, bool) {
         result := dynlib.symbol_address(state.module, name, context.temp_allocator)
         if result == nil {
-            log.error("Failed to find symbol '%s' in slang.dll", name)
+            log.errorf("Failed to find symbol '%s' in slang.dll", name)
             return nil, false
         }
         return result, true
@@ -184,7 +184,7 @@ _slang_blob_destroy :: proc(blob: ^_Slang_Blob) {
 
 _slang_check :: proc(res: slang.Result, expr := #caller_expression(res), loc := #caller_location) -> bool {
     if res != .OK {
-        log.error("Slang Error: %v (%x)", res, transmute(u32)res, location = loc)
+        log.errorf("Slang Error: %v (%x)", res, transmute(u32)res, location = loc)
         assert(false, message = expr, loc = loc)
         return false
     }
@@ -193,7 +193,7 @@ _slang_check :: proc(res: slang.Result, expr := #caller_expression(res), loc := 
 
 _slang_check_diag :: proc(res: slang.Result, diag: ^slang.IBlob, expr := #caller_expression(res), loc := #caller_location) -> bool {
     if res != .OK {
-        log.error("Slang Error: %v (%x):\n%s", res, transmute(u32)res, _slang_blob_str(diag), location = loc)
+        log.errorf("Slang Error: %v (%x):\n%s", res, transmute(u32)res, _slang_blob_str(diag), location = loc)
         assert(false, message = expr, loc = loc)
         return false
     }
@@ -202,7 +202,7 @@ _slang_check_diag :: proc(res: slang.Result, diag: ^slang.IBlob, expr := #caller
 
 _slang_diag :: proc(diag: ^slang.IBlob, loc := #caller_location) -> bool {
     if diag != nil {
-        log.error("Slang Error: %s", _slang_blob_str(diag), location = loc)
+        log.errorf("Slang Error: %s", _slang_blob_str(diag), location = loc)
         return false
     }
     return true
