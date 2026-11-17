@@ -754,8 +754,7 @@ create_bind_layout :: proc(
     desc := desc
     assert(_state != nil)
     log.debugf("Creating bind_group layout '%s'", name)
-    id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id, context.allocator)
+    id := base.create_debug_id(name, loc)
 
     for &slot in desc {
         if slot.stages == {} {
@@ -796,8 +795,7 @@ create_bind_group :: proc(
 ) -> (ok: bool) {
     assert(_state != nil)
     log.debugf("Creating bind_group '%s'", name)
-    id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id, context.allocator)
+    id := base.create_debug_id(name, loc)
 
     validate_bind_group_desc(id, desc, loc = loc)
     _find_free_or_destroy_existing(id, &_state.bind_groups, handle, _destroy_bind_group_state) or_return
@@ -837,8 +835,7 @@ create_graphics_pipeline :: proc(
 ) -> (ok: bool) {
     assert(_state != nil)
     log.debugf("Creating graphics pipeline '%s'", name)
-    id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id, context.allocator)
+    id := base.create_debug_id(name, loc)
 
     validate_graphics_pipeline_desc(id, desc)
     _find_free_or_destroy_existing(id, &_state.graphics_pipelines, handle, _destroy_graphics_pipeline_state) or_return
@@ -868,8 +865,7 @@ create_compute_pipeline :: proc(
 ) -> (ok: bool) {
     assert(_state != nil)
     log.debugf("Creating compute pipeline '%s'", name)
-    id := base.create_debug_id(name, loc, context.allocator)
-    defer if !ok do base.destroy_debug_id(&id, context.allocator)
+    id := base.create_debug_id(name, loc)
 
     validate_compute_pipeline_desc(id, desc, loc = loc)
     _find_free_or_destroy_existing(id, &_state.compute_pipelines, handle, _destroy_compute_pipeline_state) or_return
@@ -899,8 +895,7 @@ create_shader :: proc(
     loc     := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    id := base.create_debug_id(name, loc, _state.allocator)
-    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
+    id := base.create_debug_id(name, loc)
 
     base.assert_id(id, kind != .Invalid)
     base.assert_id(id, len(data) > 0)
@@ -938,8 +933,7 @@ create_constants :: proc(
     loc     := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    id := base.create_debug_id(name, loc, _state.allocator)
-    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
+    id := base.create_debug_id(name, loc)
 
     base.assert_id(id, size >= 1)
     base.assert_id(id, num >= 1)
@@ -1005,8 +999,7 @@ create_texture_2d :: proc(
 ) -> (ok: bool) {
     assert(_state != nil)
     log.debugf("Creating 2D texture: %s", name)
-    id := base.create_debug_id(name, loc, _state.allocator)
-    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
+    id := base.create_debug_id(name, loc)
 
     base.assert_id(id, desc.format != .Invalid)
     base.assert_id(id, desc.format != .Swapchain)
@@ -1072,8 +1065,7 @@ create_texture_3d :: proc(
 ) -> (ok: bool) {
     assert(_state != nil)
     log.debugf("Creating 3D texture: %s", name)
-    id := base.create_debug_id(name, loc, _state.allocator)
-    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
+    id := base.create_debug_id(name, loc)
 
     base.assert_id(id, desc.format != .Invalid)
     base.assert_id(id, desc.format != .Swapchain)
@@ -1127,8 +1119,7 @@ create_buffer :: proc(
     loc                 := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    id := base.create_debug_id(name, loc, _state.allocator)
-    defer if !ok do base.destroy_debug_id(&id, _state.allocator)
+    id := base.create_debug_id(name, loc)
 
     size := size
 
@@ -1283,32 +1274,26 @@ destroy_compute_pipeline :: proc(handle: Compute_Pipeline_Handle) -> bool {
 _destroy_shader_state :: proc(state: ^Shader_State) {
     delete(state.data, _state.allocator)
     _destroy_shader(state^)
-    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_resource_state :: proc(state: ^Resource_State) {
     _destroy_resource(state^)
-    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_bind_group_state :: proc(state: ^Bind_Group_State) {
     _destroy_bind_group(state^)
-    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_bind_layout_state :: proc(state: ^Bind_Layout_State) {
     _destroy_bind_layout(state^)
-    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_graphics_pipeline_state :: proc(state: ^Graphics_Pipeline_State) {
     _destroy_graphics_pipeline(state^)
-    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 _destroy_compute_pipeline_state :: proc(state: ^Compute_Pipeline_State) {
     _destroy_compute_pipeline(state^)
-    base.destroy_debug_id(&state.id, _state.allocator)
 }
 
 
@@ -1327,7 +1312,7 @@ begin_graphics_pass :: proc(name: string, desc: Graphics_Pass_Desc, loc := #call
     assert(_state != nil)
     assert(_state.in_frame)
     base.assert_id(_state.encoder.id, _state.encoder.mode == .None, "begin_pass/end_pass mismatch")
-    id := base.create_debug_id(name, loc, context.temp_allocator)
+    id := base.create_debug_id(name, loc)
     validate_pass_desc(id, desc)
     _begin_graphics_pass(id, desc)
     _state.encoder = {
@@ -1437,7 +1422,7 @@ begin_compute_pass :: proc(name: string, loc := #caller_location) {
     assert(_state != nil)
     assert(_state.in_frame)
     assert(_state.encoder.mode == .None, "begin_compute_pass/end_compute_pass mismatch")
-    id := base.create_debug_id(name, loc, context.temp_allocator)
+    id := base.create_debug_id(name, loc)
     _begin_compute_pass(id)
     _state.encoder = {
         mode = .Compute,
@@ -1531,8 +1516,8 @@ update_texture_2d :: proc(handle: Resource_Handle, data: []byte, #any_int slice:
         return false
     }
 
-    assert(res.kind == .Texture2D)
-    assert(slice < res.tex_desc.size.z)
+    base.assert_id(res.id, res.kind == .Texture2D)
+    base.assert_id(res.id, slice < res.tex_desc.size.z)
     _update_texture_2d(res, data = data, slice = slice)
     return true
 }

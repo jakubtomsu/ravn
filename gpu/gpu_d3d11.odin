@@ -159,7 +159,7 @@ when BACKEND == BACKEND_D3D11 {
             device_flags += {.DEBUG}
         }
 
-        id := base.create_debug_id("D3D11Init", allocator = context.temp_allocator)
+        id := base.create_debug_id("D3D11Init", #location())
 
         if !_d3d11_check(id, d3d11.CreateDevice(
             pAdapter = nil,
@@ -552,7 +552,10 @@ when BACKEND == BACKEND_D3D11 {
         assert(_state.device != nil)
         assert(_state.device_context != nil)
 
-        id := base.create_debug_id("D3D11Swapchain", allocator = context.temp_allocator)
+        @static id: base.Debug_ID = {}
+        if id == {} {
+            id = base.create_debug_id("D3D11Swapchain", #location())
+        }
 
         if _state.swapchain == nil {
             swapchain_desc := dxgi.SWAP_CHAIN_DESC1{
@@ -623,7 +626,7 @@ when BACKEND == BACKEND_D3D11 {
                 ppVertexShader = &result.vs,
             )) or_return
 
-            _d3d11_set_label(result.vs, base.get_debug_id_name(id))
+            _d3d11_set_label(result.vs, base.format_debug_id(id, context.temp_allocator))
 
         case .Pixel:
             _d3d11_check(id, _state.device->CreatePixelShader(
@@ -633,7 +636,7 @@ when BACKEND == BACKEND_D3D11 {
                 ppPixelShader = &result.ps,
             )) or_return
 
-            _d3d11_set_label(result.ps, base.get_debug_id_name(id))
+            _d3d11_set_label(result.ps, base.format_debug_id(id, context.temp_allocator))
 
         case .Compute:
             _d3d11_check(id, _state.device->CreateComputeShader(
@@ -643,7 +646,7 @@ when BACKEND == BACKEND_D3D11 {
                 ppComputeShader = &result.cs,
             )) or_return
 
-            _d3d11_set_label(result.cs, base.get_debug_id_name(id))
+            _d3d11_set_label(result.cs, base.format_debug_id(id, context.temp_allocator))
         }
 
         _d3d11_messages()
@@ -689,12 +692,12 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(id, _state.device->CreateBuffer(&d3d_desc, initial_data_ptr, &result.buf)) or_return
 
         _d3d11_messages()
-        _d3d11_set_label(result.buf, base.get_debug_id_name(id))
+        _d3d11_set_label(result.buf, base.format_debug_id(id, context.temp_allocator))
 
         if desc.kind == .Storage {
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.buf, nil, &result.srv)) or_return
             _d3d11_messages()
-            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.srv, base.format_debug_id(id, context.temp_allocator))
         }
 
         return result, true
@@ -711,7 +714,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(id, _state.device->CreateBuffer(&d3d_desc, nil, &result.buf)) or_return
 
         _d3d11_messages()
-        _d3d11_set_label(result.buf, base.get_debug_id_name(id))
+        _d3d11_set_label(result.buf, base.format_debug_id(id, context.temp_allocator))
 
         return result, true
     }
@@ -773,7 +776,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(id, _state.device->CreateTexture2D(&d3d_desc, initial_data_ptr, &result.tex2d)) or_return
 
         _d3d11_messages()
-        _d3d11_set_label(result.tex2d, base.get_debug_id_name(id))
+        _d3d11_set_label(result.tex2d, base.format_debug_id(id, context.temp_allocator))
 
         if is_texture_format_depth_stencil(desc.format) {
             dsv_desc := d3d11.DEPTH_STENCIL_VIEW_DESC{
@@ -782,7 +785,7 @@ when BACKEND == BACKEND_D3D11 {
                 Texture2D = {MipSlice = 0},
             }
             _d3d11_check(id, _state.device->CreateDepthStencilView(result.tex2d, &dsv_desc, &result.dsv)) or_return
-            _d3d11_set_label(result.dsv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.dsv, base.format_debug_id(id, context.temp_allocator))
 
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
                 Format = _d3d11_texture_depth_srv_format(desc.format),
@@ -793,7 +796,7 @@ when BACKEND == BACKEND_D3D11 {
                 },
             }
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
-            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.srv, base.format_debug_id(id, context.temp_allocator))
 
         } else if .Render_Texture in desc.flags {
             _d3d11_check(id, _state.device->CreateRenderTargetView(result.tex2d, nil, &result.rtv)) or_return
@@ -808,7 +811,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
-            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.srv, base.format_debug_id(id, context.temp_allocator))
 
         } else if desc.usage != .Staging {
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
@@ -832,7 +835,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex2d, &srv_desc, &result.srv)) or_return
-            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.srv, base.format_debug_id(id, context.temp_allocator))
         }
 
         if .RW_Resource in desc.flags {
@@ -845,7 +848,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(id, _state.device->CreateUnorderedAccessView(result.tex2d, &uav_desc, &result.uav)) or_return
-            _d3d11_set_label(result.uav, base.get_debug_id_name(id))
+            _d3d11_set_label(result.uav, base.format_debug_id(id, context.temp_allocator))
         }
 
         _d3d11_messages()
@@ -891,7 +894,7 @@ when BACKEND == BACKEND_D3D11 {
         _d3d11_check(id, _state.device->CreateTexture3D(&d3d_desc, initial_data_ptr, &result.tex3d)) or_return
 
         _d3d11_messages()
-        _d3d11_set_label(result.tex3d, base.get_debug_id_name(id))
+        _d3d11_set_label(result.tex3d, base.format_debug_id(id, context.temp_allocator))
 
         {
             srv_desc := d3d11.SHADER_RESOURCE_VIEW_DESC{
@@ -904,7 +907,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(id, _state.device->CreateShaderResourceView(result.tex3d, &srv_desc, &result.srv)) or_return
-            _d3d11_set_label(result.srv, base.get_debug_id_name(id))
+            _d3d11_set_label(result.srv, base.format_debug_id(id, context.temp_allocator))
         }
 
         if .RW_Resource in desc.flags {
@@ -917,7 +920,7 @@ when BACKEND == BACKEND_D3D11 {
             }
 
             _d3d11_check(id, _state.device->CreateUnorderedAccessView(result.tex3d, &uav_desc, &result.uav)) or_return
-            _d3d11_set_label(result.uav, base.get_debug_id_name(id))
+            _d3d11_set_label(result.uav, base.format_debug_id(id, context.temp_allocator))
         }
 
         _d3d11_messages()
@@ -1536,12 +1539,10 @@ when BACKEND == BACKEND_D3D11 {
             message = "E_NOTIMPL: The method call isn't implemented with the passed parameter combination"
         }
 
-        log.logf(level, "D3D11 Error:\n\tMessage: %s\n\tSource: %s %s:%i\n\tExpression: %s",
+        log.logf(level, "D3D11 Error:\n\tMessage: %s\n\tSource ID: %s\n\tExpression: %s",
             args = {
                 message,
-                base.get_debug_id_name(id),
-                base.get_debug_id_file(id),
-                id.line,
+                base.format_debug_id(id, context.temp_allocator),
                 expr,
             },
             location = loc,
