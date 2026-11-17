@@ -1499,7 +1499,6 @@ update_buffer :: proc(handle: Resource_Handle, offset := 0, buffers: ..[]byte, l
         return false
     }
 
-    base.assert_id(res.id, _state.in_frame)
     base.assert_id(res.id, _state.encoder.mode == .None, "You must do all buffer updates outside passes", loc = loc)
 
     if len(buffers) == 0 {
@@ -1524,7 +1523,6 @@ update_buffer :: proc(handle: Resource_Handle, offset := 0, buffers: ..[]byte, l
 
 update_texture_2d :: proc(handle: Resource_Handle, data: []byte, #any_int slice: i32 = 0) -> bool {
     assert(_state != nil)
-    assert(_state.in_frame)
     assert(_state.encoder.mode == .None, "You must do all texture updates before rendering")
 
     res, res_ok := _get_resource(handle)
@@ -1553,6 +1551,8 @@ draw_non_indexed :: proc(
     assert(_state.encoder.graphics_pipeline_desc.topo != .Invalid)
     assert(_state.encoder.graphics_pipeline_desc.vs != {})
     assert(_state.encoder.graphics_pipeline_desc.ps != {})
+    assert(vertex_num > 0)
+    assert(instance_num > 0)
     _draw_non_indexed(
         vertex_num = vertex_num,
         instance_num = instance_num,
@@ -1575,6 +1575,8 @@ draw_indexed :: proc(
     assert(_state.encoder.graphics_pipeline_desc.vs != {})
     assert(_state.encoder.graphics_pipeline_desc.ps != {})
     assert(_state.encoder.graphics_index_format != .Invalid)
+    assert(index_num > 0)
+    assert(instance_num > 0)
     _draw_indexed(
         index_num = index_num,
         instance_num = instance_num,

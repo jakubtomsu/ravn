@@ -1406,6 +1406,8 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _draw_non_indexed :: proc(vertex_num: int, instance_num: int, vertex_offset: int, instance_offset: int) {
+        assert(vertex_num > 0)
+        assert(instance_num > 0)
         _state.device_context->DrawInstanced(
             VertexCountPerInstance = u32(vertex_num),
             InstanceCount = u32(instance_num),
@@ -1416,6 +1418,8 @@ when BACKEND == BACKEND_D3D11 {
     }
 
     _draw_indexed :: proc(index_num: int, instance_num: int, index_offset: int, vertex_offset: int, instance_offset: int) {
+        assert(index_num > 0)
+        assert(instance_num > 0)
         _state.device_context->DrawIndexedInstanced(
             IndexCountPerInstance = u32(index_num),
             InstanceCount = u32(instance_num),
