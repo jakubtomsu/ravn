@@ -440,24 +440,18 @@ get_native_window_ptr :: proc(window: Window) -> rawptr {
 @(require_results)
 poll_window_events :: proc(window: Window) -> (event: Event, should_continue: bool) {
     assert(_state != nil)
-    event, should_continue = _event_queue_pop()
-    if should_continue {
-        return event, true
+    for {
+        event, should_continue = _event_queue_pop()
+        if should_continue {
+            return event, true
+        }
+
+        _event_queue_clear()
+
+        if !_poll_window_events(window) {
+            return _event_queue_pop()
+        }
     }
-
-    _event_queue_clear()
-
-    if !_poll_window_events(window) {
-        return nil, false
-    }
-
-    // maybe new events are queued up, just not returned
-    event, should_continue = _event_queue_pop()
-    if should_continue {
-        return event, true
-    }
-
-    return nil, false
 }
 
 get_main_monitor_rect :: proc() -> Rect {

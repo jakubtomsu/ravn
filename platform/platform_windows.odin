@@ -832,18 +832,19 @@ when BACKEND == BACKEND_WINDOWS {
                 if (mouse.lLastX != 0 && mouse.lLastY != 0) {
                     unimplemented()
                 }
-            } else {
+            } else { // common case
                 move := [2]i32{
                     i32(mouse.lLastX),
                     i32(mouse.lLastY),
                 }
                 _state.mouse_pos += move
-
-                // common case
-                _event_queue_push(Event_Mouse{
-                    pos = _state.mouse_pos,
-                    move = move,
-                })
+                
+                if move != 0 {
+                    _event_queue_push(Event_Mouse{
+                        pos = _state.mouse_pos,
+                        move = move,
+                    })
+                }
             }
 
             if (mouse.usButtonFlags & windows.RI_MOUSE_BUTTON_1_DOWN) != 0 { _event_queue_push(Event_Button{ button = .Mouse_Left, pressed = true }) }
@@ -917,7 +918,7 @@ when BACKEND == BACKEND_WINDOWS {
                 cbSizeHeader = size_of(windows.RAWINPUTHEADER),
             )
 
-            if num == 0{
+            if num == 0 || num >= len(buf) {
                 break
             }
 
