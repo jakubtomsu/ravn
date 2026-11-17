@@ -265,7 +265,7 @@ when BACKEND == BACKEND_WINDOWS {
             rid: windows.RAWINPUTDEVICE = {
                 usUsagePage = 0x01,
                 usUsage = 0x02,
-                dwFlags = 0,
+                dwFlags = windows.RIDEV_NOLEGACY,
                 hwndTarget = nil,
             }
 
