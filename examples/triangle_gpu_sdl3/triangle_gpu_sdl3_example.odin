@@ -77,8 +77,6 @@ main :: proc() {
     gpu.create_graphics_pipeline(&pip, gpu.make_graphics_pipeline_desc(
         ps = ps,
         vs = vs,
-        cull = .None,
-        // layouts = {0 = layout},
         vertex_layouts = {
             0 = gpu.make_vertex_layout(Vertex, .Vertex),
             1 = gpu.make_vertex_layout(Instance, .Instance),
