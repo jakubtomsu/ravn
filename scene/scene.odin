@@ -10,9 +10,9 @@ import "base:intrinsics"
 MAGIC :: (u32('r') << 0) | (u32('s') << 8) | (u32('c') << 16) | (u32('n') << 24)
 
 // Incremented every time a non-backward-compatible change occurs. Assets need to be re-exported.
-VERSION :: 2
+VERSION :: 3
 
-INVALID_PARENT :: 0xffff_ffff
+INVALID_INDEX :: 0xffff_ffff
 
 Scene :: struct {
     header:	Header,
@@ -92,6 +92,7 @@ Node :: struct #packed {
     parent:     	u32,
     mat_name_range: String_Range,
     kind:       	Node_Kind,
+    data_index:     u32,
     pos:        	[3]f32,
     rot:        	quaternion128,
     scale:      	[3]f32,

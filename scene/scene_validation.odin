@@ -12,13 +12,36 @@ validate :: proc(scn: Scene) -> bool {
 	for node, i in scn.node_data {
 		if !range_is_valid(scn.string_data, node.name_range) { log.errorf("Node %d: name_range invalid", i); return false }
 		if !range_is_valid(scn.string_data, node.mat_name_range) { log.errorf("Node %d: mat_name_range invalid", i); return false }
+		
+		switch node.kind {
+		case .None:
+			if node.data_index != INVALID_INDEX {
+				log.errorf("Node %d: None node must have INVALID_INDEX data_index, got %d", i, node.data_index)
+				return false
+			}
+		case .Mesh:
+			if int(node.data_index) >= len(scn.mesh_data) {
+				log.errorf("Node %d: mesh data_index %d out of bounds", i, node.data_index)
+				return false
+			}
+		case .Skin:
+			if int(node.data_index) >= len(scn.skin_data) {
+				log.errorf("Node %d: skin data_index %d out of bounds", i, node.data_index)
+				return false
+			}
+		case .Spline:
+			if int(node.data_index) >= len(scn.spline_data) {
+				log.errorf("Node %d: spline data_index %d out of bounds", i, node.data_index)
+				return false
+			}
+		}
 
-		if node.parent != INVALID_PARENT {
+		if node.parent != INVALID_INDEX {
 			if int(node.parent) >= len(scn.node_data) { log.errorf("Node %d: parent out of bounds", i); return false }
 
 			curr := node.parent
 			depth := 0
-			for curr != INVALID_PARENT && depth <= len(scn.node_data) {
+			for curr != INVALID_INDEX && depth <= len(scn.node_data) {
 				if int(curr) >= len(scn.node_data) {
 					log.errorf("Node %d: parent chain hits out of bounds at %d", i, curr)
 					return false
@@ -63,7 +86,7 @@ validate :: proc(scn: Scene) -> bool {
 			return false
 		}
 
-		if bone.parent != INVALID_PARENT {
+		if bone.parent != INVALID_INDEX {
 			if int(bone.parent) >= len(scn.bone_data) { log.errorf("Bone %d: parent %d out of bounds", i, bone.parent); return false }
 			if bone.parent >= u32(i) { log.errorf("Bone %d: parent %d not ordered by depth (must be < %d)", i, bone.parent, i); return false }
 			if !is_in_range(skel.bone_range, bone.parent) {

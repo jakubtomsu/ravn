@@ -8,13 +8,10 @@ import mathutils
 import re
 import numpy as np
 from pathlib import Path
-from pprint import pprint
-import struct
-from types import TracebackType
 
 BIN_MAGIC = b"rscn"
 
-VERSION = 2
+VERSION = 3
 
 bl_info = {
     "name": "RAVN Scene Exporter",
@@ -60,6 +57,7 @@ node_dtype = np.dtype([
     ('parent', np.uint32, 1),
     ('material_name_range', np.uint32, 2),
     ('kind', np.uint8, 1),
+    ('data_index', np.uint32, 1),
     ('pos', np.float32, 3),
     ('rot', np.float32, 4),
     ('scale', np.float32, 3),
@@ -156,13 +154,7 @@ conv_mat_4x4 = conv_mat.to_4x4()
 conv_mat_inv_4x4 = conv_mat_inv.to_4x4()
 
 def norm_name(name):
-    out = []
-    for c in name:
-        if c == ' ':
-            out.append('_')
-        else:
-            out.append(c)
-    return ''.join(out)
+    return name.replace(' ', '_')
 
 def srgb_to_linear(x):
     return np.where( x >= 0.04045,((x + 0.055) / 1.055)**2.4, x/12.92 )
@@ -192,6 +184,19 @@ def dump_bpy(obj):
             pass
 
     return data
+
+FCURVE_RE = re.compile(r'pose\.bones\["([^"]+)"\]\.(location|rotation_euler|rotation_quaternion|scale)')
+
+def eval_fcurve_group(fcurves: dict, defaults: tuple, fps: float, swizzle=None) -> np.ndarray:
+    frames = sorted({pt.co[0] for fc in fcurves.values() for pt in fc.keyframe_points})
+    out = np.empty(len(frames), dtype=anim_frame_dtype)
+    for idx, f in enumerate(frames):
+        vals = [fcurves[i].evaluate(f) if i in fcurves else d for i, d in enumerate(defaults)]
+        if swizzle is not None:
+            vals = [vals[i] for i in swizzle]
+        out[idx]['time'] = f / fps
+        out[idx]['value'] = vals
+    return out
 
 def get_mesh_loop_verts(mesh, dtype):
     tri_loops = np.empty((len(mesh.loop_triangles), 3), dtype=np.uint32)
@@ -225,16 +230,17 @@ def get_mesh_loop_verts(mesh, dtype):
     # loop_uvs[:, 1] = 1.0 - loop_uvs[:, 1]
     loop_verts['uv'] = loop_uvs[tri_loops.ravel()]
 
-    if mesh.vertex_colors:
-        col_layer = mesh.vertex_colors.active.data
-        colors = np.empty((len(mesh.loops), 4), dtype=np.float32)
-        col_layer.foreach_get('color', colors.ravel())
-        loop_colors = (srgb_to_linear(colors[:, :3]) * 255).astype(np.uint8)
-        loop_verts['col'] = loop_colors[tri_loops.ravel()]
+    attr = mesh.color_attributes.active_color
+    if attr and attr.domain in {'CORNER', 'POINT'}:
+        raw = np.empty((len(attr.data), 4), dtype=np.float32)
+        attr.data.foreach_get('color', raw.ravel())
+        cols = (np.clip(raw[:, :3], 0.0, 1.0) * 255.0).astype(np.uint8)
+        loop_verts['col'] = cols[tri_loops.ravel()] if attr.domain == 'CORNER' else cols[tri_vert_indices]
     else:
         loop_verts['col'].fill(255)
 
     return loop_verts, tri_vert_indices
+
 
 def get_mesh_skinning_data(mesh, vertex_groups, bone_names, max_influences=4):
     num_verts = len(mesh.vertices)
@@ -380,6 +386,10 @@ def export_rscn(context, out_name):
     skeleton_bone_maps = {}
     node_map = {}
     bone_map = {}
+    mesh_map = {}          # dedup_key -> index in mesh_buf
+    skin_map = {}          # dedup_key -> index in skin_buf
+    spline_map = {}        # dedup_key -> index in spline_buf
+    node_targets = {}      # obj.name -> (kind, data_index)
 
     str_buf  = AppendBuffer(np.uint8)
     node_buf = AppendBuffer(node_dtype)
@@ -492,80 +502,45 @@ def export_rscn(context, out_name):
     # MARK: Anims
     for action in bpy.data.actions:
         print(f"ACTION {action.name}")
-        total_curves = 0
+
+        raw_channels = {}
         for layer in getattr(action, "layers", []):
             for strip in layer.strips:
                 for channel in strip.channelbags:
                     for fcurve in channel.fcurves:
-                        total_curves += 1
-
-        entry = [f"\t{norm_name(action.name)} {total_curves} {{\n"]
-
-        bone_curves = {}
-
-        for layer in getattr(action, "layers", []):
-            for strip in layer.strips:
-                for channel in strip.channelbags:
-                    for fcurve in channel.fcurves:
-                        match = re.match(r'pose\.bones\["([^"]+)"\]\.(location|rotation_euler|rotation_quaternion|scale)',
-                                        fcurve.data_path)
+                        match = FCURVE_RE.match(fcurve.data_path)
                         if not match:
                             continue
 
-                        bone_name = match.group(1)
-                        transform_type = match.group(2)
+                        bone_name, transform_type = match.group(1), match.group(2)
+                        assert transform_type != "rotation_euler"
 
-                        assert(transform_type != "rotation_euler")
+                        bone_ch = raw_channels.setdefault(bone_name, {})
+                        bone_ch.setdefault(transform_type, {})[fcurve.array_index] = fcurve
 
-                        bone_curve = bone_curves.get(bone_name, {'rot': {}, 'pos': {}, 'scale': {}})
-
-                        if transform_type == "location":
-                            for point in fcurve.keyframe_points:
-                                t = float(point.co[0]) / context.scene.render.fps
-                                val = bone_curve['pos'].get(t, np.array([0, 0, 0, 0], dtype=np.float32))
-                                val[fcurve.array_index] = point.co[1]
-                                bone_curve['pos'][t] = val
-
-                        elif transform_type == "rotation_quaternion":
-                            for point in fcurve.keyframe_points:
-                                t = float(point.co[0]) / context.scene.render.fps
-                                blender_index = fcurve.array_index # wxyz
-                                index = 3 if blender_index==0 else blender_index-1 # xyzw
-                                val = bone_curve['rot'].get(t, np.array([0, 0, 0, 0], dtype=np.float32))
-                                val[index] = point.co[1]
-                                bone_curve['rot'][t] = val
-
-                        elif transform_type == "scale":
-                            for point in fcurve.keyframe_points:
-                                t = float(point.co[0]) / context.scene.render.fps
-                                val = bone_curve['scale'].get(t, np.array([1, 1, 1, 0], dtype=np.float32))
-                                val[fcurve.array_index] = point.co[1]
-                                bone_curve['scale'][t] = val
-
-                        bone_curves[bone_name] = bone_curve
-
-        if len(bone_curves) == 0:
+        if not raw_channels:
             # Not a skeletal anim
             continue
 
+        fps = context.scene.render.fps
         anim_curve_offset = anim_curve_buf.len
         skeleton_index = -1
-        for name, curves in bone_curves.items():
-            for frame, value in curves['pos'].items():
-                curves['pos'][frame][:3] = conv_mat_np @ value[:3]
-            for frame, value in curves['rot'].items():
-                quat = mathutils.Quaternion((value[3], value[0], value[1], value[2]))
-                rot_mat = conv_mat @ quat.to_matrix() @ conv_mat_inv
-                quat = rot_mat.to_quaternion()
-                curves['rot'][frame] = np.array((quat.x, quat.y, quat.z, quat.w), dtype=np.float32)
-            for frame, value in curves['scale'].items():
-                curves['scale'][frame][:3] = conv_mat_np @ value[:3]
 
-            pos_data = np.array(sorted(curves['pos'].items()), dtype=anim_frame_dtype)
-            rot_data = np.array(sorted(curves['rot'].items()), dtype=anim_frame_dtype)
-            scale_data = np.array(sorted(curves['scale'].items()), dtype=anim_frame_dtype)
-            pos_offset = anim_frame_buf.append(pos_data)
-            rot_offset = anim_frame_buf.append(rot_data)
+        for name, ch in raw_channels.items():
+            pos_data   = eval_fcurve_group(ch.get('location', {}),            (0.0, 0.0, 0.0, 0.0), fps)
+            rot_data   = eval_fcurve_group(ch.get('rotation_quaternion', {}), (1.0, 0.0, 0.0, 0.0), fps, swizzle=(1, 2, 3, 0))
+            scale_data = eval_fcurve_group(ch.get('scale', {}),               (1.0, 1.0, 1.0, 0.0), fps)
+
+            # Convert to engine coordinate space in-place
+            pos_data['value'][:, :3]   = pos_data['value'][:, :3] @ conv_mat_np.T
+            scale_data['value'][:, :3] = scale_data['value'][:, :3] @ conv_mat_np.T
+            for v in rot_data['value']:
+                quat = mathutils.Quaternion((v[3], v[0], v[1], v[2]))
+                quat = (conv_mat @ quat.to_matrix() @ conv_mat_inv).to_quaternion()
+                v[:] = (quat.x, quat.y, quat.z, quat.w)
+
+            pos_offset   = anim_frame_buf.append(pos_data)
+            rot_offset   = anim_frame_buf.append(rot_data)
             scale_offset = anim_frame_buf.append(scale_data)
 
             bone_index = -1
@@ -578,25 +553,77 @@ def export_rscn(context, out_name):
                     skeleton_index = bone_skeleton_index
 
             curve_entry = np.zeros(1, dtype=anim_curve_dtype)
-            curve_entry[0]['bone'] = bone_index
-            curve_entry[0]['pos_range'] = np.array([pos_offset, len(pos_data)], dtype=np.uint32)
-            curve_entry[0]['rot_range'] = np.array([rot_offset, len(rot_data)], dtype=np.uint32)
+            curve_entry[0]['bone']        = bone_index
+            curve_entry[0]['pos_range']   = np.array([pos_offset, len(pos_data)], dtype=np.uint32)
+            curve_entry[0]['rot_range']   = np.array([rot_offset, len(rot_data)], dtype=np.uint32)
             curve_entry[0]['scale_range'] = np.array([scale_offset, len(scale_data)], dtype=np.uint32)
             anim_curve_buf.append(curve_entry)
 
         name_range = get_interned_str(str_map, str_buf, norm_name(action.name))
 
         entry = np.zeros(1, dtype=anim_dtype)
-        entry[0]['skeleton'] = skeleton_index
-        entry[0]['name_range'] = name_range
-        entry[0]['curve_range'] = np.array([anim_curve_offset, len(bone_curves)], dtype=np.uint32)
+        entry[0]['skeleton']    = skeleton_index
+        entry[0]['name_range']  = name_range
+        entry[0]['curve_range'] = np.array([anim_curve_offset, len(raw_channels)], dtype=np.uint32)
         anim_buf.append(entry)
 
     prof("Anims")
 
-    # MARK: Meshes+Skins
+    # MARK: Meshes
     for obj in bpy.data.objects:
         if obj.type != 'MESH':
+            continue
+
+        armature = obj.find_armature()
+        if armature is not None:
+            continue
+
+        other_mods = [mod for mod in obj.modifiers if mod.type != 'ARMATURE' and mod.show_viewport]
+
+        dedup_key = obj.data if not other_mods else obj
+        if dedup_key in mesh_map:
+            node_targets[obj.name] = (NODE_KIND_MESH, mesh_map[dedup_key])
+            continue
+
+        eval_obj = obj.evaluated_get(depsgraph)
+        mesh = eval_obj.to_mesh()
+        name_range = get_interned_str(str_map, str_buf, norm_name(obj.data.name))
+
+        loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=mesh_vert_dtype)
+        verts, loop_to_unique = np.unique(loop_verts, return_inverse=True)
+        indices = loop_to_unique.astype(np.uint32).reshape(-1, 3)[:, [0, 2, 1]].ravel()
+
+        verts_offset = mesh_vertex_buf.append(verts)
+        indices_offset = index_buf.append(indices)
+
+        entry = np.zeros(1, dtype=mesh_dtype)
+        entry[0]['name_range'] = name_range
+        entry[0]['vert_range'] = np.array([verts_offset, len(verts)], dtype=np.uint32)
+        entry[0]['index_range'] = np.array([indices_offset, len(indices)], dtype=np.uint32)
+        mesh_index = mesh_buf.append(entry)
+        mesh_map[dedup_key] = mesh_index
+        node_targets[obj.name] = (NODE_KIND_MESH, mesh_index)
+
+        eval_obj.to_mesh_clear()
+
+    prof("Meshes")
+
+    
+    # MARK: Skins
+    for obj in bpy.data.objects:
+        if obj.type != 'MESH':
+            continue
+
+        armature = obj.find_armature()
+        if armature is None:
+            continue
+
+        other_mods = [mod for mod in obj.modifiers if mod.type != 'ARMATURE' and mod.show_viewport]
+
+        vg_sig = tuple((vg.name, vg.index) for vg in obj.vertex_groups)
+        dedup_key = (obj.data, armature.name, vg_sig) if not other_mods else obj
+        if dedup_key in skin_map:
+            node_targets[obj.name] = (NODE_KIND_SKIN, skin_map[dedup_key])
             continue
 
         # Skip Armature modifiers so non-skinning modifiers evaluate in rest pose
@@ -609,61 +636,47 @@ def export_rscn(context, out_name):
 
         eval_obj = obj.evaluated_get(depsgraph)
         mesh = eval_obj.to_mesh()
+        name_range = get_interned_str(str_map, str_buf, norm_name(obj.data.name))
 
-        armature = obj.find_armature()
-        name_range = get_interned_str(str_map, str_buf, norm_name(obj.name))
+        loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=skin_vert_dtype)
+        vert_bones, vert_weights = get_mesh_skinning_data(mesh, obj.vertex_groups, skeleton_bone_maps[armature.name])
+        vert_weights = np.round(vert_weights * 255.0).astype(np.uint8)
+        loop_verts['bones'] = vert_bones[tri_vert_indices.ravel()]
+        loop_verts['weights'] = vert_weights[tri_vert_indices.ravel()]
+        verts, loop_to_unique = np.unique(loop_verts, return_inverse=True)
+        indices = loop_to_unique.astype(np.uint32).reshape(-1, 3)[:, [0, 2, 1]].ravel()
 
-        if armature is None:
-            loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=mesh_vert_dtype)
+        verts_offset = skin_vertex_buf.append(verts)
+        indices_offset = index_buf.append(indices)
+        skeleton_offset = skeleton_map[armature.name]
 
-            verts, loop_to_unique = np.unique(loop_verts, return_inverse=True)
-            indices = loop_to_unique.astype(np.uint32).reshape(-1, 3)[:, [0, 2, 1]].ravel()
-
-            verts_offset = mesh_vertex_buf.append(verts)
-            indices_offset = index_buf.append(indices)
-
-            entry = np.zeros(1, dtype=mesh_dtype)
-            entry[0]['name_range'] = name_range
-            entry[0]['vert_range'] = np.array([verts_offset, len(verts)], dtype=np.uint32)
-            entry[0]['index_range'] = np.array([indices_offset, len(indices)], dtype=np.uint32)
-            mesh_buf.append(entry)
-
-        else:
-            loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=skin_vert_dtype)
-            vert_bones, vert_weights = get_mesh_skinning_data(mesh, obj.vertex_groups, skeleton_bone_maps[armature.name])
-
-            vert_weights = np.round(vert_weights * 255.0).astype(np.uint8)
-
-            loop_verts['bones'] = vert_bones[tri_vert_indices.ravel()]
-            loop_verts['weights'] = vert_weights[tri_vert_indices.ravel()]
-
-            verts, loop_to_unique = np.unique(loop_verts, return_inverse=True)
-            indices = loop_to_unique.astype(np.uint32).reshape(-1, 3)[:, [0, 2, 1]].ravel()
-
-            verts_offset = skin_vertex_buf.append(verts)
-            indices_offset = index_buf.append(indices)
-
-            skeleton_offset = skeleton_map[armature.name]
-
-            entry = np.zeros(1, dtype=skin_dtype)
-            entry[0]['name_range'] = name_range
-            entry[0]['skeleton'] = skeleton_offset
-            entry[0]['vert_range'] = np.array([verts_offset, len(verts)], dtype=np.uint32)
-            entry[0]['index_range'] = np.array([indices_offset, len(indices)], dtype=np.uint32)
-            skin_buf.append(entry)
+        entry = np.zeros(1, dtype=skin_dtype)
+        entry[0]['name_range'] = name_range
+        entry[0]['skeleton'] = skeleton_offset
+        entry[0]['vert_range'] = np.array([verts_offset, len(verts)], dtype=np.uint32)
+        entry[0]['index_range'] = np.array([indices_offset, len(indices)], dtype=np.uint32)
+        skin_index = skin_buf.append(entry)
+        skin_map[dedup_key] = skin_index
+        node_targets[obj.name] = (NODE_KIND_SKIN, skin_index)
 
         eval_obj.to_mesh_clear()
         for mod in disabled_armature_mods:
             mod.show_viewport = True
 
-    prof("Mesh+Skin")
+    prof("Skins")
 
     # MARK: Splines
     for obj in bpy.data.objects:
         if obj.type != 'CURVE':
             continue
-        curve = obj.to_curve(depsgraph, apply_modifiers=True)
 
+        has_mods = any(mod.show_viewport for mod in obj.modifiers)
+        dedup_key = obj.data if not has_mods else obj
+        if dedup_key in spline_map:
+            node_targets[obj.name] = (NODE_KIND_SPLINE, spline_map[dedup_key])
+            continue
+        
+        curve = obj.to_curve(depsgraph, apply_modifiers=True)
         name_range = get_interned_str(str_map, str_buf, norm_name(obj.name))
 
         if len(curve.splines) > 1:
@@ -691,7 +704,9 @@ def export_rscn(context, out_name):
             entry = np.zeros(1, dtype=spline_dtype)
             entry[0]['name_range'] = name_range
             entry[0]['vert_range'] = np.array([verts_offset, len(points)], dtype=np.uint32)
-            spline_buf.append(entry)
+            spline_index = spline_buf.append(entry)
+            spline_map[dedup_key] = spline_index
+            node_targets[obj.name] = (NODE_KIND_SPLINE, spline_index)
 
             break
 
@@ -701,18 +716,10 @@ def export_rscn(context, out_name):
 
     # MARK: Nodes
     for obj in iter_objects_parent_first():
-        kind = NODE_KIND_NONE
-        if obj.type == 'EMPTY':
-            kind = NODE_KIND_NONE
-        elif obj.type == 'MESH':
-            if obj.find_armature() == None:
-                kind = NODE_KIND_MESH
-            else:
-                kind = NODE_KIND_SKIN
-        elif obj.type == 'CURVE':
-            kind = NODE_KIND_SPLINE
-        else:
+        if obj.type not in {'EMPTY', 'MESH', 'CURVE'}:
             continue
+
+        kind, data_index = node_targets.get(obj.name, (NODE_KIND_NONE, 0xffffffff))
 
         name_range = get_interned_str(str_map, str_buf, norm_name(obj.name))
         mat_name = get_interned_str(str_map, str_buf, norm_name(obj.active_material.name) if obj.active_material else None)
@@ -740,6 +747,7 @@ def export_rscn(context, out_name):
         entry[0]['parent'] = parent
         entry[0]['material_name_range'] = mat_name
         entry[0]['kind'] = kind
+        entry[0]['data_index'] = data_index
         entry[0]['pos'] = pos
         entry[0]['rot'] = [rot.x, rot.y, rot.z, rot.w]
         entry[0]['scale'] = scale
@@ -798,7 +806,7 @@ def main():
 
     out_name = os.path.splitext(bpy.data.filepath)[0] + ".rscn"
 
-    print(f"\nExporting '{out_name}' and '{out_name}...")
+    print(f"\nExporting '{out_name}'...")
 
     export_rscn(bpy.context, out_name)
 

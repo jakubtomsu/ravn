@@ -28,12 +28,21 @@ to_string :: proc(scn: Scene, include_data := false, allocator := context.alloca
     if len(scn.node_data) > 0 {
         fmt.sbprintln(&sb, "\tnodes = {")
         for it, i in scn.node_data {
-            fmt.sbprintfln(&sb, "\t\t[%i] %q = {{ parent=%q, material=%q, kind=%v, pos=%v, rot=%v, scale=%v }},",
+            target_name := "<NONE>"
+            switch it.kind {
+            case .None:
+            case .Mesh:   target_name = get_string(scn, scn.mesh_data[it.data_index].name_range)
+            case .Skin:   target_name = get_string(scn, scn.skin_data[it.data_index].name_range)
+            case .Spline: target_name = get_string(scn, scn.spline_data[it.data_index].name_range)
+            }
+            fmt.sbprintfln(&sb, "\t\t[%i] %q = {{ parent=%q, material=%q, data=%v %q [%v], pos=%v, rot=%v, scale=%v }},",
                 i,
                 get_string(scn, it.name_range),
-                (it.parent == INVALID_PARENT) ? "<NONE>" : string(get_string(scn, scn.node_data[it.parent].name_range)),
+                (it.parent == INVALID_INDEX) ? "<NONE>" : string(get_string(scn, scn.node_data[it.parent].name_range)),
                 get_string(scn, it.mat_name_range),
                 it.kind,
+                target_name,
+                it.data_index,
                 it.pos,
                 transmute([4]f32)it.rot,
                 it.scale,
@@ -105,7 +114,7 @@ to_string :: proc(scn: Scene, include_data := false, allocator := context.alloca
                 fmt.sbprintfln(&sb, "\t\t\t[%i] %q = {{ parent=%q, pos=%v, length=%f, rot=%v }},",
                     b_i,
                     get_string(scn, b.name_range),
-                    (b.parent == INVALID_PARENT) ? "<NONE>" : string(get_string(scn, scn.bone_data[b.parent].name_range)),
+                    (b.parent == INVALID_INDEX) ? "<NONE>" : string(get_string(scn, scn.bone_data[b.parent].name_range)),
                     b.pos,
                     b.length,
                     transmute([4]f32)b.rot,
