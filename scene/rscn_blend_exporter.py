@@ -236,15 +236,13 @@ def get_mesh_loop_verts(mesh, dtype):
 
     return loop_verts, tri_vert_indices
 
-def get_mesh_skinning_data(mesh_obj, bone_names, max_influences=4):
-    mesh = mesh_obj.data
+def get_mesh_skinning_data(mesh, vertex_groups, bone_names, max_influences=4):
     num_verts = len(mesh.vertices)
-
     num_bones = len(bone_names)
 
     vg_idx_to_bone = {
         vg.index: bone_names[vg.name]
-        for vg in mesh_obj.vertex_groups if vg.name in bone_names
+        for vg in vertex_groups if vg.name in bone_names
     }
 
     total_cols = max(num_bones, max_influences)
@@ -601,11 +599,18 @@ def export_rscn(context, out_name):
         if obj.type != 'MESH':
             continue
 
+        # Skip Armature modifiers so non-skinning modifiers evaluate in rest pose
+        disabled_armature_mods = [mod for mod in obj.modifiers if mod.type == 'ARMATURE' and mod.show_viewport]
+        for mod in disabled_armature_mods:
+            mod.show_viewport = False
+
+        if disabled_armature_mods:
+            depsgraph.update()
+
         eval_obj = obj.evaluated_get(depsgraph)
         mesh = eval_obj.to_mesh()
 
         armature = obj.find_armature()
-
         name_range = get_interned_str(str_map, str_buf, norm_name(obj.name))
 
         if armature == None:
@@ -625,7 +630,7 @@ def export_rscn(context, out_name):
 
         else:
             loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=skin_vert_dtype)
-            vert_bones, vert_weights = get_mesh_skinning_data(obj, skeleton_bone_maps[armature.name])
+            vert_bones, vert_weights = get_mesh_skinning_data(mesh, obj.vertex_groups, skeleton_bone_maps[armature.name])
 
             vert_weights = np.round(vert_weights * 255.0).astype(np.uint8)
 
@@ -648,6 +653,8 @@ def export_rscn(context, out_name):
             skin_buf.append(entry)
 
         eval_obj.to_mesh_clear()
+        for mod in disabled_armature_mods:
+            mod.show_viewport = True
 
     prof("Mesh+Skin")
 

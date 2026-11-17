@@ -87,6 +87,8 @@ validate :: proc(scn: Scene) -> bool {
 		skel := scn.skeleton_data[skin.skeleton]
 		verts := get_range_slice(scn.skin_vert_data, skin.vert_range)
 		for v, v_idx in verts {
+			weight_sum := int(v.weights.x) + int(v.weights.y) + int(v.weights.z) + int(v.weights.w)
+			if weight_sum <= 250 { log.errorf("Skin %d: vert %d: weights are not normalized, sum = %v", i, v_idx, weight_sum); return false }
 			for b_idx in 0..<4 {
 				if !is_in_range(skel.bone_range, u32(v.bones[b_idx])) && v.weights[b_idx] > 0 {
 					log.errorf("Skin %d: vert %d references invalid local bone %d", i, v_idx, v.bones[b_idx]); return false
