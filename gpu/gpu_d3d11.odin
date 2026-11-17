@@ -705,7 +705,7 @@ when BACKEND == BACKEND_D3D11 {
 
     _create_constants :: proc(id: base.Debug_ID, desc: Constants_Desc) -> (result: _Resource_State, ok: bool) {
         d3d_desc := d3d11.BUFFER_DESC{
-            ByteWidth = u32(desc.size),
+            ByteWidth = u32(desc.size * desc.num),
             Usage = .DYNAMIC,
             BindFlags = {.CONSTANT_BUFFER},
             CPUAccessFlags = {.WRITE},
