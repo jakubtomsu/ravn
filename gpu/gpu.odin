@@ -174,21 +174,33 @@ Bind_Group_State :: struct #all_or_none {
 }
 
 Graphics_Pipeline_Desc :: struct #align(64) #all_or_none {
-    topo:               Topology,
-    cull:               Cull_Mode,
-    fill:               Fill_Mode,
-    depth_comparison:   Comparison_Op,
-    depth_write:        bool,
-    depth_bias:         i32,
-    depth_format:       Texture_Format,
     ps:                 Shader_Handle,
     vs:                 Shader_Handle,
     index_format:       Index_Format,
+    using raster:       Raster_Desc,
+    depth:              Depth_Desc,
     blends:             [MAX_BOUND_RENDER_TEXTURES]Blend_Desc,
     color_formats:      [MAX_BOUND_RENDER_TEXTURES]Texture_Format,
     bind_layouts:       [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle,
     vertex_layouts:     [MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc,
 }
+
+Raster_Desc :: struct #all_or_none {
+    topo:   Topology,
+    fill:   Fill_Mode,
+    cull:   Cull_Mode,
+}
+
+RASTER_DEFAULT :: Raster_Desc{.Triangles, .Solid, .None}
+
+Depth_Desc :: struct #all_or_none {
+    format:     Texture_Format,
+    comparison: Comparison_Op,
+    write:      bool,
+    bias:       i32,
+}
+
+DEPTH_NONE :: Depth_Desc{.Invalid, .Always, false, 0}
 
 // Layout of a single contiguous vertex data channel
 Vertex_Layout_Desc :: struct #all_or_none {
@@ -361,7 +373,7 @@ Resource_Kind :: enum u8 {
 }
 
 Index_Format :: enum u8 {
-    Invalid,
+    Invalid = 0,
     U16,
     U32,
 }
@@ -378,30 +390,34 @@ Usage :: enum u8 {
 }
 
 Topology :: enum u8 {
-    Invalid,
+    Invalid = 0,
     Triangles,
     Lines,
 }
 
+// Triangle fill mode
 Fill_Mode :: enum u8 {
     Invalid = 0,
     Solid,
     Wireframe, // NOTE: Not supported on WebGPU. The triangles will default to 'Solid'.
 }
 
+// Triangle face culling, the specified side of a triangle is ignored when shading.
 Cull_Mode :: enum u8 {
-    Invalid,
+    Invalid = 0,
     None,
     Front,
     Back,
 }
 
+// Sampler filtering kind
 Filter :: enum u8 {
-    Min,
-    Mag,
-    Mip,
+    Min, // Zoomed out, details alias
+    Mag, // Zoomed in, details interpolate
+    Mip, // Non sharp mip transition
 }
 
+// Addressing mode
 Texture_Bounds :: enum u8 {
     Wrap = 0,
     Mirror,
@@ -508,26 +524,6 @@ Vertex_Format :: enum u8 {
     I32x3,
     I32x4,
     U10x3_U2_Norm,
-}
-
-
-// Alpha blending is default
-make_blend_desc :: proc(
-    src_color:  Blend_Factor = .Src_Alpha,
-    dst_color:  Blend_Factor = .One_Minus_Src_Alpha,
-    src_alpha:  Blend_Factor = .Src_Alpha,
-    dst_alpha:  Blend_Factor = .One_Minus_Src_Alpha,
-    op_color:   Blend_Op = .Add,
-    op_alpha:   Blend_Op = .Add,
-) -> Blend_Desc {
-    return {
-        src_color = src_color,
-        dst_color = dst_color,
-        src_alpha = src_alpha,
-        dst_alpha = dst_alpha,
-        op_color = op_color,
-        op_alpha = op_alpha,
-    }
 }
 
 make_sampler_desc :: proc(
@@ -646,30 +642,20 @@ end_frame :: proc(sync: bool = true, loc := #caller_location) {
 make_graphics_pipeline_desc :: proc(
     ps:                 Shader_Handle,
     vs:                 Shader_Handle,
-    bind_layouts:       [dynamic; MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {},
-    vertex_layouts:     [dynamic; MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc,
-    color_formats:      [dynamic; MAX_BOUND_RENDER_TEXTURES]Texture_Format,
-    blends:             [dynamic; MAX_BOUND_RENDER_TEXTURES]Blend_Desc = {},
+    color_formats:      []Texture_Format,
+    bind_layouts:       []Bind_Layout_Handle = {},
+    vertex_layouts:     []Vertex_Layout_Desc = {},
+    blends:             []Blend_Desc = {},
     index_format:       Index_Format = .Invalid,
-    topo:               Topology = .Triangles,
-    cull:               Cull_Mode = .None,
-    fill:               Fill_Mode = .Solid,
-    depth_format:       Texture_Format = .Invalid,
-    depth_comparison:   Comparison_Op = .Always,
-    depth_write:        bool = false,
-    depth_bias:         i32 = 0,
+    raster:             Raster_Desc = RASTER_DEFAULT,
+    depth:              Depth_Desc = DEPTH_NONE,
 ) -> (result: Graphics_Pipeline_Desc) {
     result = {
         ps = ps,
         vs = vs,
         index_format = index_format,
-        topo = topo,
-        cull = cull,
-        fill = fill,
-        depth_comparison = depth_comparison,
-        depth_write = depth_write,
-        depth_bias = depth_bias,
-        depth_format = depth_format,
+        raster = raster,
+        depth = depth,
         bind_layouts = {},
         vertex_layouts = {},
         color_formats = {},
@@ -680,6 +666,43 @@ make_graphics_pipeline_desc :: proc(
     for it, i in vertex_layouts { result.vertex_layouts[i] = it }
     for it, i in color_formats { result.color_formats[i] = it }
     for it, i in blends { result.blends[i] = it }
+
+    return result
+}
+
+
+@(require_results)
+make_graphics_pipeline_desc_from :: proc(
+    base_desc:          Graphics_Pipeline_Desc,
+    ps:                 Maybe(Shader_Handle) = nil,
+    vs:                 Maybe(Shader_Handle) = nil,
+    color_formats:      []Maybe(Texture_Format) = nil,
+    bind_layouts:       []Maybe(Bind_Layout_Handle) = nil,
+    vertex_layouts:     []Maybe(Vertex_Layout_Desc) = nil,
+    blends:             []Maybe(Blend_Desc) = nil,
+    index_format:       Maybe(Index_Format) = nil,
+    raster:             Maybe(Raster_Desc) = nil,
+    depth:              Maybe(Depth_Desc) = nil,
+) -> (result: Graphics_Pipeline_Desc) {
+
+    result = {
+        raster              = raster.? or_else base_desc.raster,
+        depth               = depth.? or_else base_desc.depth,
+        ps                  = ps.? or_else base_desc.ps,
+        vs                  = vs.? or_else base_desc.vs,
+        index_format        = index_format.? or_else base_desc.index_format,
+
+        blends              = base_desc.blends,
+        color_formats       = base_desc.color_formats,
+        bind_layouts        = base_desc.bind_layouts,
+        vertex_layouts      = base_desc.vertex_layouts,
+    }
+
+
+    for it, i in bind_layouts   { v := it.? or_continue; result.bind_layouts[i] = v }
+    for it, i in vertex_layouts { v := it.? or_continue; result.vertex_layouts[i] = v }
+    for it, i in color_formats  { v := it.? or_continue; result.color_formats[i] = v }
+    for it, i in blends         { v := it.? or_continue; result.blends[i] = v }
 
     return result
 }
@@ -1781,18 +1804,18 @@ validate_graphics_pipeline_desc :: proc(id: base.Debug_ID, desc: Graphics_Pipeli
     base.assert_id(id, vs_res.kind == .Vertex, "Shader bound to vertex stage must be a vertex shader", loc = loc)
     base.assert_id(id, ps_res.kind == .Pixel, "Shader bound to pixel stage must be a pixel shader", loc = loc)
 
-    base.assert_id(id, len(desc.color_formats) != 0 || desc.depth_format != {}, loc = loc)
+    base.assert_id(id, len(desc.color_formats) != 0 || desc.depth.format != {}, loc = loc)
 
-    depth_params_set := desc.depth_write != {} ||
-        desc.depth_bias != {} ||
-        desc.depth_comparison != {}
+    depth_params_set := desc.depth.write != {} ||
+        desc.depth.bias != {} ||
+        desc.depth.comparison != {}
 
-    if desc.depth_format == .Invalid {
+    if desc.depth.format == .Invalid {
         base.assert_id(id, !depth_params_set, loc = loc)
     }
 
     if depth_params_set {
-        base.assert_id(id, desc.depth_format != .Invalid, loc = loc)
+        base.assert_id(id, desc.depth.format != .Invalid, loc = loc)
     }
 
     num_colors := 0
@@ -1810,12 +1833,12 @@ validate_graphics_pipeline_desc :: proc(id: base.Debug_ID, desc: Graphics_Pipeli
         base.assert_id(id, !is_texture_format_depth_stencil(col), loc = loc)
     }
 
-    if desc.depth_format == .Invalid {
-        base.assert_id(id, desc.depth_bias == 0, loc = loc)
-        base.assert_id(id, desc.depth_comparison == {}, loc = loc)
-        base.assert_id(id, desc.depth_write == false, loc = loc)
+    if desc.depth.format == .Invalid {
+        base.assert_id(id, desc.depth.bias == 0, loc = loc)
+        base.assert_id(id, desc.depth.comparison == {}, loc = loc)
+        base.assert_id(id, desc.depth.write == false, loc = loc)
     } else {
-        base.assert_id(id, is_texture_format_depth_stencil(desc.depth_format), loc = loc)
+        base.assert_id(id, is_texture_format_depth_stencil(desc.depth.format), loc = loc)
     }
 }
 
@@ -1835,9 +1858,9 @@ validate_graphics_pipeline_for_pass :: proc(id: base.Debug_ID, pip: Graphics_Pip
 
     _, depth_ok := _get_resource(pass.depth.resource)
     if depth_ok {
-        base.assert_id(id, is_texture_format_depth_stencil(pip.depth_format), loc = loc)
+        base.assert_id(id, is_texture_format_depth_stencil(pip.depth.format), loc = loc)
     } else {
-        base.assert_id(id, pip.depth_format == .Invalid, loc = loc)
+        base.assert_id(id, pip.depth.format == .Invalid, loc = loc)
     }
 }
 

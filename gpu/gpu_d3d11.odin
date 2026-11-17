@@ -233,13 +233,13 @@ when BACKEND == BACKEND_D3D11 {
     _create_graphics_pipeline :: proc(id: base.Debug_ID, desc: Graphics_Pipeline_Desc) -> (result: _Graphics_Pipeline_State, ok: bool) {
         result.blend = _getref_or_create_blend(id, desc.blends).bs
         result.depth_stencil = _getref_or_create_depth_stencil(id, _Depth_Stencil_Desc{
-            comparison = desc.depth_comparison,
-            write = desc.depth_write,
+            comparison = desc.depth.comparison,
+            write = desc.depth.write,
         }).dss
         result.rasterizer = _getref_or_create_rasterizer(id, _Rasterizer_Desc{
             cull = desc.cull,
             fill = desc.fill,
-            depth_bias = desc.depth_bias,
+            depth_bias = desc.depth.bias,
         }).rs
         result.input_layout = _getref_or_create_input_layout(id, _Input_Layout_Desc{
             vertex_layouts = desc.vertex_layouts,
