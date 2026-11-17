@@ -481,6 +481,9 @@ render_frame :: proc() {
 }
 
 draw_vert_buffer :: proc(buf: $T/Buffer($E)) {
+    if buf.upload_elem_num <= 0 {
+        return
+    }
     gpu.draw_non_indexed(
         vertex_num = int(buf.upload_elem_num),
         instance_num = 1,
@@ -490,6 +493,10 @@ draw_vert_buffer :: proc(buf: $T/Buffer($E)) {
 }
 
 draw_inst_buffer :: proc(buf: $T/Buffer($E), vert_num: int, vert_offset: int) {
+    assert(vert_num != 0)
+    if buf.upload_elem_num <= 0 {
+        return
+    }
     gpu.draw_non_indexed(
         vertex_num = vert_num,
         instance_num = int(buf.upload_elem_num),
