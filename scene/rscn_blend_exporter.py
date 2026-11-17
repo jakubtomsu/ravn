@@ -587,7 +587,7 @@ def export_rscn(context, out_name):
 
         eval_obj = obj.evaluated_get(depsgraph)
         mesh = eval_obj.to_mesh()
-        name_range = get_interned_str(str_map, str_buf, norm_name(obj.data.name))
+        name_range = get_interned_str(str_map, str_buf, norm_name(obj.name))
 
         loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=mesh_vert_dtype)
         verts, loop_to_unique = np.unique(loop_verts, return_inverse=True)
@@ -636,7 +636,7 @@ def export_rscn(context, out_name):
 
         eval_obj = obj.evaluated_get(depsgraph)
         mesh = eval_obj.to_mesh()
-        name_range = get_interned_str(str_map, str_buf, norm_name(obj.data.name))
+        name_range = get_interned_str(str_map, str_buf, norm_name(obj.name))
 
         loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=skin_vert_dtype)
         vert_bones, vert_weights = get_mesh_skinning_data(mesh, obj.vertex_groups, skeleton_bone_maps[armature.name])
