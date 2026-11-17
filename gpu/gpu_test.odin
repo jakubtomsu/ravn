@@ -68,7 +68,8 @@ _test_gpu :: proc(t: ^testing.T) {
         // testing.expect(t, create_texture_2d(&res_uav, make_texture_desc(.R_U32, {64, 64, 1}, .Default, flags = {.RW_Resource}))) // Currently can fail due to WGPU bug?
         testing.expect(t, create_texture_3d(&res_tex_3d, make_texture_desc(.RG_S8_Norm, {32, 32, 32}, .Default)))
 
-        testing.expect(t, create_constants(&res_cbuf, 64, 1))
+        Consts :: struct #align(CONSTANTS_ALIGN) { x: u32 }
+        testing.expect(t, create_constants(&res_cbuf, size_of(Consts), 1))
         testing.expect(t, create_constants(&res_cbuf_dyn, 256, 4))
 
         testing.expect(t, create_bind_layout(&layout_std, {

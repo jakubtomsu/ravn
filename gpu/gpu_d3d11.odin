@@ -705,7 +705,7 @@ when BACKEND == BACKEND_D3D11 {
 
     _create_constants :: proc(id: base.Debug_ID, desc: Constants_Desc) -> (result: _Resource_State, ok: bool) {
         d3d_desc := d3d11.BUFFER_DESC{
-            ByteWidth = u32(desc.size * desc.num),
+            ByteWidth = (u32(desc.size * desc.num + 255) / 256) * 256,
             Usage = .DYNAMIC,
             BindFlags = {.CONSTANT_BUFFER},
             CPUAccessFlags = {.WRITE},
@@ -1247,7 +1247,8 @@ when BACKEND == BACKEND_D3D11 {
 
             for offset, i in constants_offsets {
                 size := u32(bind_group.consts_sizes[i])
-                assert(size % 16 == 0)
+                assert(size % 256 == 0)
+                assert(offset % 256 == 0)
                 const_firsts[i] = offset / 16
                 const_nums[i] = size / 16
             }

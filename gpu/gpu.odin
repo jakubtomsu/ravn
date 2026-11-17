@@ -35,6 +35,9 @@ MAX_CONSTANTS           :: #config(GPU_MAX_CONSTANTS, 64)
 MAX_BIND_LAYOUTS        :: #config(GPU_MAX_BIND_LAYOUTS, 64)
 MAX_BIND_GROUPS         :: #config(GPU_MAX_BIND_GROUPS, 64)
 
+// All constant buffer elements have to be aligned to this number of bytes.
+CONSTANTS_ALIGN :: 256
+
 // Limits are based on the D3D11 resource limits, sometimes smaller to keep things in a reasonable range.
 // https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-resources-limits
 
@@ -842,6 +845,7 @@ create_bind_group :: proc(
             index := len(state.consts)
             append(&state.consts, slot.resource)
             state.consts_sizes[index] = u16(res.consts_desc.size)
+            assert(state.consts_sizes[index] % CONSTANTS_ALIGN == 0)
         }
     }
 
@@ -944,13 +948,10 @@ create_shader :: proc(
 
 // MARK: Create Resources
 
-CONSTANT_BUFFER_ALIGNMENT :: 16
-CONSTANT_BUFFER_DYNAMIC_ALIGNMENT :: 256
-
 @(require_results)
 create_constants :: proc(
     handle: ^Resource_Handle,
-    size:   i32, // Size of a single element
+    size:   i32, // Size of a single element, must be multiple of CONSTANTS_ALIGN
     num:    i32 = 1, // Lets you specify non zero offsets when setting a bind group.
     name    := #caller_expression(handle),
     loc     := #caller_location,
@@ -961,11 +962,7 @@ create_constants :: proc(
     base.assert_id(id, size >= 1)
     base.assert_id(id, num >= 1)
     base.assert_id(id, size * num <= MAX_CONSTANT_BUFFER_SIZE)
-    base.assert_id(id, size % CONSTANT_BUFFER_ALIGNMENT == 0)
-
-    if num > 1 {
-        base.assert_id(id, size % CONSTANT_BUFFER_DYNAMIC_ALIGNMENT == 0)
-    }
+    base.assert_id(id, size % CONSTANTS_ALIGN == 0)
 
     desc := Constants_Desc{
         size = size,
@@ -1379,6 +1376,7 @@ set_bind_group :: proc(#any_int slot: int, handle: Bind_Group_Handle, constants_
 
     for index, i in constants_indices {
         offsets[i] = index * u32(bind_group.consts_sizes[i])
+        base.assert_id(bind_group.id, offsets[i] % CONSTANTS_ALIGN == 0)
     }
 
     _set_bind_group(
@@ -1629,8 +1627,8 @@ map_texture :: proc(handle: Resource_Handle) -> (Mapped_Data, bool) {
     if !res_ok {
         return {}, false
     }
-    assert(!_state.in_frame)
-    assert(_state.encoder.mode == .None)
+    base.assert_id(res.id, !_state.in_frame)
+    base.assert_id(res.id, _state.encoder.mode == .None)
     base.assert_id(res.id, res.kind == .Texture2D)
     return _map_texture(res)
 }
@@ -1641,8 +1639,8 @@ unmap_texture :: proc(handle: Resource_Handle) -> bool {
     if !res_ok {
         return false
     }
-    assert(!_state.in_frame)
-    assert(_state.encoder.mode == .None)
+    base.assert_id(res.id, !_state.in_frame)
+    base.assert_id(res.id, _state.encoder.mode == .None)
     base.assert_id(res.id, res.kind == .Texture2D)
     return _unmap_texture(res)
 }
