@@ -1249,7 +1249,7 @@ when BACKEND == BACKEND_D3D11 {
                 size := u32(bind_group.consts_sizes[i])
                 assert(size % 16 == 0)
                 const_firsts[i] = offset / 16
-                const_nums[i] = size / 4
+                const_nums[i] = size / 16
             }
 
             _set_constants(
