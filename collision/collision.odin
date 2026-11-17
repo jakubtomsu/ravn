@@ -439,6 +439,7 @@ add_sphere_shape :: proc(
     rad:            f32,
     #any_int layer: u8 = 0,
     #any_int id:    u64 = 0,
+    loc             := #caller_location,
 ) {
     _add_shape({
         kind = .Sphere,
@@ -449,7 +450,7 @@ add_sphere_shape :: proc(
         handle = {},
         layer = layer,
         id = id,
-    })
+    }, loc = loc)
 }
 
 add_capsule_shape :: proc(
@@ -457,6 +458,7 @@ add_capsule_shape :: proc(
     rad:            f32,
     #any_int layer: u8 = 0,
     #any_int id:    u64 = 0,
+    loc             := #caller_location,
 ) {
     _add_shape({
         kind = .Capsule,
@@ -467,7 +469,7 @@ add_capsule_shape :: proc(
         handle = {},
         layer = layer,
         id = id,
-    })
+    }, loc = loc)
 }
 
 add_box_shape :: proc(
@@ -476,6 +478,7 @@ add_box_shape :: proc(
     rad:            f32 = 0.0,
     #any_int layer: u8 = 0,
     #any_int id:    u64 = 0,
+    loc             := #caller_location,
 ) {
     _add_shape({
         kind = .Aligned_Box,
@@ -486,7 +489,7 @@ add_box_shape :: proc(
         handle = {},
         layer = layer,
         id = id,
-    })
+    }, loc = loc)
 }
 
 add_oriented_box_shape :: proc(
@@ -496,6 +499,7 @@ add_oriented_box_shape :: proc(
     rad:            f32 = 0.0,
     #any_int layer: u8 = 0,
     #any_int id:    u64 = 0,
+    loc             := #caller_location,
 ) {
     _add_shape({
         kind = .Oriented_Box,
@@ -506,7 +510,7 @@ add_oriented_box_shape :: proc(
         handle = {},
         layer = layer,
         id = id,
-    })
+    }, loc = loc)
 }
 
 add_mesh_shape :: proc(
@@ -517,10 +521,11 @@ add_mesh_shape :: proc(
     rad:            f32 = 0.0,
     #any_int layer: u8 = 0,
     #any_int id:    u64 = 0,
+    loc             := #caller_location,
 ) {
     _, ok := get_mesh(handle)
     if !ok {
-        log.error("Invalid handle:", handle)
+        log.error("Invalid handle:", handle, location = loc)
         return
     }
     _add_shape({
@@ -532,11 +537,11 @@ add_mesh_shape :: proc(
         handle = handle,
         layer = layer,
         id = id,
-    })
+    }, loc = loc)
 }
 
-_add_shape :: proc(shape: Shape) {
-    assert(is_step_in_progress())
+_add_shape :: proc(shape: Shape, loc: runtime.Source_Code_Location) {
+    assert(is_step_in_progress(), loc = loc)
     step := &_state.step_data[_state.step_write]
 
     if step.shape_used >= len(step.shape_data) {
