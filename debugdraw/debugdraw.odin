@@ -97,7 +97,7 @@ Buffer :: struct($T: typeid) {
     persistent_filter_offs: u32,
 }
 
-Constants :: struct {
+Constants :: struct #align(gpu.CONSTANTS_ALIGN) {
     proj:   matrix[4, 4]f32,
 }
 

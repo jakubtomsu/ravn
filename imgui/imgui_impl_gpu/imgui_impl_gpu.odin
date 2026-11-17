@@ -21,7 +21,7 @@ State :: struct {
     binds:          map[gpu.Resource_Handle]gpu.Bind_Group_Handle,
 }
 
-Constants :: struct {
+Constants :: struct #align(gpu.CONSTANTS_ALIGN) {
     proj:   matrix[4, 4]f32,
 }
 
