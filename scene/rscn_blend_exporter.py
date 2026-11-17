@@ -613,7 +613,7 @@ def export_rscn(context, out_name):
         armature = obj.find_armature()
         name_range = get_interned_str(str_map, str_buf, norm_name(obj.name))
 
-        if armature == None:
+        if armature is None:
             loop_verts, tri_vert_indices = get_mesh_loop_verts(mesh, dtype=mesh_vert_dtype)
 
             verts, loop_to_unique = np.unique(loop_verts, return_inverse=True)

@@ -232,10 +232,8 @@ init :: proc(
         vertex_layouts = {},
         color_formats = { gpu.get_texture_format(_state.target_color) },
         blends = { gpu.BLEND_ALPHA, },
-        depth_format = gpu.get_texture_format(_state.target_depth) or_else .Invalid,
-        topo = .Invalid,
-        depth_comparison = depth_comparison,
-        depth_write = depth_write,
+        raster = {.Triangles, .Solid, .Back},
+        depth = {gpu.get_texture_format(_state.target_depth) or_else .Invalid, depth_comparison, depth_write, 0},
     )
 
     {
