@@ -232,7 +232,7 @@ init :: proc(
         vertex_layouts = {},
         color_formats = { gpu.get_texture_format(_state.target_color) },
         blends = { gpu.BLEND_ALPHA, },
-        raster = {.Triangles, .Solid, .Back},
+        raster = {.Triangles, .Solid, .None},
         depth = {gpu.get_texture_format(_state.target_depth) or_else .Invalid, depth_comparison, depth_write, 0},
     )
 
@@ -266,7 +266,6 @@ init :: proc(
         pip_desc := base_pip_desc
         pip_desc.topo = .Lines
         pip_desc.vs = _state.shape_vs
-        pip_desc.cull = .Back
         pip_desc.vertex_layouts = {
             0 = gpu.make_vertex_layout(Shape_Vertex, .Vertex),
             1 = gpu.make_vertex_layout(Shape_Instance, .Instance),
@@ -281,7 +280,7 @@ init :: proc(
         pip_desc := base_pip_desc
         pip_desc.topo = .Triangles
         pip_desc.vs = _state.shape_vs
-        pip_desc.cull = .Back
+        pip_desc.cull = .Front
         pip_desc.vertex_layouts = {
             0 = gpu.make_vertex_layout(Shape_Vertex, .Vertex),
             1 = gpu.make_vertex_layout(Shape_Instance, .Instance),
