@@ -104,7 +104,7 @@ _test_fuzz :: proc(t: ^testing.T) {
         t2 := (box[1] - pos) * inv
         tmin := max(min(t1.x, t2.x), min(t1.y, t2.y), min(t1.z, t2.z))
         tmax := min(max(t1.x, t2.x), max(t1.y, t2.y), max(t1.z, t2.z))
-        ok := tmax >= max(0, tmin) && tmin < range
+        ok := tmax >= max(0, tmin) && tmin <= range
         return tmin, ok
     }
 

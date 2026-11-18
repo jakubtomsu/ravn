@@ -100,7 +100,7 @@ sweep_point_vs_aabb :: proc "contextless" (
     tmin := max(min(t1.x, t2.x), min(t1.y, t2.y), min(t1.z, t2.z), 0.0)
     tmax := min(max(t1.x, t2.x), max(t1.y, t2.y), max(t1.z, t2.z))
 
-    ok = tmax >= tmin && tmin < range
+    ok = tmax >= tmin && tmin <= range
     return ok ? tmin : range, ok
 }
 
@@ -121,7 +121,7 @@ sweep_point_vs_aabb_simd_single :: #force_inline proc "contextless" (
     tmin := max(mins.x, mins.y, mins.z, 0.0)
     tmax := min(maxs.x, maxs.y, maxs.z)
 
-    ok = tmax >= tmin && tmin < range
+    ok = tmax >= tmin && tmin <= range
     return ok ? tmin : range, ok
 }
 
@@ -263,7 +263,7 @@ sweep_point_vs_triangle_slab :: proc "contextless" (
 
     uv *= inv_denom
 
-    ok = t >= 0 && t < range &&
+    ok = t >= 0 && t <= range &&
         abs(denom) > 1e-6 &&
         uv.x >= 0 && uv.y >= 0 && uv.x + uv.y <= 1.0
 
@@ -433,6 +433,10 @@ sweep_point_vs_capsule :: proc "contextless" (
     md := linalg.vector_dot(m, d)
     nd := linalg.vector_dot(n, d)
     dd := linalg.vector_length2(d)
+    
+    if dd < 1e-8 {
+        return sweep_point_vs_sphere(pos, move, points[0], rad, range)
+    }
 
     nn := linalg.vector_length2(n)
     mn := linalg.vector_dot(m, n)
@@ -458,8 +462,6 @@ sweep_point_vs_capsule :: proc "contextless" (
         if (t < 0 && c > 0) || t > 1 {
             return range, false // intersection outside segment
         }
-
-        t = max(t, 0)
     }
 
     // Try intersect endcaps
@@ -482,9 +484,11 @@ sweep_point_vs_capsule :: proc "contextless" (
         t /= nn
     }
 
+    ok = t <= 1.0
     t *= range
-
-    return t, true
+    t = max(t, 0)
+    
+    return ok ? t : range, ok
 }
 
 
@@ -513,7 +517,7 @@ sweep_sphere_vs_aabb :: proc "contextless" (
     tmin := max(min(t1.x, t2.x), min(t1.y, t2.y), min(t1.z, t2.z), 0.0)
     tmax := min(max(t1.x, t2.x), max(t1.y, t2.y), max(t1.z, t2.z))
 
-    if !(tmax >= tmin && tmin < range) {
+    if !(tmax >= tmin && tmin <= range) {
         return range, false
     }
 
@@ -537,16 +541,17 @@ sweep_sphere_vs_aabb :: proc "contextless" (
     case 0, 1:
         return tmin, true
 
-    case 2:
+    case 2, 3:
         other_corner := extent * [3]f32{
             bool(face & (1 << 0)) ? 1 : -1,
             bool(face & (1 << 1)) ? 1 : -1,
             bool(face & (1 << 2)) ? 1 : -1,
         }
-        return sweep_point_vs_uncapped_cylinder(rpos, move, {extent, other_corner}, rad, range)
-
-    case 3:
-        return sweep_point_vs_sphere(rpos, move, extent, rad, range)
+        
+        edge_t, edge_ok := sweep_point_vs_uncapped_cylinder(rpos, move, {extent, other_corner}, rad, range)
+        corner_t, corner_ok := sweep_point_vs_sphere(rpos, move, extent, rad, range)
+        
+        return min(edge_t, corner_t), edge_ok || corner_ok
     }
 
     return range, false
@@ -560,45 +565,70 @@ sweep_sphere_vs_triangle :: proc "contextless" (
     range:  f32 = 1,
 ) -> (t: f32, ok: bool) #no_bounds_check {
     t = range
+    
+    if #force_inline test_sphere_vs_triangle(pos, rad, tri) {
+        return 0, false
+    }
 
     tri_t, uv, tri_ok := #force_inline sweep_point_vs_triangle_slab(pos, move, tri, rad, t)
 
     if tri_ok {
         return tri_t, tri_ok
     }
+    
+    if false {
+            
+        INNER_EPS :: 0.0001
+        if uv.x > INNER_EPS && uv.y > INNER_EPS && uv.x + uv.y < 1.0-INNER_EPS {
+            return range, false
+        }
 
-    INNER_EPS :: 0.0001
-    if uv.x > INNER_EPS && uv.y > INNER_EPS && uv.x + uv.y < 1.0-INNER_EPS {
-        return range, false
-    }
+        vert_index := 0
+        if uv.x > 0.5 || uv.y > 0.5 {
+            vert_index = uv.x > uv.y ? 2 : 1
+        }
 
-    vert_index := 0
-    if uv.x > 0.5 || uv.y > 0.5 {
-        vert_index = uv.x > uv.y ? 2 : 1
-    }
+        // TODO: better voronoi culling
+        // https://www.desmos.com/calculator/qrhlfiymzz
 
-    // TODO: better voronoi culling
-    // https://www.desmos.com/calculator/qrhlfiymzz
+        vert_t, vert_ok := #force_inline sweep_point_vs_sphere(pos, move, tri[vert_index], rad, t)
+        if vert_ok {
+            t = vert_t
+            ok = true
+        }
 
-    vert_t, vert_ok := #force_inline sweep_point_vs_sphere(pos, move, tri[vert_index], rad, t)
-    if vert_ok {
-        t = vert_t
-        ok = true
-    }
+        edge_index := 0
+        if uv.x > uv.y {
+            edge_index = uv.x + uv.y * 2 > 1 ? 1 : 2
+        } else {
+            edge_index = uv.x * 2 + uv.y > 1 ? 1 : 0
+        }
 
-    edge_index := 0
-    if uv.x > uv.y {
-        edge_index = uv.x + uv.y * 2 > 1 ? 1 : 2
+        v0 := tri[edge_index]
+        v1 := tri[(edge_index + 1) % 3]
+        edge_t, edge_ok := #force_inline sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t)
+        if edge_ok {
+            t = edge_t
+            ok = true
+        }
+        
     } else {
-        edge_index = uv.x * 2 + uv.y > 1 ? 1 : 0
-    }
-
-    v0 := tri[edge_index]
-    v1 := tri[(edge_index + 1) % 3]
-    edge_t, edge_ok := #force_inline sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t)
-    if edge_ok {
-        t = edge_t
-        ok = true
+        for v in tri {
+            v_t, v_ok := #force_inline sweep_point_vs_sphere(pos, move, v, rad, t)
+            if v_ok {
+                ok = true
+                t = v_t
+            }
+        }
+        
+        v1 := tri[2]
+        for v0 in tri {
+            v_t, v_ok := #force_inline sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t)
+            if v_ok {
+                ok = true
+                t = v_t
+            }
+        }
     }
 
     return t, ok

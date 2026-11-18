@@ -84,7 +84,9 @@ sweep_sphere_vs_shape :: proc(
         return 0, 0, false
     }
 
-    assert(r > 0)
+    if rad <= 1e-6 {
+        return sweep_point_vs_shape(pos, move, shape, range)
+    }
 
     switch shape.kind {
     case .Sphere:
@@ -475,7 +477,7 @@ get_shape_aabb :: proc(shape: Shape) -> (bb_min, bb_max: [3]f32) {
         ext := (mesh.bounds_max - mesh.bounds_min) * 0.5
 
         bb_min, bb_max =  geometry.get_oriented_box_bounds(
-            pos = shape.pos + mat * mid,
+            pos = shape.pos + mat * (mid * shape.ext),
             rad = ext * shape.ext,
             rot = mat,
         )
@@ -513,17 +515,16 @@ get_shape_gradient :: proc(shape: Shape, query_origin_pos: [3]f32, hit: [3]f32, 
     case .Mesh:
         mesh, mesh_ok := get_mesh(shape.handle)
         assert(mesh_ok)
-        assert(prim >= 0 && prim <= i32(len(mesh.triangles)))
+        assert(prim >= 0 && prim < i32(len(mesh.triangles)))
 
         inv := conj(shape.rot)
-        inv_scale := 1.0 / shape.ext
-        local_pos := linalg.quaternion128_mul_vector3(inv, hit - shape.pos) * inv_scale
+        local_pos := linalg.quaternion128_mul_vector3(inv, hit - shape.pos)
 
         tri := mesh.triangles[prim]
         verts := [3][3]f32{
-            mesh.verts[tri[0]],
-            mesh.verts[tri[1]],
-            mesh.verts[tri[2]],
+            mesh.verts[tri[0]] * shape.ext,
+            mesh.verts[tri[1]] * shape.ext,
+            mesh.verts[tri[2]] * shape.ext,
         }
 
         _, result = geometry.get_triangle_dist_grad(local_pos, verts)

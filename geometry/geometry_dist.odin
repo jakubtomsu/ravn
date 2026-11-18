@@ -42,15 +42,13 @@ get_box_dist_grad :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: [3]f3
     if g > 0 {
         dist = l
         grad = q / l
+        grad *= linalg.sign(rel)
     } else {
         dist = g
-        grad = {
-            w.x == g ? 1.0 : 0.0,
-            w.y == g ? 1.0 : 0.0,
-            w.z == g ? 1.0 : 0.0,
-        }
+        if w.x == g { grad.x = rel.x > 0 ? 1 : -1 }
+        else if w.y == g { grad.y = rel.x > 0 ? 1 : -1 }
+        else if w.z == g { grad.z = rel.x > 0 ? 1 : -1 }
     }
-    grad *= linalg.sign(rel)
     return dist, grad
 }
 

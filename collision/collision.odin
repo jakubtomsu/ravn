@@ -9,10 +9,6 @@ import "../base"
 import "../geometry"
 import "../bvh"
 
-// TODO: no_bounds_check once stable
-
-_state: ^State
-
 MAX_ARENAS :: #config(COLLISIION_MAX_ARENAS, 64)
 MAX_MESHES :: #config(COLLISIION_MAX_MESHES, 1024)
 MAX_SHAPES :: #config(COLLISIION_MAX_SHAPES, 1024)
@@ -37,6 +33,8 @@ Layer_Mask :: [4]u64
 
 ID :: u64
 
+_state: ^State
+
 State :: struct #align(4096) {
     allocator:          runtime.Allocator,
     state_allocator:    runtime.Allocator,
@@ -52,9 +50,8 @@ State :: struct #align(4096) {
 Step_State :: struct {
     delta:          f32,
     beta:           f32,
-    shape_used:     i32,
     tlas:           bvh.BVH,
-    shape_data:     [MAX_SHAPES]Shape,
+    shapes:         [dynamic; MAX_SHAPES]Shape,
 }
 
 // Defines a single scope/lifetime for persistent collider data (meshes)
@@ -215,7 +212,7 @@ begin_step :: proc(delta: f32) {
     step.delta = clamp(delta, 0.008, 0.06)
     step.beta = PENETRATION_SOLVER_CORRECTION_FACTOR / step.delta
 
-    step.shape_used = 0
+    clear(&step.shapes)
     step.tlas.nodes_used = 0
     step.tlas.prims = nil
 
@@ -230,8 +227,8 @@ end_step :: proc() {
     _state.step_read = _state.step_write
     step := &_state.step_data[_state.step_read]
 
-    prims := make([][2][3]f32, step.shape_used, context.temp_allocator)
-    for shape, i in step.shape_data[:step.shape_used] {
+    prims := make([][2][3]f32, len(step.shapes), context.temp_allocator)
+    for shape, i in step.shapes {
         bb_min, bb_max := get_shape_aabb(shape)
         prims[i] = {bb_min - BVH_EPS, bb_max + BVH_EPS}
     }
@@ -287,8 +284,8 @@ destroy_arena :: proc(handle: Arena_Handle) -> bool {
             })
         }
     }
-
-    return true
+    
+    return base.pool_remove(&_state.arenas, handle)
 }
 
 @(require_results)
@@ -543,14 +540,7 @@ add_mesh_shape :: proc(
 _add_shape :: proc(shape: Shape, loc: runtime.Source_Code_Location) {
     assert(is_step_in_progress(), loc = loc)
     step := &_state.step_data[_state.step_write]
-
-    if step.shape_used >= len(step.shape_data) {
-        return
-    }
-
-    index := step.shape_used
-    step.shape_data[index] = shape
-    step.shape_used += 1
+    append(&step.shapes, shape)
 }
 
 
@@ -627,7 +617,7 @@ collide_sphere_swept :: proc(
         //     pos = overlap_pos
         // }
 
-        pos, vel = _solve_sphere_contacts_position_based(pos, vel, rad = rad, allocator = context.temp_allocator)
+        pos, vel = _solve_sphere_contacts_position_based(pos, vel, rad = rad, ignore_layers = ignore_layers, allocator = context.temp_allocator)
 
         dir := linalg.normalize0(vel)
 
@@ -660,6 +650,7 @@ collide_sphere_swept :: proc(
         pos:            [3]f32,
         vel:            [3]f32,
         rad:            f32,
+        ignore_layers:  bit_set[0..<NUM_LAYERS],
         max_contacts    := 8,
         max_triangles   := 32,
         allocator       := context.temp_allocator,
@@ -670,6 +661,7 @@ collide_sphere_swept :: proc(
             max_contacts = max_contacts,
             max_triangles = max_triangles,
             allocator = allocator,
+            ignore_layers = ignore_layers,
         )
 
         new_pos = pos
@@ -705,6 +697,7 @@ sweep_point :: proc(
     move:           [3]f32,
     range:          f32 = 1,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    brute_force     := false,
 ) -> (result: Sweep, ok: bool) #no_bounds_check #optional_ok {
     result = make_sweep(pos, move, rad = 0, range = range)
 
@@ -714,30 +707,43 @@ sweep_point :: proc(
     inv_move_simd := transmute(#simd[4]f32)inv_move.xyzz
     pos_simd := transmute(#simd[4]f32)pos.xyzz
 
-    for iter := bvh.iter(&step.tlas); iter.node != nil; {
-        if iter.len != 0 {
-            for offs in 0..<int(iter.len) {
-                index := step.tlas.indices[int(iter.first) + offs]
-                shape := step.shape_data[index]
-                if int(shape.layer) in ignore_layers {
-                    continue
-                }
-
-                result.t, result.prim = sweep_point_vs_shape(pos, move, shape, result.t) or_continue
-                result.shape = i32(index)
-                ok = true
+    if brute_force {
+        for shape, index in step.shapes {
+            if int(shape.layer) in ignore_layers {
+                continue
             }
 
-            bvh.iter_pop(&iter) or_break
+            result.t, result.prim = sweep_point_vs_shape(pos, move, shape, result.t) or_continue
+            assert(base.is_finite_f32(result.t))
+            result.shape = i32(index)
+            ok = true
+        }
+    } else {
+        for iter := bvh.iter(&step.tlas); iter.node != nil; {
+            if iter.len != 0 {
+                for offs in 0..<int(iter.len) {
+                    index := step.tlas.indices[int(iter.first) + offs]
+                    shape := step.shapes[index]
+                    if int(shape.layer) in ignore_layers {
+                        continue
+                    }
 
-        } else {
+                    result.t, result.prim = sweep_point_vs_shape(pos, move, shape, result.t) or_continue
+                    result.shape = i32(index)
+                    ok = true
+                }
 
-            child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
-            child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
-            t0 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child0.min, child0.max, result.t) or_else max(f32)
-            t1 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child1.min, child1.max, result.t) or_else max(f32)
+                bvh.iter_pop(&iter) or_break
 
-            bvh.iter_next(&iter, t0, t1) or_break
+            } else {
+
+                child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
+                child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
+                t0 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child0.min, child0.max, result.t) or_else max(f32)
+                t1 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child1.min, child1.max, result.t) or_else max(f32)
+
+                bvh.iter_next(&iter, t0, t1) or_break
+            }
         }
     }
 
@@ -755,6 +761,7 @@ sweep_sphere :: proc(
     rad:            f32,
     range:          f32 = 1,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    brute_force     := false,
 ) -> (result: Sweep, ok: bool) #optional_ok #no_bounds_check {
     result = make_sweep(pos, move, rad = rad, range = range)
 
@@ -763,32 +770,45 @@ sweep_sphere :: proc(
     inv_move := 1.0 / move
     inv_move_simd := transmute(#simd[4]f32)inv_move.xyzz
     pos_simd := transmute(#simd[4]f32)pos.xyzz
-
-    for iter := bvh.iter(&step.tlas); iter.node != nil; {
-        if iter.len != 0 {
-            for offs in 0..<int(iter.len) {
-                index := step.tlas.indices[int(iter.first) + offs]
-                shape := step.shape_data[index]
-                if int(shape.layer) in ignore_layers {
-                    continue
-                }
-
-                result.t, result.prim = sweep_sphere_vs_shape(pos, move, rad, shape, result.t) or_continue
-                assert(base.is_finite_f32(result.t))
-                result.shape = i32(index)
-                ok = true
+    
+    if brute_force {
+        for shape, index in step.shapes {
+            if int(shape.layer) in ignore_layers {
+                continue
             }
 
-            bvh.iter_pop(&iter) or_break
+            result.t, result.prim = sweep_sphere_vs_shape(pos, move, rad, shape, result.t) or_continue
+            assert(base.is_finite_f32(result.t))
+            result.shape = i32(index)
+            ok = true
+        }
+    } else {
+        for iter := bvh.iter(&step.tlas); iter.node != nil; {
+            if iter.len != 0 {
+                for offs in 0..<int(iter.len) {
+                    index := step.tlas.indices[int(iter.first) + offs]
+                    shape := step.shapes[index]
+                    if int(shape.layer) in ignore_layers {
+                        continue
+                    }
 
-        } else {
+                    result.t, result.prim = sweep_sphere_vs_shape(pos, move, rad, shape, result.t) or_continue
+                    assert(base.is_finite_f32(result.t))
+                    result.shape = i32(index)
+                    ok = true
+                }
 
-            child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
-            child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
-            t0 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child0.min - rad, child0.max + rad, result.t) or_else max(f32)
-            t1 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child1.min - rad, child1.max + rad, result.t) or_else max(f32)
+                bvh.iter_pop(&iter) or_break
 
-            bvh.iter_next(&iter, t0, t1) or_break
+            } else {
+
+                child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
+                child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
+                t0 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child0.min - rad, child0.max + rad, result.t) or_else max(f32)
+                t1 := geometry.sweep_point_vs_aabb_simd_single(pos_simd, inv_move_simd, child1.min - rad, child1.max + rad, result.t) or_else max(f32)
+
+                bvh.iter_next(&iter, t0, t1) or_break
+            }
         }
     }
 
@@ -803,7 +823,7 @@ eval_sweep :: proc(sweep: ^Sweep) {
     }
 
     step := get_step_state()
-    shape := &step.shape_data[sweep.shape]
+    shape := &step.shapes[sweep.shape]
 
     sweep.end = sweep.pos + sweep.move * sweep.t
     sweep.normal = get_shape_gradient(shape^, sweep.pos, sweep.end, sweep.prim)
@@ -818,6 +838,7 @@ test_sphere :: proc(
     pos:            [3]f32,
     rad:            f32,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    brute_force     := false,
 ) -> (result: Test, ok: bool) #no_bounds_check {
     result = {
         pos = pos,
@@ -829,34 +850,49 @@ test_sphere :: proc(
     step := &_state.step_data[_state.step_read]
 
     pos_simd := transmute(#simd[4]f32)pos.xyzz
-
-    for iter := bvh.iter(&step.tlas); iter.node != nil; {
-        if iter.len != 0 {
-            for offs in 0..<int(iter.len) {
-                index := step.tlas.indices[int(iter.first) + offs]
-                shape := step.shape_data[index]
-                if int(shape.layer) in ignore_layers {
-                    continue
-                }
-
-                prim, overlaps := test_sphere_vs_shape(pos, rad, shape)
-                if overlaps {
-                    result.shape = i32(index)
-                    result.prim = prim
-                    return result, true
-                }
+    
+    if brute_force {
+        for shape, index in step.shapes {
+            if int(shape.layer) in ignore_layers {
+                continue
             }
 
-            bvh.iter_pop(&iter) or_break
+            prim, overlaps := test_sphere_vs_shape(pos, rad, shape)
+            if overlaps {
+                result.shape = i32(index)
+                result.prim = prim
+                return result, true
+            }
+        }
+    } else {
+        for iter := bvh.iter(&step.tlas); iter.node != nil; {
+            if iter.len != 0 {
+                for offs in 0..<int(iter.len) {
+                    index := step.tlas.indices[int(iter.first) + offs]
+                    shape := step.shapes[index]
+                    if int(shape.layer) in ignore_layers {
+                        continue
+                    }
 
-        } else {
+                    prim, overlaps := test_sphere_vs_shape(pos, rad, shape)
+                    if overlaps {
+                        result.shape = i32(index)
+                        result.prim = prim
+                        return result, true
+                    }
+                }
 
-            child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
-            child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
-            t0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
-            t1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+                bvh.iter_pop(&iter) or_break
 
-            bvh.iter_unordered_next(&iter, t0, t1) or_break
+            } else {
+
+                child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
+                child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
+                t0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
+                t1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+
+                bvh.iter_unordered_next(&iter, t0, t1) or_break
+            }
         }
     }
 
@@ -898,7 +934,7 @@ overlap_sphere_buf :: proc(
         if iter.len != 0 {
             for offs in 0..<int(iter.len) {
                 index := step.tlas.indices[int(iter.first) + offs]
-                shape := step.shape_data[index]
+                shape := step.shapes[index]
                 if int(shape.layer) in ignore_layers {
                     continue
                 }
@@ -984,7 +1020,7 @@ find_contacts_sphere_buf :: proc(
         if iter.len != 0 {
             for offs in 0..<int(iter.len) {
                 index := step.tlas.indices[int(iter.first) + offs]
-                shape := step.shape_data[index]
+                shape := step.shapes[index]
                 if int(shape.layer) in ignore_layers {
                     continue
                 }
@@ -1169,10 +1205,10 @@ _insertion_sort :: proc "contextless" (data: $T/[]$E) #no_bounds_check {
 @(require_results)
 get_shape :: proc(shape: i32) -> (Shape, bool) #optional_ok {
     step := get_step_state()
-    if shape < 0 || shape >= step.shape_used {
+    if shape < 0 || int(shape) >= len(step.shapes) {
         return {}, false
     }
-    return step.shape_data[shape], true
+    return step.shapes[shape], true
 }
 
 get_mesh_triangle :: proc(handle: Mesh_Handle, #any_int tri_index: int) -> (verts: [3][3]f32, ok: bool) #optional_ok {
