@@ -1,5 +1,7 @@
-// https://github.com/Capati/odin-imgui
 package imgui
+
+// Based on:
+// https://github.com/Capati/odin-imgui
 
 when ODIN_OS == .Linux {
 	@(require) foreign import stdcpp "system:stdc++"
