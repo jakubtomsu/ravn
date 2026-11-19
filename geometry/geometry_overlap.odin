@@ -54,6 +54,11 @@ test_sphere_vs_box :: proc "contextless" (pos: [3]f32, rad: f32, center, extent:
 }
 
 @(require_results)
+test_sphere_vs_aabb :: proc "contextless" (pos: [3]f32, rad: f32, aabb_min, aabb_max: [3]f32) -> bool {
+    return test_sphere_vs_box(pos, rad, center = (aabb_min + aabb_max) * 0.5, extent = (aabb_max - aabb_min) * 0.5)
+}
+
+@(require_results)
 test_sphere_vs_triangle :: proc "contextless" (pos: [3]f32, rad: f32, tri: [3][3]f32) -> bool {
     dist_sq := get_triangle_dist_sq(pos, tri)
     return dist_sq <= rad * rad

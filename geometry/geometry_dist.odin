@@ -44,16 +44,23 @@ get_box_dist_grad :: proc "contextless" (pos: [3]f32, center: [3]f32, rad: [3]f3
         grad = q / l
         grad *= linalg.sign(rel)
     } else {
-        dist = g
         if w.x == g { grad.x = rel.x > 0 ? 1 : -1 }
-        else if w.y == g { grad.y = rel.x > 0 ? 1 : -1 }
-        else if w.z == g { grad.z = rel.x > 0 ? 1 : -1 }
+        else if w.y == g { grad.y = rel.y > 0 ? 1 : -1 }
+        else if w.z == g { grad.z = rel.z > 0 ? 1 : -1 }
     }
     return dist, grad
 }
 
+@(require_results)
+get_capsule_dist_sq :: proc "contextless" (pos: [3]f32, points: [2][3]f32, rad: f32) -> f32 {
+    return get_line_dist_sq(pos, points) - rad * rad
+}
 
-// Capsule
+@(require_results)
+get_capsule_dist :: proc "contextless" (pos: [3]f32, points: [2][3]f32, rad: f32) -> f32 {
+    return get_line_dist(pos, points) - rad
+}
+
 @(require_results)
 get_line_dist :: proc "contextless" (pos: [3]f32, points: [2][3]f32) -> f32 {
     return intrinsics.sqrt(get_line_dist_sq(pos, points))
@@ -80,88 +87,45 @@ get_line_dist_grad :: proc "contextless" (pos: [3]f32,  points: [2][3]f32) -> (d
 }
 
 @(require_results)
+get_cylinder_dist :: proc "contextless" (pos: [3]f32, points: [2][3]f32, rad: f32) -> f32 {
+    ba := points[1] - points[0]
+    pa := pos - points[0]
+    len := linalg.length(ba)
+
+    axis := len > 1e-7 ? (ba / len) : [3]f32{0, 1, 0}
+    half_len := len * 0.5
+    axial := linalg.dot(pa, axis)
+    radial := linalg.length(pa - axis * axial)
+
+    dx := radial - rad
+    dy := abs(axial - half_len) - half_len
+
+    outside := linalg.length([2]f32{max(dx, 0.0), max(dy, 0.0)})
+    inside := min(max(dx, dy), 0.0)
+    return inside + outside
+}
+
+@(require_results)
 get_triangle_dist :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (dist: f32) {
     return intrinsics.sqrt(get_triangle_dist_sq(pos, tri))
 }
 
 @(require_results)
-get_triangle_dist_sq :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (dist: f32) {
-    // prepare data
-    v10 := tri[1] - tri[0]
-    v23 := tri[2] - tri[1]
-    v02 := tri[0] - tri[2]
-    p1 := pos - tri[0]
-    p2 := pos - tri[1]
-    p3 := pos - tri[2]
-
-    normal := linalg.vector_cross3(v10, v02)
-
-    inside_factor :=
-        (linalg.vector_dot(linalg.vector_cross3(v10, normal), p1) >= 0 ? 1 : -1) +
-        (linalg.vector_dot(linalg.vector_cross3(v23, normal), p2) >= 0 ? 1 : -1) +
-        (linalg.vector_dot(linalg.vector_cross3(v02, normal), p3) >= 0 ? 1 : -1)
-
-    // inside/outside test
-    if inside_factor < 2.0 { // Outside
-        // 3 edges
-        dist = min(
-            linalg.vector_length2(v10 * clamp(linalg.vector_dot(v10, p1) / linalg.vector_length2(v10), 0.0, 1.0) - p1),
-            linalg.vector_length2(v23 * clamp(linalg.vector_dot(v23, p2) / linalg.vector_length2(v23), 0.0, 1.0) - p2),
-            linalg.vector_length2(v02 * clamp(linalg.vector_dot(v02, p3) / linalg.vector_length2(v02), 0.0, 1.0) - p3),
-        )
-    } else {
-        // 1 face
-        d := linalg.vector_dot(normal, p1)
-        dist = d * d / linalg.vector_length2(normal)
-    }
-
-    return dist
+get_triangle_dist_sq :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> f32 {
+    closest, _, _ := get_triangle_closest_point(pos, tri)
+    return linalg.length2(pos - closest)
 }
-
 
 @(require_results)
 get_triangle_dist_grad :: proc "contextless" (pos: [3]f32, tri: [3][3]f32) -> (dist: f32, grad: [3]f32) {
-    // prepare data
-    v10 := tri[1] - tri[0]
-    v23 := tri[2] - tri[1]
-    v02 := tri[0] - tri[2]
-    p1 := pos - tri[0]
-    p2 := pos - tri[1]
-    p3 := pos - tri[2]
-
-    normal := linalg.vector_cross3(v10, v02)
-
-    inside_factor :=
-        (linalg.vector_dot(linalg.vector_cross3(v10, normal), p1) >= 0 ? 1 : -1) +
-        (linalg.vector_dot(linalg.vector_cross3(v23, normal), p2) >= 0 ? 1 : -1) +
-        (linalg.vector_dot(linalg.vector_cross3(v02, normal), p3) >= 0 ? 1 : -1)
-
-    // inside/outside test
-    if inside_factor < 2.0 { // Outside
-        // 3 edges
-
-        d12, g12 := get_line_dist_grad(pos, {tri[0], tri[1]})
-        d13, g13 := get_line_dist_grad(pos, {tri[0], tri[2]})
-        d23, g23 := get_line_dist_grad(pos, {tri[1], tri[2]})
-
-        dist = min(d12, d13, d23)
-
-        if dist == d12 {
-            grad = g12
-        } else if dist == d13 {
-            grad = g13
-        } else { // if dist == d23 {
-            grad = g23
-        }
-
+    closest, kind, _ := get_triangle_closest_point(pos, tri)
+    rel := pos - closest
+    dist = linalg.length(rel)
+    if kind == .Face {
+        n := linalg.normalize0(linalg.cross(tri[1] - tri[0], tri[2] - tri[0]))
+        grad = linalg.dot(n, rel) >= 0 ? n : -n
     } else {
-        // 1 face
-        d := linalg.vector_dot(normal, p1)
-        normal_len := linalg.vector_length(normal)
-        grad = normal * (1.0 / normal_len)
-        grad = d >= 0 ? grad : -grad
-        dist = abs(d) * (1.0 / normal_len)
+        grad = dist > 0 ? rel / dist : 0
     }
-
     return dist, grad
 }
