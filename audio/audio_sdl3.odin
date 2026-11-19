@@ -59,7 +59,7 @@ when BACKEND == BACKEND_SDL3 {
         sdl.DestroyAudioStream(_state.stream)
     }
 
-    _render :: proc() {
+    _update :: proc() {
         // No single threaded support
     }
 

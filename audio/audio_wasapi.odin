@@ -131,13 +131,13 @@ when BACKEND == BACKEND_WASAPI {
         windows.CoUninitialize()
     }
 
-    _render :: proc() {
+    _update :: proc() {
         if SINGLE_THREAD {
-            _wasapi_render_buffer()
+            _wasapi_update_buffer()
         }
     }
 
-    _wasapi_render_buffer :: proc() {
+    _wasapi_update_buffer :: proc() {
         padding: u32
         if !_wasapi_check(_state.audio_client->GetCurrentPadding(&padding)) {
             return
@@ -173,7 +173,7 @@ when BACKEND == BACKEND_WASAPI {
 
             wait_res := windows.WaitForSingleObject(_state.buffer_event, 1000)
             if wait_res == windows.WAIT_OBJECT_0 {
-                _wasapi_render_buffer()
+                _wasapi_update_buffer()
             }
         }
 

@@ -33,7 +33,7 @@ _shutdown :: proc() {
     _shutdown_js()
 }
 
-_render :: proc() {
+_update :: proc() {
     num_queued := _get_num_queued_buffers()
 
     target_queued_buffer: i32 = _WEBAUDIO_TARGET_QUEUED_BUFFERS

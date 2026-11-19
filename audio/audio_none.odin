@@ -9,5 +9,5 @@ when BACKEND == BACKEND_NONE {
     @(require_results)
     _init :: proc() -> bool { return true }
     _shutdown :: proc() {}
-    _render :: proc() {}
+    _update :: proc() {}
 }

@@ -44,7 +44,7 @@ when BACKEND == BACKEND_MINIAUDIO {
         ma.device_uninit(&_state.device)
     }
 
-    _render :: proc() {
+    _update :: proc() {
         // No single threaded support
     }
 

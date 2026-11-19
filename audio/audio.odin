@@ -51,6 +51,7 @@ _state: ^State
 
 State :: struct #align(4096) {
     using native:       _State,
+    state_allocator:    runtime.Allocator,
     running:            bool,
     init_context:       runtime.Context,
     frame_rate:         u32,
@@ -143,7 +144,6 @@ Wave_Kind :: enum u8 {
     Triangle,
     Saw,
     Noise,
-    Rand, // Like noise but reacts to pitch a pitch
 }
 
 Sound_Source :: union {
@@ -247,9 +247,16 @@ get_state_ptr :: proc() -> (state: ^State) {
     return _state
 }
 
-init :: proc(state: ^State) -> bool {
+init :: proc(state: ^State = nil, allocator := context.allocator) -> bool {
+    state := state
+    
     if _state != nil {
         return true
+    }
+    
+    if state == nil {
+        state = new(State, allocator)
+        state.state_allocator = allocator
     }
 
     _state = state
@@ -294,7 +301,7 @@ shutdown :: proc() {
 update :: proc() {
     // On some platforms this does audio rendering on the main thread.
     // But on most backends, this is a no-op and everything is async.
-    _render()
+    _update()
 }
 
 set_master_mixer :: proc(mixer: Generator_Proc) {
@@ -1463,7 +1470,6 @@ sample_wave :: proc "contextless" (kind: Wave_Kind, t: f32) -> f32 {
     case .Triangle: return sample_triangle_wave(t)
     case .Saw:      return sample_saw_wave(t)
     case .Noise:    return sample_noise_wave(t)
-    case .Rand:     return sample_rand_wave(t)
     }
     return 0
 }
@@ -1500,11 +1506,6 @@ sample_saw_wave :: proc "contextless" (t: f32) -> f32 {
 
 @(require_results)
 sample_noise_wave :: proc "contextless" (t: f32) -> f32 {
-    return #force_inline _noise_hash(transmute(u32)t)
-}
-
-@(require_results)
-sample_rand_wave :: proc "contextless" (t: f32) -> f32 {
     return #force_inline _noise_hash(u32(t))
 }
 
