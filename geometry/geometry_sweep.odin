@@ -10,6 +10,7 @@ import "base:intrinsics"
 // The move+range instead of traditional ray dir allows the procs to work both as ray and line intersection.
 
 LANES :: 8
+BRUTE_FORCE :: #config(GEOMETRY_BRUTE_FORCE, false) // For debugging purposes.
 
 // MARK: Point
 
@@ -229,48 +230,6 @@ sweep_point_vs_triangle_simd :: proc "contextless" (
     t = intrinsics.simd_select(ok, t, range)
 
     return t, ok
-}
-
-// Triangle expanded by 2*radius along the normal.
-// Sweeps a 5 sided polyhedron but only the two triangles are intersected.
-@(require_results)
-sweep_point_vs_triangle_slab :: proc "contextless" (
-    pos:        [3]f32,
-    move:       [3]f32,
-    tri:        [3][3]f32,
-    rad:        f32,
-    range:      f32 = 1,
-) -> (t: f32, uv: [2]f32, ok: bool) #no_bounds_check {
-    ab := tri[1] - tri[0]
-    ac := tri[2] - tri[0]
-
-    normal := linalg.vector_cross3(ab, ac)
-    denom := linalg.vector_dot(move, normal)
-    if abs(denom) <= 1e-6 {
-        return range, 0, false
-    }
-    
-    inv_denom := 1.0 / denom
-
-    normal_inv_len := 1.0 / linalg.length(normal)
-    nrad := normal * normal_inv_len * rad
-    nrad = denom < 0 ? nrad : -nrad
-
-    rel := tri[0] + nrad - pos
-    t = linalg.vector_dot(rel, normal) * inv_denom
-
-    tangent := linalg.vector_cross3(move, rel)
-    uv = [2]f32{
-        -linalg.vector_dot(ac, tangent),
-        linalg.vector_dot(ab, tangent),
-    }
-
-    uv *= inv_denom
-
-    ok = t >= 0 && t <= range &&
-        uv.x >= 0 && uv.y >= 0 && uv.x + uv.y <= 1.0
-
-    return ok ? t : range, uv, ok
 }
 
 @(require_results)
@@ -518,7 +477,7 @@ sweep_sphere_vs_aabb :: proc "contextless" (
         best_t := range
         hit_any := false
 
-        if false {
+        if BRUTE_FORCE {
             for i in 0..<8 {
                 c := extent * [3]f32{
                     bool(i & 1) ? 1 : -1,
@@ -601,76 +560,116 @@ sweep_sphere_vs_triangle :: proc "contextless" (
     tri:    [3][3]f32,
     range:  f32 = 1,
 ) -> (t: f32, ok: bool) #no_bounds_check {
-    t = range
-    
+    BRUTE_FORCE :: false
+
     if #force_inline test_sphere_vs_triangle(pos, rad, tri) {
         return 0, true
     }
 
-    tri_t, uv, tri_ok := #force_inline sweep_point_vs_triangle_slab(pos, move, tri, rad, t)
-
-    if tri_ok {
-        return tri_t, tri_ok
+    ab := tri[1] - tri[0]
+    ac := tri[2] - tri[0]
+    normal := linalg.vector_cross3(ab, ac)
+    normal_len := linalg.length(normal)
+    if normal_len <= 1e-6 {
+        return range, false
     }
-    
-    if false {
-            
-        INNER_EPS :: 0.0001
-        if uv.x > INNER_EPS && uv.y > INNER_EPS && uv.x + uv.y < 1.0-INNER_EPS {
+
+    pa := pos - tri[0]
+    dist_n := linalg.vector_dot(pa, normal)
+    denom := linalg.vector_dot(move, normal)
+    rad_n := rad * normal_len
+
+    t_enter: f32 = 0
+    t_exit := range
+    slab_valid := true
+
+    if abs(denom) > 1e-6 {
+        inv_denom := 1.0 / denom
+        signed_rad_n := denom < 0 ? rad_n : -rad_n
+
+        t_plane_enter := (signed_rad_n - dist_n) * inv_denom
+        t_plane_exit  := (-signed_rad_n - dist_n) * inv_denom
+
+        t_enter = max(t_plane_enter, 0.0)
+        t_exit  = min(t_plane_exit, range)
+        slab_valid = t_enter <= t_exit
+
+        if slab_valid && t_plane_enter >= 0 {
+            nrad := normal * (signed_rad_n / (normal_len * normal_len))
+            rel := nrad - pa
+            tangent := linalg.vector_cross3(move, rel)
+            u := -linalg.vector_dot(ac, tangent) * inv_denom
+            v :=  linalg.vector_dot(ab, tangent) * inv_denom
+            if u >= 0 && v >= 0 && u + v <= 1.0 {
+                return t_plane_enter, true
+            }
+        }
+    } else {
+        slab_valid = abs(dist_n) <= rad_n
+    }
+
+    t = range
+
+    if BRUTE_FORCE {
+        for v in tri {
+            if v_t, v_ok := #force_inline sweep_point_vs_sphere(pos, move, v, rad, t); v_ok {
+                t = v_t
+                ok = true
+            }
+        }
+
+        v0 := tri[2]
+        for v1 in tri {
+            if e_t, e_ok := #force_inline sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t); e_ok {
+                t = e_t
+                ok = true
+            }
+            v0 = v1
+        }
+    } else {
+        if !slab_valid {
             return range, false
         }
 
-        vert_index := 0
-        if uv.x > 0.5 || uv.y > 0.5 {
-            vert_index = uv.x > uv.y ? 2 : 1
-        }
+        p0 := pos + move * t_enter
+        p1 := pos + move * t_exit
+        t = min(range, t_exit + 1e-5)
+        rad_n_sq := rad_n * rad_n
 
-        // TODO: better voronoi culling
-        // https://www.desmos.com/calculator/qrhlfiymzz
+        vert_mask: u8
+        v0 := tri[2]
+        for v1, i in tri {
+            edge := v1 - v0
+            out_n := linalg.vector_cross3(edge, normal)
+            d0 := linalg.vector_dot(p0 - v0, out_n)
+            d1 := linalg.vector_dot(p1 - v0, out_n)
+            max_d := max(d0, d1)
 
-        vert_t, vert_ok := #force_inline sweep_point_vs_sphere(pos, move, tri[vert_index], rad, t)
-        if vert_ok {
-            t = vert_t
-            ok = true
-        }
+            if max_d >= 0 || max_d * max_d <= rad_n_sq * linalg.vector_dot(edge, edge) {
+                prev_i := u8((i + 2) % 3)
+                vert_mask |= (1 << prev_i) | (1 << u8(i))
 
-        edge_index := 0
-        if uv.x > uv.y {
-            edge_index = uv.x + uv.y * 2 > 1 ? 1 : 2
-        } else {
-            edge_index = uv.x * 2 + uv.y > 1 ? 1 : 0
-        }
-
-        v0 := tri[edge_index]
-        v1 := tri[(edge_index + 1) % 3]
-        edge_t, edge_ok := #force_inline sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t)
-        if edge_ok {
-            t = edge_t
-            ok = true
-        }
-        
-    } else {
-        
-        for v in tri {
-            v_t, v_ok := #force_inline sweep_point_vs_sphere(pos, move, v, rad, t)
-            if v_ok {
-                ok = true
-                t = v_t
+                if e_t, e_ok := #force_inline sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t); e_ok {
+                    t = e_t
+                    ok = true
+                }
             }
+            v0 = v1
         }
-        
-        v1 := tri[2]
-        for v0 in tri {
-            v_t, v_ok := #force_inline sweep_point_vs_uncapped_cylinder(pos, move, {v0, v1}, rad, t)
-            if v_ok {
-                ok = true
-                t = v_t
+
+        if vert_mask != 0 {
+            for i in 0..<u8(3) {
+                if (vert_mask & (1 << i)) != 0 {
+                    if v_t, v_ok := #force_inline sweep_point_vs_sphere(pos, move, tri[i], rad, t); v_ok {
+                        t = v_t
+                        ok = true
+                    }
+                }
             }
-            v1 = v0
         }
     }
 
-    return t, ok
+    return ok ? t : range, ok
 }
 
 

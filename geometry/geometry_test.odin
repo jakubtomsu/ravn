@@ -47,8 +47,6 @@ _test_sweep_point_vs_triangle :: proc(t: ^testing.T) {
     _expect_hit(t, 0.5, sweep_point_vs_triangle({0, -5, 0}, {0, 10, 0}, tri)) // Backface hit (no culling)
     _expect_miss(t, sweep_point_vs_triangle({0, 0.5, 0}, {10, 0, 0}, tri)) // Miss: Parallel ray
     _expect_miss(t, sweep_point_vs_triangle({2, 5, 0}, {0, -10, 0}, tri))  // Miss: Barycentric outer bounds
-    _expect_hit_slab(t, 0.4, sweep_point_vs_triangle_slab({0, 5, 0}, {0, -10, 0}, tri, 1.0))
-    _expect_miss_slab(t, sweep_point_vs_triangle_slab({0, 5, 0}, {10, 0, 0}, tri, 1.0))
 }
 
 @(test)
@@ -270,17 +268,5 @@ _expect_hit :: proc(t: ^testing.T, expected_t: f32, actual_t: f32, actual_ok: bo
 }
 
 _expect_miss :: proc(t: ^testing.T, actual_t: f32, actual_ok: bool, loc := #caller_location) {
-    testing.expectf(t, !actual_ok, "Expected a miss, got a hit with t=%v", actual_t, loc=loc)
-}
-
-_expect_hit_slab :: proc(t: ^testing.T, expected_t: f32, actual_t: f32, uv: [2]f32, actual_ok: bool, loc := #caller_location) {
-    testing.expectf(t, actual_ok, "Expected a hit, got a miss. Returned t=%v", actual_t, loc=loc)
-    if actual_ok {
-        diff := abs(actual_t - expected_t)
-        testing.expectf(t, diff < 1e-4, "Expected t=%v, got %v (uv: %v)", expected_t, actual_t, uv, loc=loc)
-    }
-}
-
-_expect_miss_slab :: proc(t: ^testing.T, actual_t: f32, uv: [2]f32, actual_ok: bool, loc := #caller_location) {
     testing.expectf(t, !actual_ok, "Expected a miss, got a hit with t=%v", actual_t, loc=loc)
 }
