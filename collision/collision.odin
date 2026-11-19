@@ -908,9 +908,10 @@ overlap_sphere :: proc(
     max_overlaps    := 16,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
     allocator       := context.temp_allocator,
+    brute_force     := false,
 ) -> (result: Overlap, ok: bool) #optional_ok #no_bounds_check {
     buf := make([]i32, max_overlaps, allocator)
-    return overlap_sphere_buf(pos, rad, buf, ignore_layers)
+    return overlap_sphere_buf(pos, rad, buf, ignore_layers, brute_force = brute_force)
 }
 
 @(require_results)
@@ -919,6 +920,7 @@ overlap_sphere_buf :: proc(
     rad:            f32,
     shapes:         []i32,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    brute_force     := false,
 ) -> (result: Overlap, ok: bool) #optional_ok #no_bounds_check {
     assert(len(shapes) > 0)
     result = {
@@ -929,37 +931,58 @@ overlap_sphere_buf :: proc(
     step := &_state.step_data[_state.step_read]
     used_shapes := 0
     pos_simd := transmute(#simd[4]f32)pos.xyzz
-
-    node_loop: for iter := bvh.iter(&step.tlas); iter.node != nil; {
-        if iter.len != 0 {
-            for offs in 0..<int(iter.len) {
-                index := step.tlas.indices[int(iter.first) + offs]
-                shape := step.shapes[index]
-                if int(shape.layer) in ignore_layers {
-                    continue
-                }
-
-                _, overlaps := test_sphere_vs_shape(pos, rad, shape)
-                if overlaps {
-                    shapes[used_shapes] = i32(index)
-                    used_shapes += 1
-                    if int(used_shapes) >= len(shapes) {
-                        break node_loop
-                    }
-                }
+    
+    if brute_force {
+        
+        for shape, index in step.shapes {
+            if int(shape.layer) in ignore_layers {
+                continue
             }
 
-            bvh.iter_pop(&iter) or_break
-
-        } else {
-
-            child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
-            child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
-            t0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
-            t1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
-
-            bvh.iter_unordered_next(&iter, t0, t1) or_break
+            _, overlaps := test_sphere_vs_shape(pos, rad, shape)
+            if overlaps {
+                shapes[used_shapes] = i32(index)
+                used_shapes += 1
+                if int(used_shapes) >= len(shapes) {
+                    break
+                }
+            }
         }
+        
+    } else {
+
+        node_loop: for iter := bvh.iter(&step.tlas); iter.node != nil; {
+            if iter.len != 0 {
+                for offs in 0..<int(iter.len) {
+                    index := step.tlas.indices[int(iter.first) + offs]
+                    shape := step.shapes[index]
+                    if int(shape.layer) in ignore_layers {
+                        continue
+                    }
+
+                    _, overlaps := test_sphere_vs_shape(pos, rad, shape)
+                    if overlaps {
+                        shapes[used_shapes] = i32(index)
+                        used_shapes += 1
+                        if int(used_shapes) >= len(shapes) {
+                            break node_loop
+                        }
+                    }
+                }
+
+                bvh.iter_pop(&iter) or_break
+
+            } else {
+
+                child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
+                child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
+                t0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
+                t1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+
+                bvh.iter_unordered_next(&iter, t0, t1) or_break
+            }
+        }
+        
     }
 
     result.shapes = shapes[:used_shapes]
@@ -979,6 +1002,7 @@ find_contacts_sphere :: proc(
     max_triangles   := 32,
     ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
     allocator       := context.temp_allocator,
+    brute_force     := false,
 ) -> (result_contacts: []Contact) #no_bounds_check {
     contacts := make([]Contact, max_contacts, allocator)
     triangles := make([]Triangle_Contact, max_triangles, allocator)
@@ -989,6 +1013,7 @@ find_contacts_sphere :: proc(
         out_contacts = contacts,
         out_triangles = triangles,
         ignore_layers = ignore_layers,
+        brute_force = brute_force,
     )
 
     num_tri_contacts := generate_filtered_sphere_vs_triangle_contacts(
@@ -1003,6 +1028,7 @@ find_contacts_sphere :: proc(
     return contacts[:num_contacts]
 }
 
+// Does not filter the contacts.
 @(require_results)
 find_contacts_sphere_buf :: proc(
     pos:            [3]f32,
@@ -1010,62 +1036,94 @@ find_contacts_sphere_buf :: proc(
     out_contacts:   []Contact,
     out_triangles:  []Triangle_Contact,
     ignore_layers:  bit_set[0..<NUM_LAYERS],
+    brute_force     := false,
 ) -> (num_contacts: i32, num_triangles: i32) #no_bounds_check {
     assert(len(out_contacts) > 0)
 
     step := &_state.step_data[_state.step_read]
     pos_simd := transmute(#simd[4]f32)pos.xyzz
+    
+    if brute_force {
 
-    node_loop: for iter := bvh.iter(&step.tlas); iter.node != nil; {
-        if iter.len != 0 {
-            for offs in 0..<int(iter.len) {
-                index := step.tlas.indices[int(iter.first) + offs]
-                shape := step.shapes[index]
-                if int(shape.layer) in ignore_layers {
-                    continue
-                }
-
-                num_new_contacts, num_new_triangles := find_contacts_sphere_vs_shape(
-                    pos = pos,
-                    rad = rad,
-                    shape = shape,
-                    out_contacts = out_contacts[num_contacts:],
-                    out_triangles = out_triangles[num_triangles:],
-                )
-
-                contacts := out_contacts[num_contacts:][:num_new_contacts]
-                tris := out_triangles[num_triangles:][:num_new_triangles]
-
-                for &c in contacts {
-                    c.shape = i32(index)
-                }
-
-                for &t in tris {
-                    t.shape = i32(index)
-                }
-
-                num_contacts += num_new_contacts
-                num_triangles += num_new_triangles
-
-                if
-                    int(num_contacts) >= len(out_contacts) ||
-                    int(num_triangles) >= len(out_triangles)
-                {
-                    break node_loop
-                }
+        for shape, index in step.shapes {
+            if int(shape.layer) in ignore_layers {
+                continue
             }
 
-            bvh.iter_pop(&iter) or_break
+            num_new_contacts, num_new_triangles := find_contacts_sphere_vs_shape(
+                pos = pos,
+                rad = rad,
+                shape = shape,
+                out_contacts = out_contacts[num_contacts:],
+                out_triangles = out_triangles[num_triangles:],
+            )
 
-        } else {
+            contacts := out_contacts[num_contacts:][:num_new_contacts]
+            tris := out_triangles[num_triangles:][:num_new_triangles]
+            for &c in contacts {
+                c.shape = i32(index)
+            }
+            for &t in tris {
+                t.shape = i32(index)
+            }
 
-            child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
-            child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
-            t0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
-            t1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+            num_contacts += num_new_contacts
+            num_triangles += num_new_triangles
 
-            bvh.iter_unordered_next(&iter, t0, t1) or_break
+            if int(num_contacts) >= len(out_contacts) || int(num_triangles) >= len(out_triangles) {
+                break
+            }
         }
+        
+    } else {
+
+        node_loop: for iter := bvh.iter(&step.tlas); iter.node != nil; {
+            if iter.len != 0 {
+                for offs in 0..<int(iter.len) {
+                    index := step.tlas.indices[int(iter.first) + offs]
+                    shape := step.shapes[index]
+                    if int(shape.layer) in ignore_layers {
+                        continue
+                    }
+
+                    num_new_contacts, num_new_triangles := find_contacts_sphere_vs_shape(
+                        pos = pos,
+                        rad = rad,
+                        shape = shape,
+                        out_contacts = out_contacts[num_contacts:],
+                        out_triangles = out_triangles[num_triangles:],
+                    )
+
+                    contacts := out_contacts[num_contacts:][:num_new_contacts]
+                    tris := out_triangles[num_triangles:][:num_new_triangles]
+                    for &c in contacts {
+                        c.shape = i32(index)
+                    }
+                    for &t in tris {
+                        t.shape = i32(index)
+                    }
+
+                    num_contacts += num_new_contacts
+                    num_triangles += num_new_triangles
+
+                    if int(num_contacts) >= len(out_contacts) || int(num_triangles) >= len(out_triangles) {
+                        break node_loop
+                    }
+                }
+
+                bvh.iter_pop(&iter) or_break
+
+            } else {
+
+                child0 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 0]
+                child1 := transmute(bvh.Node_SIMD4)step.tlas.nodes[iter.first + 1]
+                t0 := geometry.test_point_vs_aabb_simd_single(pos_simd, child0.min - rad, child0.max + rad)
+                t1 := geometry.test_point_vs_aabb_simd_single(pos_simd, child1.min - rad, child1.max + rad)
+
+                bvh.iter_unordered_next(&iter, t0, t1) or_break
+            }
+        }
+        
     }
 
     return num_contacts, num_triangles
