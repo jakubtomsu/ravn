@@ -198,7 +198,7 @@ when BACKEND == BACKEND_WGPU {
 
             log.debugf("WebGPU limits: %v", limits)
 
-            assert(limits.minUniformBufferOffsetAlignment % CONSTANT_BUFFER_DYNAMIC_ALIGNMENT >= 0)
+            assert(limits.minUniformBufferOffsetAlignment % CONSTANTS_ALIGN >= 0)
 
             _state.init_done = true
 
