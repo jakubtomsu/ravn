@@ -32,3 +32,7 @@ pack_color :: proc(col: [4]f32) -> [4]u8 {
         u8(clamp(col[3], 0, 1) * 255),
     }
 }
+
+fade_color :: proc(col: [4]u8, alpha: f32) -> [4]u8 {
+    return {**col.rgb, u8(clamp(f32(col.a) * alpha, 0, 255))}
+}
