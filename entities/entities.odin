@@ -164,7 +164,7 @@ clear :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union)) {
 
 @(require_results)
 clone :: proc(src: ^$Ents/Entities($Variant_Union, $Subtype_Union), allocator := context.allocator) -> (result: Ents) {
-    assert(ents.allocator != {}, "You must call init() first")
+    assert(src.allocator != {}, "You must call init() first")
     // Extract exact capacities from the source
     caps: [UNION_LEN(Variant_Union)]int
     for buf, i in src.buffers {

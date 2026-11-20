@@ -18,7 +18,7 @@ _test_basic :: proc(t: ^testing.T) {
     testing.expect(t, len(get_values(ents, Foo)) == 0)
     testing.expect(t, len(get_values(ents, Bar)) == 0)
 
-    a := create_sub(&ents, Foo{name = "First", val = 1})
+    a := create_variant(&ents, Foo{name = "First", val = 1})
     testing.expect(t, a != {})
     testing.expect(t, a.variant == 0)
 
@@ -31,7 +31,7 @@ _test_basic :: proc(t: ^testing.T) {
     testing.expect(t, a_ptr.base == nil)
 
     b_val := Foo{name = "Second", val = 2}
-    b := create_var(&ents, b_val)
+    b := create_union(&ents, b_val)
 
     testing.expect(t, b != {})
     testing.expect(t, b.index == a.index) // Slot reuse
