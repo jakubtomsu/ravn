@@ -53,26 +53,26 @@ Entity_Ptr :: struct($U: typeid) #raw_union where intrinsics.type_is_union(U) {
 /*
 Container for all the entities.
 
-Val_Union:
+Variant_Union:
     - union of all possible entity types
     - all fields must be a struct with 'Base' at offset 0
 
-Sub_Union:
+Subtype_Union:
     - union of subtypes present in values
     - doesn't have to contain all subtypes, but only these will be query-able
 */
-Entities :: struct($Val_Union: typeid, $Sub_Union: typeid)
+Entities :: struct($Variant_Union: typeid, $Subtype_Union: typeid)
     where
-        intrinsics.type_is_union(Val_Union),
-        intrinsics.type_is_union(Sub_Union),
-        UNION_LEN(Val_Union) > 1,
-        UNION_LEN(Val_Union) < 256,
-        size_of(intrinsics.type_convert_variants_to_pointers(Val_Union)) == 2*size_of(rawptr),
-        intrinsics.type_union_tag_offset(intrinsics.type_convert_variants_to_pointers(Val_Union)) == size_of(uintptr)
+        intrinsics.type_is_union(Variant_Union),
+        intrinsics.type_is_union(Subtype_Union),
+        UNION_LEN(Variant_Union) > 1,
+        UNION_LEN(Variant_Union) < 256,
+        size_of(intrinsics.type_convert_variants_to_pointers(Variant_Union)) == 2*size_of(rawptr),
+        intrinsics.type_union_tag_offset(intrinsics.type_convert_variants_to_pointers(Variant_Union)) == size_of(uintptr)
 {
-    buffers:    [UNION_LEN(Val_Union)]Buffer,
-    sizes:      [UNION_LEN(Val_Union)]i64,
-    offsets:    [UNION_LEN(Sub_Union)][UNION_LEN(Val_Union)]i64,
+    buffers:    [UNION_LEN(Variant_Union)]Buffer,
+    sizes:      [UNION_LEN(Variant_Union)]i64,
+    offsets:    [UNION_LEN(Subtype_Union)][UNION_LEN(Variant_Union)]i64,
     allocator:  runtime.Allocator,
 }
 
@@ -83,26 +83,29 @@ Buffer :: struct {
     free:       i32,
 }
 
-// TODO: we cannot do caps: [UNION_LEN(Val_Union)] due to a compiler bug.
+// TODO: we cannot do caps: [UNION_LEN(Variant_Union)] due to a compiler bug.
 init :: proc(
-    ents:           ^$Ents/Entities($Val_Union, $Sub_Union),
+    ents:           ^$Ents/Entities($Variant_Union, $Subtype_Union),
     default_cap:    int = 4096,
     caps:           []int = nil, // Use UNION_INDEX to set specific fields
     allocator       := context.allocator,
 ) {
+    assert(allocator != {})
+    assert(ents.allocator == {}, "Already initialized")
+
     ents.allocator = allocator
 
-    val_ti := runtime.type_info_core(type_info_of(Val_Union))
-    val_ti_union := val_ti.variant.(^runtime.Type_Info_Union)
+    var_ti := runtime.type_info_core(type_info_of(Variant_Union))
+    var_ti_union := var_ti.variant.(^runtime.Type_Info_Union)
 
-    sub_ti := runtime.type_info_core(type_info_of(Sub_Union))
+    sub_ti := runtime.type_info_core(type_info_of(Subtype_Union))
     sub_ti_union := sub_ti.variant.(^runtime.Type_Info_Union)
 
-    for val_var_ti, val_var_index in val_ti_union.variants {
-        ents.sizes[val_var_index] = i64(val_var_ti.size)
+    for var_var_ti, var_var_index in var_ti_union.variants {
+        ents.sizes[var_var_index] = i64(var_var_ti.size)
     }
 
-    for i in 0..<UNION_LEN(Val_Union) {
+    for i in 0..<UNION_LEN(Variant_Union) {
         cap := i < len(caps) ? caps[i] : default_cap
         assert(cap >= 2)
         assert(cap < int(max(Handle_Index)))
@@ -117,8 +120,8 @@ init :: proc(
 
     ents.offsets = -1
     for sub_var_ti, sub_var_index in sub_ti_union.variants {
-        for val_var_ti, val_var_index in val_ti_union.variants {
-            sti := runtime.type_info_core(val_var_ti).variant.(^runtime.Type_Info_Struct) or_continue
+        for var_var_ti, var_var_index in var_ti_union.variants {
+            sti := runtime.type_info_core(var_var_ti).variant.(^runtime.Type_Info_Struct) or_continue
 
             offs: i64 = -1
             for fi in 0..<sti.field_count {
@@ -128,20 +131,22 @@ init :: proc(
                 }
             }
 
-            ents.offsets[sub_var_index][val_var_index] = offs
+            ents.offsets[sub_var_index][var_var_index] = offs
         }
     }
 }
 
 // Frees buffers and zeroes the entire container
-shutdown :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union)) {
+shutdown :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union)) {
+    assert(ents.allocator != {}, "You must call init() first")
     for buf in ents.buffers {
         free(buf.data, ents.allocator)
     }
     ents^ = {}
 }
 
-clear :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union)) {
+clear :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union)) {
+    assert(ents.allocator != {}, "You must call init() first")
     for &buf, var_index in ents.buffers {
         for i in 1..=buf.top {
             base, base_ok := get_entity_base(ents^, buf, Handle{
@@ -158,9 +163,10 @@ clear :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union)) {
 }
 
 @(require_results)
-clone :: proc(src: ^$Ents/Entities($Val_Union, $Sub_Union), allocator := context.allocator) -> (result: Ents) {
+clone :: proc(src: ^$Ents/Entities($Variant_Union, $Subtype_Union), allocator := context.allocator) -> (result: Ents) {
+    assert(ents.allocator != {}, "You must call init() first")
     // Extract exact capacities from the source
-    caps: [UNION_LEN(Val_Union)]int
+    caps: [UNION_LEN(Variant_Union)]int
     for buf, i in src.buffers {
         caps[i] = int(buf.cap)
     }
@@ -186,14 +192,17 @@ clone :: proc(src: ^$Ents/Entities($Val_Union, $Sub_Union), allocator := context
     return result
 }
 
+// Creates an entity. Returns null handle and false if an empty slot couldn't be found.
 create :: proc {
-    create_val,
-    create_sub,
+    create_union,
+    create_variant,
 }
 
-create_val :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), val: Val_Union) -> (result: Handle, ok: bool) #optional_ok {
-    val := val
-    variant_index := _extract_variant_index(&val)
+// Creates entity from a dynamic union.
+create_union :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), var: Variant_Union) -> (result: Handle, ok: bool) #optional_ok {
+    assert(ents.allocator != {}, "You must call init() first")
+    var := var
+    variant_index := _extract_variant_index(&var)
     base, index := _create_empty(ents, variant_index) or_return
 
     result = {
@@ -202,15 +211,17 @@ create_val :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), val: Val_Union
         variant = Handle_Variant(variant_index),
     }
 
-    intrinsics.mem_copy_non_overlapping(base, &val, ents.sizes[variant_index])
+    intrinsics.mem_copy_non_overlapping(base, &var, ents.sizes[variant_index])
     base.handle = result
     base._next_free = 0
 
     return result, true
 }
 
-create_sub :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), val: $Val) -> (result: Handle, ok: bool) where UNION_HAS(Val_Union, Val) #optional_ok {
-    VARIANT_INDEX :: UNION_INDEX(Val_Union, Val)
+// Creates an entity from a statically typed entity value.
+create_variant :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), var: $Var) -> (result: Handle, ok: bool) where UNION_HAS(Variant_Union, Var) #optional_ok {
+    assert(ents.allocator != {}, "You must call init() first")
+    VARIANT_INDEX :: UNION_INDEX(Variant_Union, Var)
     base, index := _create_empty(ents, VARIANT_INDEX) or_return
 
     result = {
@@ -219,14 +230,16 @@ create_sub :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), val: $Val) -> 
         variant = Handle_Variant(VARIANT_INDEX),
     }
 
-    (cast(^Val)base)^ = val
+    (cast(^Var)base)^ = var
     base.handle = result
     base._next_free = 0
 
     return result, true
 }
 
-_create_empty :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), variant_index: int) -> (result: ^Base, index: i32, ok: bool) {
+// Internal use, allocates slot in one of the variant buffers.
+_create_empty :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), variant_index: int) -> (result: ^Base, index: i32, ok: bool) {
+    assert(ents.allocator != {}, "You must call init() first")
     buf := &ents.buffers[variant_index]
 
     index = buf.free
@@ -246,7 +259,8 @@ _create_empty :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), variant_ind
 }
 
 // Immediately destroys an entity. Returns false if doesn't exist.
-destroy :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -> bool  {
+destroy :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), handle: Handle) -> bool  {
+    assert(ents.allocator != {}, "You must call init() first")
     buf := get_buffer(ents, handle.variant) or_return
     base := get_entity_base(ents^, buf^, handle) or_return
     if handle != base.handle {
@@ -266,14 +280,15 @@ destroy :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -
 
 // Looks up a generic entity using a handle handle. Returns nil if the entity doesn't exist.
 @(require_results)
-get :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -> (result: Entity_Ptr(Val_Union), ok: bool) #optional_ok {
+get :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), handle: Handle) -> (result: Entity_Ptr(Variant_Union), ok: bool) #optional_ok {
+    assert(ents.allocator != {}, "You must call init() first")
     Raw_Pointer_Union :: struct {
         value:  rawptr,
         tag:    uintptr,
     }
 
-    #assert(size_of(intrinsics.type_convert_variants_to_pointers(Val_Union)) == size_of(Raw_Pointer_Union))
-    #assert(intrinsics.type_union_tag_offset(intrinsics.type_convert_variants_to_pointers(Val_Union)) == offset_of(Raw_Pointer_Union, tag))
+    #assert(size_of(intrinsics.type_convert_variants_to_pointers(Variant_Union)) == size_of(Raw_Pointer_Union))
+    #assert(intrinsics.type_union_tag_offset(intrinsics.type_convert_variants_to_pointers(Variant_Union)) == offset_of(Raw_Pointer_Union, tag))
 
     buf := get_buffer(ents, handle.variant) or_return
     base := get_entity_base(ents^, buf^, handle) or_return
@@ -283,15 +298,16 @@ get :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -> (r
 
     raw_result := transmute(^Raw_Pointer_Union)&result
     raw_result.value = base
-    raw_result.tag = intrinsics.type_union_base_tag_value(intrinsics.type_convert_variants_to_pointers(Val_Union)) + uintptr(handle.variant)
+    raw_result.tag = intrinsics.type_union_base_tag_value(intrinsics.type_convert_variants_to_pointers(Variant_Union)) + uintptr(handle.variant)
     return result, true
 }
 
 // Utility for looking up an entity of a specific variant using a handle. Returns nil if the entity is a different variant or doesn't exist.
 @(require_results)
-get_var :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $Var: typeid) -> (result: ^Var, ok: bool)
-    where UNION_HAS(Val_Union, Var) #optional_ok
+get_var :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), handle: Handle, $Var: typeid) -> (result: ^Var, ok: bool)
+    where UNION_HAS(Variant_Union, Var) #optional_ok
 {
+    assert(ents.allocator != {}, "You must call init() first")
     ent := get(ents, handle) or_return
     var := ent.variant.(^Var) or_return
     return var, true
@@ -299,11 +315,12 @@ get_var :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $
 
 // Looks up an entity sub-component using a handle. Returns nil if the entity doesn't have the component or doesn't exist.
 @(require_results)
-get_sub :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $Sub: typeid) -> (result: ^Sub, ok: bool)
-    where UNION_HAS(Sub_Union, Sub) #optional_ok
+get_sub :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), handle: Handle, $Sub: typeid) -> (result: ^Sub, ok: bool)
+    where UNION_HAS(Subtype_Union, Sub) #optional_ok
 {
+    assert(ents.allocator != {}, "You must call init() first")
     buf := get_buffer(ents, handle.variant) or_return
-    offset := ents.offsets[UNION_INDEX(Sub_Union, Sub)][handle.variant]
+    offset := ents.offsets[UNION_INDEX(Subtype_Union, Sub)][handle.variant]
     if offset == -1 {
         return nil, false
     }
@@ -317,21 +334,24 @@ get_sub :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $
 }
 
 @(require_results)
-get_values :: proc(ents: $Ents/Entities($Val_Union, $Sub_Union), $Val: typeid) -> []Val where UNION_HAS(Val_Union, Val) {
-    buf := ents.buffers[UNION_INDEX(Val_Union, Val)]
-    return (cast([^]Val)buf.data)[1:buf.top+1]
+get_values :: proc(ents: $Ents/Entities($Variant_Union, $Subtype_Union), $Var: typeid) -> []Var where UNION_HAS(Variant_Union, Var) {
+    assert(ents.allocator != {}, "You must call init() first")
+    buf := ents.buffers[UNION_INDEX(Variant_Union, Var)]
+    return (cast([^]Var)buf.data)[1:buf.top+1]
 }
 
 @(require_results)
-get_buffer :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), variant: Handle_Variant) -> (^Buffer, bool) {
-    if variant >= UNION_LEN(Val_Union) {
+get_buffer :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), variant: Handle_Variant) -> (^Buffer, bool) {
+    assert(ents.allocator != {}, "You must call init() first")
+    if variant >= UNION_LEN(Variant_Union) {
         return {}, false
     }
     return &ents.buffers[variant], true
 }
 
 @(require_results)
-get_entity_base :: proc(ents: $Ents/Entities($Val_Union, $Sub_Union), buf: Buffer, handle: Handle) -> (^Base, bool) {
+get_entity_base :: proc(ents: $Ents/Entities($Variant_Union, $Subtype_Union), buf: Buffer, handle: Handle) -> (^Base, bool) {
+    assert(ents.allocator != {}, "You must call init() first")
     if  handle.index <= 0 || i32(handle.index) > buf.top {
         return {}, false
     }
@@ -344,45 +364,47 @@ get_entity_base :: proc(ents: $Ents/Entities($Val_Union, $Sub_Union), buf: Buffe
 // MARK: Iterators
 //
 // Usage:
-// for it := begin(&s, Val_Or_Sub_Type); val := next(&it) { ... }
+// for iter := begin(&s, Var_Or_Sub_Type); var := next(&iter) { ... }
 //
 
 begin :: proc {
-    begin_val,
+    begin_var,
     begin_sub,
 }
 
 next :: proc {
-    next_val,
+    next_var,
     next_sub,
 }
 
-Iter_Val :: struct($Val: typeid) {
-    val:    ^Val,
-    end:    uintptr,
+Iter_Variant :: struct($Var: typeid) {
+    using var:  ^Var, // Current value
+    _end:        uintptr,
 }
 
 @(require_results)
-begin_val :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), $Val: typeid) -> (it: Iter_Val(Val)) where UNION_HAS(Val_Union, Val) {
-    buf := ents.buffers[UNION_INDEX(Val_Union, Val)]
+begin_var :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), $Var: typeid) -> (it: Iter_Variant(Var)) where UNION_HAS(Variant_Union, Var) {
+    assert(ents.allocator != {}, "You must call init() first")
+    buf := ents.buffers[UNION_INDEX(Variant_Union, Var)]
     it = {
-        val = cast(^Val)buf.data,
-        end = uintptr(buf.data) + uintptr(buf.top) * size_of(Val),
+        var = cast(^Var)buf.data,
+        _end = uintptr(buf.data) + uintptr(buf.top) * size_of(Var),
     }
     return it
 }
 
-next_val :: proc(it: ^Iter_Val($Val)) -> (value: ^Val, ok: bool) {
+@(require_results)
+next_var :: proc(it: ^Iter_Variant($Var)) -> (ok: bool) {
     for {
-        it.val = cast(^Val)(uintptr(it.val) + size_of(Val))
-        if uintptr(it.val) > it.end {
+        it.var = cast(^Var)(uintptr(it.var) + size_of(Var))
+        if uintptr(it.var) > it._end {
             break
         }
-        if it.val.handle.index != 0 {
-            return it.val, true
+        if it.var.handle.index != 0 {
+            return true
         }
     }
-    return nil, false
+    return false
 }
 
 
@@ -390,48 +412,54 @@ next_val :: proc(it: ^Iter_Val($Val)) -> (value: ^Val, ok: bool) {
 // MARK: Subtype iteration
 
 // The handle isn't exposed directly, but it's stored in the iterator through base pointer.
-Iter_Sub :: struct($Val_Union: typeid, $Sub_Union: typeid, $Sub: typeid) {
-    ents:       ^Entities(Val_Union, Sub_Union) `fmt:"-"`,
-    using ptr:  ^Base,
-    step:       uintptr,
-    offset:     uintptr,
-    end:        uintptr,
-    variant:    int,
-    sub_index:  int,
+Iter_Subtype :: struct($Variant_Union: typeid, $Subtype_Union: typeid, $Sub: typeid) {
+    using base: ^Base, // Current value base
+    using sub:  ^Sub, // Current value subtype
+    _ents:      ^Entities(Variant_Union, Subtype_Union) `fmt:"-"`,
+    _step:       uintptr,
+    _offset:     uintptr,
+    _end:        uintptr,
+    _variant:    int,
+    _sub_index:  int,
 }
 
 @(require_results)
-begin_sub :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), $Sub: typeid) -> (result: Iter_Sub(Val_Union, Sub_Union, Sub)) where UNION_HAS(Sub_Union, Sub) {
-    result.ents = ents
-    result.variant = -1
-    result.sub_index = UNION_INDEX(Sub_Union, Sub)
+begin_sub :: proc(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), $Sub: typeid) -> (result: Iter_Subtype(Variant_Union, Subtype_Union, Sub)) where UNION_HAS(Subtype_Union, Sub) {
+    assert(ents.allocator != {}, "You must call init() first")
+    result._ents = ents
+    result._variant = -1
+    result._sub_index = UNION_INDEX(Subtype_Union, Sub)
+    result.base = nil
+    result.sub = nil
     _iter_sub_next_variant(&result)
     return result
 }
 
-next_sub :: proc(it: ^Iter_Sub($Val_Union, $Sub_Union, $Sub)) -> (value: ^Sub, ok: bool) {
+@(require_results)
+next_sub :: proc(it: ^Iter_Subtype($Variant_Union, $Subtype_Union, $Sub)) -> (ok: bool) {
     for {
-        it.ptr = cast(^Base)(uintptr(it.ptr) + it.step)
-        if uintptr(it.ptr) > it.end {
+        it.base = cast(^Base)(uintptr(it.base) + it._step)
+        if uintptr(it.base) > it._end {
             if !_iter_sub_next_variant(it) {
                 return
             }
             continue
         }
-        if it.ptr.handle.index != 0 {
-            return cast(^Sub)(uintptr(it.ptr) + it.offset), true
+        if it.base.handle.index != 0 {
+            it.sub = cast(^Sub)(uintptr(it.base) + it._offset)
+            return true
         }
     }
 
-    return nil, false
+    return false
 }
 
-_iter_sub_next_variant :: proc(it: ^Iter_Sub($Val_Union, $Sub_Union, $Sub)) -> (ok: bool) {
-    offsets := &it.ents.offsets[it.sub_index]
+_iter_sub_next_variant :: proc(it: ^Iter_Subtype($Variant_Union, $Subtype_Union, $Sub)) -> (ok: bool) {
+    offsets := &it._ents.offsets[it._sub_index]
 
-    it.variant += 1
-    for ; it.variant < UNION_LEN(Val_Union); it.variant += 1 {
-        if offsets[it.variant] != -1 {
+    it._variant += 1
+    for ; it._variant < UNION_LEN(Variant_Union); it._variant += 1 {
+        if offsets[it._variant] != -1 {
             ok = true
             break
         }
@@ -441,21 +469,24 @@ _iter_sub_next_variant :: proc(it: ^Iter_Sub($Val_Union, $Sub_Union, $Sub)) -> (
         return false
     }
 
-    offset := offsets[it.variant]
-    size := it.ents.sizes[it.variant]
-    buf := it.ents.buffers[it.variant]
+    offset := offsets[it._variant]
+    size := it._ents.sizes[it._variant]
+    buf := it._ents.buffers[it._variant]
 
-    it.ptr = cast(^Base)buf.data
-    it.step = uintptr(size)
-    it.offset = uintptr(offset)
-    it.end = uintptr(buf.data) + uintptr(buf.top) * uintptr(size)
+    it.base = cast(^Base)buf.data
+    it.sub = cast(^Sub)(uintptr(buf.data) + uintptr(offset))
+    it._step = uintptr(size)
+    it._offset = uintptr(offset)
+    it._end = uintptr(buf.data) + uintptr(buf.top) * uintptr(size)
 
     return true
 }
 
 
+// MARK: Util
+
 @(require_results)
-_extract_variant_index :: proc "contextless" (val: ^$T) -> int where intrinsics.type_is_union(T) {
-    tag := (cast(^intrinsics.type_union_tag_type(T))(uintptr(val) + intrinsics.type_union_tag_offset(T)))^
+_extract_variant_index :: proc "contextless" (var: ^$T) -> int where intrinsics.type_is_union(T) {
+    tag := (cast(^intrinsics.type_union_tag_type(T))(uintptr(var) + intrinsics.type_union_tag_offset(T)))^
     return int(tag) - intrinsics.type_union_base_tag_value(T)
 }

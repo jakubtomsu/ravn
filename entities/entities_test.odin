@@ -31,7 +31,7 @@ _test_basic :: proc(t: ^testing.T) {
     testing.expect(t, a_ptr.base == nil)
 
     b_val := Foo{name = "Second", val = 2}
-    b := create_val(&ents, b_val)
+    b := create_var(&ents, b_val)
 
     testing.expect(t, b != {})
     testing.expect(t, b.index == a.index) // Slot reuse
@@ -72,7 +72,7 @@ _test_iter_val :: proc(t: ^testing.T) {
     destroy(&ents, handles[4])
 
     counter := 0
-    for it := begin_val(&ents, Foo); _ in next(&it) {
+    for it := begin_var(&ents, Foo); next(&it); {
         counter += 1
     }
     testing.expect(t, counter == 2)
@@ -113,7 +113,7 @@ _test_iter_sub :: proc(t: ^testing.T) {
     destroy(&ents, handles[2])
 
     counter := 0
-    for it := begin_sub(&ents, Named); _ in next(&it) {
+    for it := begin_sub(&ents, Named); next(&it); {
         counter += 1
     }
     testing.expect(t, counter == 6)
