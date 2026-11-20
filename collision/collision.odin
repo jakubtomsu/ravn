@@ -284,7 +284,7 @@ destroy_arena :: proc(handle: Arena_Handle) -> bool {
             })
         }
     }
-    
+
     return base.pool_remove(&_state.arenas, handle)
 }
 
@@ -555,7 +555,7 @@ collide_sphere :: proc(
     pos:            [3]f32,
     vel:            [3]f32,
     rad:            f32,
-    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    layers:         bit_set[0..<NUM_LAYERS] = ~{},
     max_contacts    := 8,
     max_triangles   := 32,
     allocator       := context.temp_allocator,
@@ -569,7 +569,7 @@ collide_sphere :: proc(
         rad = rad,
         max_contacts = max_contacts,
         max_triangles = max_triangles,
-        ignore_layers = ignore_layers,
+        layers = layers,
         allocator = allocator,
     )
 
@@ -602,7 +602,7 @@ collide_sphere_swept :: proc(
     pos:            [3]f32,
     vel:            [3]f32,
     rad:            f32,
-    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    layers:         bit_set[0..<NUM_LAYERS] = ~{},
     max_sweeps      := 4,
 ) -> (new_pos: [3]f32, new_vel: [3]f32) {
     pos := pos
@@ -612,12 +612,12 @@ collide_sphere_swept :: proc(
     range := linalg.length(vel * step.delta)
 
     for _ in 0..<max_sweeps {
-        // overlap_pos, vel, contacts = collide_sphere(pos, vel, rad, ignore_layers, allocator = context.temp_allocator)
+        // overlap_pos, vel, contacts = collide_sphere(pos, vel, rad, layers, allocator = context.temp_allocator)
         // if len(contacts) > 0 {
         //     pos = overlap_pos
         // }
 
-        pos, vel = _solve_sphere_contacts_position_based(pos, vel, rad = rad, ignore_layers = ignore_layers, allocator = context.temp_allocator)
+        pos, vel = _solve_sphere_contacts_position_based(pos, vel, rad = rad, layers = layers, allocator = context.temp_allocator)
 
         dir := linalg.normalize0(vel)
 
@@ -626,7 +626,7 @@ collide_sphere_swept :: proc(
             return pos, vel
         }
 
-        sweep, sweep_hit := sweep_sphere(pos, move = dir, rad = rad, range = range, ignore_layers = ignore_layers)
+        sweep, sweep_hit := sweep_sphere(pos, move = dir, rad = rad, range = range, layers = layers)
 
         if !sweep_hit {
             pos += dir * range
@@ -650,7 +650,7 @@ collide_sphere_swept :: proc(
         pos:            [3]f32,
         vel:            [3]f32,
         rad:            f32,
-        ignore_layers:  bit_set[0..<NUM_LAYERS],
+        layers:         bit_set[0..<NUM_LAYERS],
         max_contacts    := 8,
         max_triangles   := 32,
         allocator       := context.temp_allocator,
@@ -661,7 +661,7 @@ collide_sphere_swept :: proc(
             max_contacts = max_contacts,
             max_triangles = max_triangles,
             allocator = allocator,
-            ignore_layers = ignore_layers,
+            layers = layers,
         )
 
         new_pos = pos
@@ -696,7 +696,7 @@ sweep_point :: proc(
     pos:            [3]f32,
     move:           [3]f32,
     range:          f32 = 1,
-    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    layers:         bit_set[0..<NUM_LAYERS] = ~{},
     brute_force     := false,
 ) -> (result: Sweep, ok: bool) #no_bounds_check #optional_ok {
     result = make_sweep(pos, move, rad = 0, range = range)
@@ -709,7 +709,7 @@ sweep_point :: proc(
 
     if brute_force {
         for shape, index in step.shapes {
-            if int(shape.layer) in ignore_layers {
+            if int(shape.layer) not_in layers {
                 continue
             }
 
@@ -724,7 +724,7 @@ sweep_point :: proc(
                 for offs in 0..<int(iter.len) {
                     index := step.tlas.indices[int(iter.first) + offs]
                     shape := step.shapes[index]
-                    if int(shape.layer) in ignore_layers {
+                    if int(shape.layer) not_in layers {
                         continue
                     }
 
@@ -760,7 +760,7 @@ sweep_sphere :: proc(
     move:           [3]f32,
     rad:            f32,
     range:          f32 = 1,
-    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    layers:         bit_set[0..<NUM_LAYERS] = ~{},
     brute_force     := false,
 ) -> (result: Sweep, ok: bool) #optional_ok #no_bounds_check {
     result = make_sweep(pos, move, rad = rad, range = range)
@@ -770,10 +770,10 @@ sweep_sphere :: proc(
     inv_move := 1.0 / move
     inv_move_simd := transmute(#simd[4]f32)inv_move.xyzz
     pos_simd := transmute(#simd[4]f32)pos.xyzz
-    
+
     if brute_force {
         for shape, index in step.shapes {
-            if int(shape.layer) in ignore_layers {
+            if int(shape.layer) not_in layers {
                 continue
             }
 
@@ -788,7 +788,7 @@ sweep_sphere :: proc(
                 for offs in 0..<int(iter.len) {
                     index := step.tlas.indices[int(iter.first) + offs]
                     shape := step.shapes[index]
-                    if int(shape.layer) in ignore_layers {
+                    if int(shape.layer) not_in layers {
                         continue
                     }
 
@@ -837,7 +837,7 @@ eval_sweep :: proc(sweep: ^Sweep) {
 test_sphere :: proc(
     pos:            [3]f32,
     rad:            f32,
-    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    layers:         bit_set[0..<NUM_LAYERS] = ~{},
     brute_force     := false,
 ) -> (result: Test, ok: bool) #no_bounds_check {
     result = {
@@ -850,10 +850,10 @@ test_sphere :: proc(
     step := &_state.step_data[_state.step_read]
 
     pos_simd := transmute(#simd[4]f32)pos.xyzz
-    
+
     if brute_force {
         for shape, index in step.shapes {
-            if int(shape.layer) in ignore_layers {
+            if int(shape.layer) not_in layers {
                 continue
             }
 
@@ -870,7 +870,7 @@ test_sphere :: proc(
                 for offs in 0..<int(iter.len) {
                     index := step.tlas.indices[int(iter.first) + offs]
                     shape := step.shapes[index]
-                    if int(shape.layer) in ignore_layers {
+                    if int(shape.layer) not_in layers {
                         continue
                     }
 
@@ -906,12 +906,12 @@ overlap_sphere :: proc(
     pos:            [3]f32,
     rad:            f32,
     max_overlaps    := 16,
-    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    layers:         bit_set[0..<NUM_LAYERS] = ~{},
     allocator       := context.temp_allocator,
     brute_force     := false,
 ) -> (result: Overlap, ok: bool) #optional_ok #no_bounds_check {
     buf := make([]i32, max_overlaps, allocator)
-    return overlap_sphere_buf(pos, rad, buf, ignore_layers, brute_force = brute_force)
+    return overlap_sphere_buf(pos, rad, buf, layers, brute_force = brute_force)
 }
 
 @(require_results)
@@ -919,7 +919,7 @@ overlap_sphere_buf :: proc(
     pos:            [3]f32,
     rad:            f32,
     shapes:         []i32,
-    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    layers:         bit_set[0..<NUM_LAYERS] = ~{},
     brute_force     := false,
 ) -> (result: Overlap, ok: bool) #optional_ok #no_bounds_check {
     assert(len(shapes) > 0)
@@ -931,11 +931,11 @@ overlap_sphere_buf :: proc(
     step := &_state.step_data[_state.step_read]
     used_shapes := 0
     pos_simd := transmute(#simd[4]f32)pos.xyzz
-    
+
     if brute_force {
-        
+
         for shape, index in step.shapes {
-            if int(shape.layer) in ignore_layers {
+            if int(shape.layer) not_in layers {
                 continue
             }
 
@@ -948,7 +948,7 @@ overlap_sphere_buf :: proc(
                 }
             }
         }
-        
+
     } else {
 
         node_loop: for iter := bvh.iter(&step.tlas); iter.node != nil; {
@@ -956,7 +956,7 @@ overlap_sphere_buf :: proc(
                 for offs in 0..<int(iter.len) {
                     index := step.tlas.indices[int(iter.first) + offs]
                     shape := step.shapes[index]
-                    if int(shape.layer) in ignore_layers {
+                    if int(shape.layer) not_in layers {
                         continue
                     }
 
@@ -982,7 +982,7 @@ overlap_sphere_buf :: proc(
                 bvh.iter_unordered_next(&iter, t0, t1) or_break
             }
         }
-        
+
     }
 
     result.shapes = shapes[:used_shapes]
@@ -1000,7 +1000,7 @@ find_contacts_sphere :: proc(
     rad:            f32,
     max_contacts    := 8,
     max_triangles   := 32,
-    ignore_layers:  bit_set[0..<NUM_LAYERS] = {},
+    layers:         bit_set[0..<NUM_LAYERS] = ~{},
     allocator       := context.temp_allocator,
     brute_force     := false,
 ) -> (result_contacts: []Contact) #no_bounds_check {
@@ -1012,7 +1012,7 @@ find_contacts_sphere :: proc(
         rad = rad,
         out_contacts = contacts,
         out_triangles = triangles,
-        ignore_layers = ignore_layers,
+        layers = layers,
         brute_force = brute_force,
     )
 
@@ -1035,18 +1035,18 @@ find_contacts_sphere_buf :: proc(
     rad:            f32,
     out_contacts:   []Contact,
     out_triangles:  []Triangle_Contact,
-    ignore_layers:  bit_set[0..<NUM_LAYERS],
+    layers:         bit_set[0..<NUM_LAYERS],
     brute_force     := false,
 ) -> (num_contacts: i32, num_triangles: i32) #no_bounds_check {
     assert(len(out_contacts) > 0)
 
     step := &_state.step_data[_state.step_read]
     pos_simd := transmute(#simd[4]f32)pos.xyzz
-    
+
     if brute_force {
 
         for shape, index in step.shapes {
-            if int(shape.layer) in ignore_layers {
+            if int(shape.layer) not_in layers {
                 continue
             }
 
@@ -1074,7 +1074,7 @@ find_contacts_sphere_buf :: proc(
                 break
             }
         }
-        
+
     } else {
 
         node_loop: for iter := bvh.iter(&step.tlas); iter.node != nil; {
@@ -1082,7 +1082,7 @@ find_contacts_sphere_buf :: proc(
                 for offs in 0..<int(iter.len) {
                     index := step.tlas.indices[int(iter.first) + offs]
                     shape := step.shapes[index]
-                    if int(shape.layer) in ignore_layers {
+                    if int(shape.layer) not_in layers {
                         continue
                     }
 
@@ -1123,7 +1123,7 @@ find_contacts_sphere_buf :: proc(
                 bvh.iter_unordered_next(&iter, t0, t1) or_break
             }
         }
-        
+
     }
 
     return num_contacts, num_triangles
