@@ -3,20 +3,20 @@
 
 ## Packages
 
-- [base](#base) - 62 procedures
+- [base](#base) - 60 procedures
 - [bvh](#bvh) - 18 procedures
-- [collision](#collision) - 43 procedures
-- [debugdraw](#debugdraw) - 32 procedures
-- [entities](#entities) - 19 procedures
-- [geometry](#geometry) - 39 procedures
-- [gpu](#gpu) - 71 procedures
-- [imgui](#imgui) - 1 procedures
+- [collision](#collision) - 45 procedures
+- [debugdraw](#debugdraw) - 33 procedures
+- [entities](#entities) - 20 procedures
+- [geometry](#geometry) - 41 procedures
+- [gpu](#gpu) - 62 procedures
+- [imgui](#imgui) - 15 procedures
 - [imgui_impl_gpu](#imgui_impl_gpu) - 5 procedures
 - [imgui_impl_platform](#imgui_impl_platform) - 5 procedures
 - [imgui_util](#imgui_util) - 6 procedures
 - [input](#input) - 24 procedures
 - [platform](#platform) - 28 procedures
-- [scene](#scene) - 8 procedures
+- [scene](#scene) - 18 procedures
 - [shaderc](#shaderc) - 8 procedures
 - [util](#util) - 75 procedures
 
@@ -57,11 +57,9 @@ static_bit_pool_is_1(bp: Static_Bit_Pool($N), #any_int index: u64) -> bool // st
 ### base_debug_id.odin
 
 ```odin
-create_debug_id(name: string, loc := #caller_location, allocator := context.allocator) -> Debug_ID
-destroy_debug_id(id: ^Debug_ID, allocator := context.allocator)
+create_debug_id(name: string, loc: runtime.Source_Code_Location) -> Debug_ID // NOTE: A debug ID clones the name string with the *defualt allocator*. It intentionally bypasses
+destroy_debug_id(id: ^Debug_ID)
 format_debug_id(id: Debug_ID, allocator := context.temp_allocator) -> string
-get_debug_id_name(id: Debug_ID) -> string
-get_debug_id_file(id: Debug_ID) -> string
 assert_id(id: Debug_ID, condition: bool, message: string = "", expr := #caller_expression(condition), loc := #caller_location)
 panic_id(id: Debug_ID, message: string, loc := #caller_location)
 ```
@@ -152,22 +150,24 @@ get_arena(handle: Arena_Handle) -> (: ^Arena, : bool)
 get_mesh(handle: Mesh_Handle) -> (: ^Mesh, : bool)
 create_mesh(arena_handle: Arena_Handle, verts: [][3]f32, triangles: [][3]u16) -> (result: Mesh_Handle, ok: bool) // WARNING: doesn't clone the data. You must allocate it yourself with the
 destroy_mesh(handle: Mesh_Handle) -> bool
-add_sphere_shape(pos: [3]f32, rad: f32, #any_int layer: u8 = 0, #any_int id: u64 = 0)
-add_capsule_shape(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0, #any_int id: u64 = 0)
-add_box_shape(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer: u8 = 0, #any_int id: u64 = 0)
-add_oriented_box_shape(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: f32 = 0.0, #any_int layer: u8 = 0, #any_int id: u64 = 0)
-add_mesh_shape(handle: Mesh_Handle, pos: [3]f32 = 0, scale: [3]f32 = 1, rot: quaternion128 = 1, rad: f32 = 0.0, #any_int layer: u8 = 0, #any_int id: u64 = 0)
-collide_sphere(pos: [3]f32, vel: [3]f32, rad: f32, ignore_layers: bit_set[0 ..< NUM_LAYERS] = {}, max_contacts := 8, max_triangles := 32, allocator := context.temp_allocator) -> (new_pos: [3]f32, new_vel: [3]f32, contacts: []Contact) // Immediate-mode discrete collision.
-collide_sphere_swept(pos: [3]f32, vel: [3]f32, rad: f32, ignore_layers: bit_set[0 ..< NUM_LAYERS] = {}, max_sweeps := 4) -> (new_pos: [3]f32, new_vel: [3]f32) // Immediate-mode continous shape-swept collision
+to_id(val: $T) -> (result: u64)
+from_id($T: typeid, id: u64) -> (result: T)
+add_sphere_shape(pos: [3]f32, rad: f32, #any_int layer: u8 = 0, #any_int id: u64 = 0, loc := #caller_location)
+add_capsule_shape(p0, p1: [3]f32, rad: f32, #any_int layer: u8 = 0, #any_int id: u64 = 0, loc := #caller_location)
+add_box_shape(pos: [3]f32, scale: [3]f32, rad: f32 = 0.0, #any_int layer: u8 = 0, #any_int id: u64 = 0, loc := #caller_location)
+add_oriented_box_shape(pos: [3]f32, scale: [3]f32, rot: quaternion128, rad: f32 = 0.0, #any_int layer: u8 = 0, #any_int id: u64 = 0, loc := #caller_location)
+add_mesh_shape(handle: Mesh_Handle, pos: [3]f32 = 0, scale: [3]f32 = 1, rot: quaternion128 = 1, rad: f32 = 0.0, #any_int layer: u8 = 0, #any_int id: u64 = 0, loc := #caller_location)
+collide_sphere(pos: [3]f32, vel: [3]f32, rad: f32, layers: bit_set[0 ..< NUM_LAYERS] = ~{}, max_contacts := 8, max_triangles := 32, allocator := context.temp_allocator) -> (new_pos: [3]f32, new_vel: [3]f32, contacts: []Contact) // Immediate-mode discrete collision.
+collide_sphere_swept(pos: [3]f32, vel: [3]f32, rad: f32, layers: bit_set[0 ..< NUM_LAYERS] = ~{}, max_sweeps := 4) -> (new_pos: [3]f32, new_vel: [3]f32) // Immediate-mode continous shape-swept collision
 make_sweep(pos: [3]f32, move: [3]f32, rad: f32 = 0, range: f32 = 1) -> Sweep
-sweep_point(pos: [3]f32, move: [3]f32, range: f32 = 1, ignore_layers: bit_set[0 ..< NUM_LAYERS] = {}) -> (result: Sweep, ok: bool) // World raycast
-sweep_sphere(pos: [3]f32, move: [3]f32, rad: f32, range: f32 = 1, ignore_layers: bit_set[0 ..< NUM_LAYERS] = {}) -> (result: Sweep, ok: bool) // World spherecast
+sweep_point(pos: [3]f32, move: [3]f32, range: f32 = 1, layers: bit_set[0 ..< NUM_LAYERS] = ~{}, brute_force := false) -> (result: Sweep, ok: bool) // World raycast
+sweep_sphere(pos: [3]f32, move: [3]f32, rad: f32, range: f32 = 1, layers: bit_set[0 ..< NUM_LAYERS] = ~{}, brute_force := false) -> (result: Sweep, ok: bool) // World spherecast
 eval_sweep(sweep: ^Sweep)
-test_sphere(pos: [3]f32, rad: f32, ignore_layers: bit_set[0 ..< NUM_LAYERS] = {}) -> (result: Test, ok: bool) // Checks for *any* collider overlap.
-overlap_sphere(pos: [3]f32, rad: f32, max_overlaps := 16, ignore_layers: bit_set[0 ..< NUM_LAYERS] = {}, allocator := context.temp_allocator) -> (result: Overlap, ok: bool) // Returns all overlapping colliders
-overlap_sphere_buf(pos: [3]f32, rad: f32, shapes: []i32, ignore_layers: bit_set[0 ..< NUM_LAYERS] = {}) -> (result: Overlap, ok: bool)
-find_contacts_sphere(pos: [3]f32, rad: f32, max_contacts := 8, max_triangles := 32, ignore_layers: bit_set[0 ..< NUM_LAYERS] = {}, allocator := context.temp_allocator) -> (result_contacts: []Contact)
-find_contacts_sphere_buf(pos: [3]f32, rad: f32, out_contacts: []Contact, out_triangles: []Triangle_Contact, ignore_layers: bit_set[0 ..< NUM_LAYERS]) -> (num_contacts: i32, num_triangles: i32)
+test_sphere(pos: [3]f32, rad: f32, layers: bit_set[0 ..< NUM_LAYERS] = ~{}, brute_force := false) -> (result: Test, ok: bool) // Checks for *any* collider overlap.
+overlap_sphere(pos: [3]f32, rad: f32, max_overlaps := 16, layers: bit_set[0 ..< NUM_LAYERS] = ~{}, allocator := context.temp_allocator, brute_force := false) -> (result: Overlap, ok: bool) // Returns all overlapping colliders
+overlap_sphere_buf(pos: [3]f32, rad: f32, shapes: []i32, layers: bit_set[0 ..< NUM_LAYERS] = ~{}, brute_force := false) -> (result: Overlap, ok: bool)
+find_contacts_sphere(pos: [3]f32, rad: f32, max_contacts := 8, max_triangles := 32, layers: bit_set[0 ..< NUM_LAYERS] = ~{}, allocator := context.temp_allocator, brute_force := false) -> (result_contacts: []Contact)
+find_contacts_sphere_buf(pos: [3]f32, rad: f32, out_contacts: []Contact, out_triangles: []Triangle_Contact, layers: bit_set[0 ..< NUM_LAYERS], brute_force := false) -> (num_contacts: i32, num_triangles: i32) // Does not filter the contacts.
 generate_filtered_sphere_vs_triangle_contacts(pos: [3]f32, rad: f32, out_contacts: []Contact, triangles: []Triangle_Contact) -> (num_contacts: i32) // https://www.codercorner.com/MeshContacts.pdf
 get_shape(shape: i32) -> (: Shape, : bool)
 get_mesh_triangle(handle: Mesh_Handle, #any_int tri_index: int) -> (verts: [3][3]f32, ok: bool)
@@ -236,6 +236,7 @@ make_shape_inst(pos: [3]f32, mat: matrix[3, 3]f32, col: [4]u8) -> Shape_Instance
 
 ```odin
 pack_color(col: [4]f32) -> [4]u8
+fade_color(col: [4]u8, alpha: f32) -> [4]u8
 ```
 
 ## entities
@@ -243,25 +244,26 @@ pack_color(col: [4]f32) -> [4]u8
 ### entities.odin
 
 ```odin
-init(ents: ^$Ents/Entities($Val_Union, $Sub_Union), default_cap: int = 4096, caps: []int = nil, allocator := context.allocator) // TODO: we cannot do caps: [UNION_LEN(Val_Union)] due to a compiler bug.
-shutdown(ents: ^$Ents/Entities($Val_Union, $Sub_Union)) // Frees buffers and zeroes the entire container
-clear(ents: ^$Ents/Entities($Val_Union, $Sub_Union))
-clone(src: ^$Ents/Entities($Val_Union, $Sub_Union), allocator := context.allocator) -> (result: Ents)
-create :: proc{create_val, create_sub}
-create_val(ents: ^$Ents/Entities($Val_Union, $Sub_Union), val: Val_Union) -> (result: Handle, ok: bool)
-create_sub(ents: ^$Ents/Entities($Val_Union, $Sub_Union), val: $Val) -> (result: Handle, ok: bool)
-destroy(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -> bool
-get(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -> (result: Entity_Ptr(Val_Union), ok: bool)
-get_sub(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $Sub: typeid) -> (result: ^Sub, ok: bool)
-get_values(ents: $Ents/Entities($Val_Union, $Sub_Union), $Val: typeid) -> []Val
-get_buffer(ents: ^$Ents/Entities($Val_Union, $Sub_Union), variant: Handle_Variant) -> (: ^Buffer, : bool)
-get_entity_base(ents: $Ents/Entities($Val_Union, $Sub_Union), buf: Buffer, handle: Handle) -> (: ^Base, : bool)
-begin :: proc{begin_val, begin_sub}
-next :: proc{next_val, next_sub}
-begin_val(ents: ^$Ents/Entities($Val_Union, $Sub_Union), $Val: typeid) -> (it: Iter_Val(Val))
-next_val(it: ^Iter_Val($Val)) -> (value: ^Val, ok: bool)
-begin_sub(ents: ^$Ents/Entities($Val_Union, $Sub_Union), $Sub: typeid) -> (result: Iter_Sub(Val_Union, Sub_Union, Sub))
-next_sub(it: ^Iter_Sub($Val_Union, $Sub_Union, $Sub)) -> (value: ^Sub, ok: bool)
+init(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), default_cap: int = 4096, caps: []int = nil, allocator := context.allocator) // TODO: we cannot do caps: [UNION_LEN(Variant_Union)] due to a compiler bug.
+shutdown(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union)) // Frees buffers and zeroes the entire container
+clear(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union))
+clone(src: ^$Ents/Entities($Variant_Union, $Subtype_Union), allocator := context.allocator) -> (result: Ents)
+create :: proc{create_union, create_variant} // Creates an entity. Returns null handle and false if an empty slot couldn't be found.
+create_union(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), var: Variant_Union) -> (result: Handle, ok: bool) // Creates entity from a dynamic union.
+create_variant(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), var: $Var) -> (result: Handle, ok: bool) // Creates an entity from a statically typed entity value.
+destroy(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), handle: Handle) -> bool // Immediately destroys an entity. Returns false if doesn't exist.
+get(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), handle: Handle) -> (result: Entity_Ptr(Variant_Union), ok: bool) // Looks up a generic entity using a handle handle. Returns nil if the entity doesn't exist.
+get_var(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), handle: Handle, $Var: typeid) -> (result: ^Var, ok: bool) // Utility for looking up an entity of a specific variant using a handle. Returns nil if the entity is a different variant or doesn't exist.
+get_sub(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), handle: Handle, $Sub: typeid) -> (result: ^Sub, ok: bool) // Looks up an entity sub-component using a handle. Returns nil if the entity doesn't have the component or doesn't exist.
+get_values(ents: $Ents/Entities($Variant_Union, $Subtype_Union), $Var: typeid) -> []Var
+get_buffer(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), variant: Handle_Variant) -> (: ^Buffer, : bool)
+get_entity_base(ents: $Ents/Entities($Variant_Union, $Subtype_Union), buf: Buffer, handle: Handle) -> (: ^Base, : bool)
+begin :: proc{begin_var, begin_sub}
+next :: proc{next_var, next_sub}
+begin_var(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), $Var: typeid) -> (it: Iter_Variant(Var))
+next_var(it: ^Iter_Variant($Var)) -> (ok: bool)
+begin_sub(ents: ^$Ents/Entities($Variant_Union, $Subtype_Union), $Sub: typeid) -> (result: Iter_Subtype(Variant_Union, Subtype_Union, Sub))
+next_sub(it: ^Iter_Subtype($Variant_Union, $Subtype_Union, $Sub)) -> (ok: bool)
 ```
 
 ## geometry
@@ -280,11 +282,14 @@ get_sphere_dist(pos: [3]f32, center: [3]f32, rad: f32) -> f32
 get_sphere_dist_grad(pos: [3]f32, center: [3]f32, rad: f32) -> (dist: f32, grad: [3]f32)
 get_box_dist(pos: [3]f32, center: [3]f32, rad: [3]f32) -> f32
 get_box_dist_grad(pos: [3]f32, center: [3]f32, rad: [3]f32) -> (dist: f32, grad: [3]f32)
-get_line_dist(pos: [3]f32, points: [2][3]f32) -> f32 // Capsule
+get_capsule_dist_sq(pos: [3]f32, points: [2][3]f32, rad: f32) -> f32
+get_capsule_dist(pos: [3]f32, points: [2][3]f32, rad: f32) -> f32
+get_line_dist(pos: [3]f32, points: [2][3]f32) -> f32
 get_line_dist_sq(pos: [3]f32, points: [2][3]f32) -> f32
 get_line_dist_grad(pos: [3]f32, points: [2][3]f32) -> (dist: f32, grad: [3]f32) // Capsule
+get_cylinder_dist(pos: [3]f32, points: [2][3]f32, rad: f32) -> f32
 get_triangle_dist(pos: [3]f32, tri: [3][3]f32) -> (dist: f32)
-get_triangle_dist_sq(pos: [3]f32, tri: [3][3]f32) -> (dist: f32)
+get_triangle_dist_sq(pos: [3]f32, tri: [3][3]f32) -> f32
 get_triangle_dist_grad(pos: [3]f32, tri: [3][3]f32) -> (dist: f32, grad: [3]f32)
 ```
 
@@ -297,6 +302,7 @@ test_point_vs_sphere(pos: [3]f32, center: [3]f32, rad: f32) -> bool
 test_point_vs_capsule(pos: [3]f32, points: [2][3]f32, rad: f32) -> bool
 test_sphere_vs_sphere(pos_a: [3]f32, rad_a: f32, pos_b: [3]f32, rad_b: f32) -> bool
 test_sphere_vs_box(pos: [3]f32, rad: f32, center, extent: [3]f32) -> bool
+test_sphere_vs_aabb(pos: [3]f32, rad: f32, aabb_min, aabb_max: [3]f32) -> bool
 test_sphere_vs_triangle(pos: [3]f32, rad: f32, tri: [3][3]f32) -> bool
 test_aabb_vs_aabb(a_min, a_max: [3]f32, b_min, b_max: [3]f32) -> bool
 ```
@@ -312,12 +318,10 @@ sweep_point_vs_aabb_simd_single(pos: #simd[4]f32, inv_move: #simd[4]f32, aabb_mi
 sweep_point_vs_aabb_simd(pos: [3]#simd[LANES]f32, inv_move: [3]#simd[LANES]f32, aabb_min: [3]#simd[LANES]f32, aabb_max: [3]#simd[LANES]f32, range: #simd[LANES]f32 = 1) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32)
 sweep_point_vs_triangle(pos: [3]f32, move: [3]f32, tri: [3][3]f32, range: f32 = 1) -> (t: f32, ok: bool)
 sweep_point_vs_triangle_simd(pos: [3]#simd[LANES]f32, move: [3]#simd[LANES]f32, tri: [3][3]#simd[LANES]f32, range: #simd[LANES]f32 = 1) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32)
-sweep_point_vs_triangle_slab(pos: [3]f32, move: [3]f32, tri: [3][3]f32, rad: f32, range: f32 = 1) -> (t: f32, uv: [2]f32, ok: bool) // Triangle expanded by 2*radius along the normal.
 sweep_point_vs_uncapped_cylinder(pos: [3]f32, move: [3]f32, points: [2][3]f32, rad: f32, range: f32 = 1) -> (t: f32, ok: bool)
-sweep_point_vs_uncapped_cylinder_simd(pos: [3]#simd[LANES]f32, move: [3]#simd[LANES]f32, points: [2][3]#simd[LANES]f32, rad: #simd[LANES]f32, range: #simd[LANES]f32 = 1) -> (t: #simd[LANES]f32, ok: #simd[LANES]u32)
 sweep_point_vs_cylinder(pos: [3]f32, move: [3]f32, points: [2][3]f32, rad: f32, range: f32 = 1) -> (t: f32, ok: bool)
-sweep_point_vs_capsule(pos: [3]f32, move: [3]f32, points: [2][3]f32, rad: f32, range: f32 = 1) -> (t: f32, ok: bool) // FIXME: broken endcaps
-sweep_sphere_vs_aabb(pos: [3]f32, move: [3]f32, rad: f32, aabb_min: [3]f32, aabb_max: [3]f32, range: f32 = 1) -> (t: f32, ok: bool)
+sweep_point_vs_capsule(pos: [3]f32, move: [3]f32, points: [2][3]f32, rad: f32, range: f32 = 1) -> (t: f32, ok: bool)
+sweep_sphere_vs_aabb(pos: [3]f32, move: [3]f32, rad: f32, aabb_min: [3]f32, aabb_max: [3]f32, range: f32 = 1) -> (t: f32, ok: bool) // Inspired by:
 sweep_sphere_vs_triangle(pos: [3]f32, move: [3]f32, rad: f32, tri: [3][3]f32, range: f32 = 1) -> (t: f32, ok: bool)
 dot_simd(a, b: [3]#simd[LANES]f32) -> #simd[LANES]f32
 cross_simd(a, b: [3]#simd[LANES]f32) -> [3]#simd[LANES]f32
@@ -335,20 +339,20 @@ get_triangle_closest_point(pos: [3]f32, tri: [3][3]f32) -> (closest: [3]f32, fea
 ### gpu.odin
 
 ```odin
-make_blend_desc(src_color: Blend_Factor = .Src_Alpha, dst_color: Blend_Factor = .One_Minus_Src_Alpha, src_alpha: Blend_Factor = .Src_Alpha, dst_alpha: Blend_Factor = .One_Minus_Src_Alpha, op_color: Blend_Op = .Add, op_alpha: Blend_Op = .Add) -> Blend_Desc // Alpha blending is default
-make_sampler_desc(filter: bit_set[Filter], bounds: [3]Texture_Bounds = {.Wrap, .Wrap, .Wrap}, mip_min: f32 = 0, mip_max: f32 = 10, mip_bias: f32 = 0, max_aniso: i32 = 1) -> Sampler_Desc
+make_sampler_desc(filter: bit_set[Filter], bounds: [3]Texture_Bounds = {.Wrap, .Wrap, .Wrap}, mip_min: f32 = 0, mip_max: f32 = 10, mip_bias: f32 = 0, max_aniso: i32 = 1, comparison: Comparison_Op = .Always) -> Sampler_Desc
 init(state: ^State = nil, window: rawptr, allocator := context.allocator) -> bool // window: platform-specific window pointer. You may use platform.get_native_window_ptr(). Use nil for headless rendering.
 shutdown()
 begin_frame() -> (ok: bool) // return value of false means skip frame
 end_frame(sync: bool = true, loc := #caller_location)
-make_graphics_pipeline_desc(ps: Shader_Handle, vs: Shader_Handle, bind_layouts: [dynamic; MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle = {}, vertex_layouts: [dynamic; MAX_PIPELINE_VERTEX_LAYOUTS]Vertex_Layout_Desc, color_formats: [dynamic; MAX_BOUND_RENDER_TEXTURES]Texture_Format, blends: [dynamic; MAX_BOUND_RENDER_TEXTURES]Blend_Desc = {}, index_format: Index_Format = .Invalid, topo: Topology = .Triangles, cull: Cull_Mode = .None, fill: Fill_Mode = .Solid, depth_format: Texture_Format = .Invalid, depth_comparison: Comparison_Op = .Always, depth_write: bool = false, depth_bias: i32 = 0) -> (result: Graphics_Pipeline_Desc)
+make_graphics_pipeline_desc(ps: Shader_Handle, vs: Shader_Handle, color_formats: []Texture_Format, bind_layouts: []Bind_Layout_Handle = {}, vertex_layouts: []Vertex_Layout_Desc = {}, blends: []Blend_Desc = {}, index_format: Index_Format = .Invalid, raster: Raster_Desc = RASTER_DEFAULT, depth: Depth_Desc = DEPTH_NONE) -> (result: Graphics_Pipeline_Desc)
+make_graphics_pipeline_desc_from(base_desc: Graphics_Pipeline_Desc, ps: Maybe(Shader_Handle) = nil, vs: Maybe(Shader_Handle) = nil, color_formats: []Maybe(Texture_Format) = nil, bind_layouts: []Maybe(Bind_Layout_Handle) = nil, vertex_layouts: []Maybe(Vertex_Layout_Desc) = nil, blends: []Maybe(Blend_Desc) = nil, index_format: Maybe(Index_Format) = nil, raster: Maybe(Raster_Desc) = nil, depth: Maybe(Depth_Desc) = nil) -> (result: Graphics_Pipeline_Desc)
 make_compute_pipeline_desc(cs: Shader_Handle, layouts: [MAX_PIPELINE_BIND_GROUPS]Bind_Layout_Handle) -> (result: Compute_Pipeline_Desc)
 create_bind_layout(handle: ^Bind_Layout_Handle, desc: Bind_Layout_Desc, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool) // Creates a binding layout used for bind groups and pipelines.
 create_bind_group(handle: ^Bind_Group_Handle, desc: Bind_Group_Desc, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
 create_graphics_pipeline(handle: ^Graphics_Pipeline_Handle, desc: Graphics_Pipeline_Desc, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
 create_compute_pipeline(handle: ^Compute_Pipeline_Handle, desc: Compute_Pipeline_Desc, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
 create_shader(handle: ^Shader_Handle, data: []byte, kind: Shader_Kind, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
-create_constants(handle: ^Resource_Handle, item_size: i32, item_num: i32 = 1, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
+create_constants(handle: ^Resource_Handle, size: i32, num: i32 = 1, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
 make_texture_desc(format: Texture_Format, size: [3]i32, usage: Usage = .Default, #any_int mips: int = 1, flags: bit_set[Texture_Flag] = {}) -> (result: Texture_Desc)
 create_texture_2d(handle: ^Resource_Handle, desc: Texture_Desc, data: []byte = nil, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
 create_texture_3d(handle: ^Resource_Handle, desc: Texture_Desc, data: []byte = nil, name := #caller_expression(handle), loc := #caller_location) -> (ok: bool)
@@ -365,10 +369,10 @@ destroy_compute_pipeline(handle: Compute_Pipeline_Handle) -> bool
 scope_graphics_pass(name: string, desc: Graphics_Pass_Desc) -> bool
 begin_graphics_pass(name: string, desc: Graphics_Pass_Desc, loc := #caller_location)
 end_graphics_pass()
-set_bind_group(#any_int slot: int, handle: Bind_Group_Handle, offsets: []u32 = nil)
+set_bind_group(#any_int slot: int, handle: Bind_Group_Handle, constants_indices: []u32 = nil) // constants_indices: specify index of which constant to use, per each bound constant buffer.
 set_vertex_buffer(slot: int, handle: Resource_Handle, #any_int offset: int = 0)
 set_index_buffer(handle: Resource_Handle, format: Index_Format, #any_int offset: int = 0)
-set_graphics_pipeline(handle: Graphics_Pipeline_Handle)
+set_graphics_pipeline(handle: Graphics_Pipeline_Handle, loc := #caller_location)
 scope_compute_pass(name: string) -> bool
 begin_compute_pass(name: string, loc := #caller_location)
 end_compute_pass()
@@ -376,8 +380,8 @@ set_compute_pipeline(handle: Compute_Pipeline_Handle)
 update_constants(handle: Resource_Handle, data: []byte, loc := #caller_location)
 update_buffer(handle: Resource_Handle, offset := 0, buffers: ..[]byte, loc := #caller_location) -> bool // "buffers" can be multiple separate slices of CPU memory, written consecutively to the GPU memory.
 update_texture_2d(handle: Resource_Handle, data: []byte, #any_int slice: i32 = 0) -> bool
-draw_non_indexed(#any_int vertex_num: int, #any_int instance_num: int = 1, #any_int vertex_offset: int = 0, #any_int instance_offset: int = 0)
-draw_indexed(#any_int index_num: int, #any_int instance_num: int = 1, #any_int index_offset: int = 0, #any_int vertex_offset: int = 0, #any_int instance_offset: int = 0)
+draw_non_indexed(#any_int vertex_num: int, #any_int instance_num: int = 1, #any_int vertex_offset: int = 0, #any_int instance_offset: int = 0) // offsets are measured in elements, not bytes
+draw_indexed(#any_int index_num: int, #any_int instance_num: int = 1, #any_int index_offset: int = 0, #any_int vertex_offset: int = 0, #any_int instance_offset: int = 0) // offsets are measured in elements, not bytes
 dispatch_compute(size: [3]i32)
 copy_texture(dst_handle: Resource_Handle, src_handle: Resource_Handle) -> bool
 map_texture(handle: Resource_Handle) -> (: Mapped_Data, : bool)
@@ -401,15 +405,6 @@ get_vertex_format_size(format: Vertex_Format) -> int
 ### gpu_util.odin
 
 ```odin
-arena_create($T: typeid, kind: Buffer_Kind, #any_int size: i32, usage: Usage = .Default, loc := #caller_location, allocator := context.allocator) -> (result: Arena, ok: bool)
-arena_create_raw(kind: Buffer_Kind, #any_int stride: i32, #any_int size: i32, usage: Usage = .Default, loc := #caller_location, allocator := context.allocator) -> (result: Arena, ok: bool)
-arena_destroy(arena: ^Arena)
-arena_reset(arena: ^Arena)
-arena_alloc_bytes(arena: ^Arena, num_bytes: int) -> (: []byte, : bool) // NOTE: no alignment for now
-arena_push_val(arena: ^Arena, val: ^$T) -> bool
-arena_push_data(arena: ^Arena, data: []byte) -> bool // Write the data to the CPU-side staging buffer
-arena_submit(arena: ^Arena, loc := #caller_location) -> bool // Flush the CPU-side staging buffer to the GPU
-arena_allocator(arena: ^Arena) -> runtime.Allocator
 make_vertex_layout($T: typeid, mode: Vertex_Step_Mode, loc := #caller_location) -> (result: Vertex_Layout_Desc) // Make vertex layout from a struct type using RTTI.
 ```
 
@@ -419,6 +414,25 @@ make_vertex_layout($T: typeid, mode: Vertex_Step_Mode, loc := #caller_location) 
 
 ```odin
 CHECKVERSION() // Verify ABI compatibility between caller code and compiled version of Dear ImGui.
+```
+
+### imgui_wrapper.odin
+
+```odin
+window(name: cstring, p_open: ^bool = nil, flags: WindowFlags = {}) -> bool
+text(format: string, args: ..any)
+dump(val: any, name := #caller_expression(val))
+main_menu_bar() -> bool
+disabled(disabled := true) -> bool
+combo_enum(label: cstring, val: ^$T, flags: ComboFlags = {}) -> (change: bool)
+tooltip(format: string, args: ..any)
+tree(label: cstring, flags: TreeNodeFlags = {}) -> bool
+tree_str(id: cstring, str: cstring, flags: TreeNodeFlags = {}) -> bool
+popup(id: cstring, flags: WindowFlags = {}) -> bool
+id_int(#any_int x: i32)
+id_cstr(str: cstring)
+id_str(str: string)
+id_ptr(ptr: rawptr)
 ```
 
 ## imgui_impl_gpu
@@ -545,11 +559,20 @@ win32_set_message_hook_proc(message_hook: Win32_Message_Hook_Proc, data: rawptr 
 
 ```odin
 load :: proc{load_from_path, load_from_data}
-load_from_path(path: string, allocator := context.allocator) -> (scene: Scene, err: Error)
-load_from_data(data: []byte) -> (scene: Scene, err: Error)
-range_is_valid(data: []$T, range: [2]$Int) -> bool // Range is offset + len
-get_range_slice(data: []$T, range: [2]$Int) -> []T // Range is offset + len
-get_string(scene: Scene, range: [2]u32) -> string
+load_from_path(path: string, allocator := context.allocator) -> (result: Scene, err: Error)
+load_from_data(data: []byte) -> (result: Scene, err: Error)
+range_is_valid(data: []$T, range: $R/Range($I)) -> bool // Range is offset + len
+is_in_range(range: $R/Range($I), index: I) -> bool
+get_range_slice(data: []$T, range: $R/Range($I)) -> []T // Range is offset + len
+get_string(scn: Scene, range: String_Range) -> string
+get_bones(scn: Scene, range: Range(u32)) -> []Bone
+get_anims(scn: Scene, range: Range(u32)) -> []Anim
+get_mesh_verts(scn: Scene, range: Range(u32)) -> []Mesh_Vert
+get_skin_verts(scn: Scene, range: Range(u32)) -> []Skin_Vert
+get_spline_verts(scn: Scene, range: Range(u32)) -> []Spline_Vert
+get_indices(scn: Scene, range: Range(u32)) -> []u32
+get_anim_curves(scn: Scene, range: Range(u32)) -> []Anim_Curve
+get_anim_frames(scn: Scene, range: Range(u32)) -> []Anim_Frame
 ```
 
 ### scene_main.odin
@@ -561,7 +584,13 @@ main() // Dump util
 ### scene_string.odin
 
 ```odin
-to_string(scene: Scene, include_data := false, allocator := context.allocator) -> string
+to_string(scn: Scene, include_data := false, allocator := context.allocator) -> string
+```
+
+### scene_validation.odin
+
+```odin
+validate(scn: Scene) -> bool
 ```
 
 ## shaderc
@@ -573,8 +602,8 @@ init(state_ptr: ^State = nil, allocator := context.allocator) -> bool
 shutdown()
 get_target_file_ext(target: Target) -> string
 compile :: proc{compile_from_path, compile_from_source}
-compile_from_path(path: string, opts: Options = DEFAULT_OPTIONS, loc := #caller_location, allocator := context.allocator) -> (result: []byte, ok: bool)
-compile_from_source(name: string, source: string, opts: Options = DEFAULT_OPTIONS, loc := #caller_location, allocator := context.allocator) -> (result: []byte, ok: bool)
+compile_from_path(path: string, opts: Options = DEFAULT_OPTIONS, allocator := context.allocator, loc := #caller_location) -> (result: []byte, ok: bool)
+compile_from_source(name: string, source: string, opts: Options = DEFAULT_OPTIONS, allocator := context.allocator, loc := #caller_location) -> (result: []byte, ok: bool)
 file_system_include_proc(path: string, opts: Options) -> (: string, : bool)
 ```
 
