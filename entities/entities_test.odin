@@ -41,6 +41,10 @@ _test_basic :: proc(t: ^testing.T) {
     testing.expect(t, b_ptr.base != nil)
     testing.expect(t, b_ptr.variant.(^Foo).name == "Second")
 
+    b_var, b_var_ok := get_var(&ents, b, Foo)
+    testing.expect(t, b_var_ok)
+    testing.expect(t, b_var.name == "Second")
+
     testing.expect(t, a != b)
 }
 

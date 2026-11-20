@@ -245,6 +245,7 @@ _create_empty :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), variant_ind
     return result, index, true
 }
 
+// Immediately destroys an entity. Returns false if doesn't exist.
 destroy :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -> bool  {
     buf := get_buffer(ents, handle.variant) or_return
     base := get_entity_base(ents^, buf^, handle) or_return
@@ -263,6 +264,7 @@ destroy :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -
     return true
 }
 
+// Looks up a generic entity using a handle handle. Returns nil if the entity doesn't exist.
 @(require_results)
 get :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -> (result: Entity_Ptr(Val_Union), ok: bool) #optional_ok {
     Raw_Pointer_Union :: struct {
@@ -285,8 +287,21 @@ get :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle) -> (r
     return result, true
 }
 
+// Utility for looking up an entity of a specific variant using a handle. Returns nil if the entity is a different variant or doesn't exist.
 @(require_results)
-get_sub :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $Sub: typeid) -> (result: ^Sub, ok: bool) where UNION_HAS(Sub_Union, Sub) #optional_ok {
+get_var :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $Var: typeid) -> (result: ^Var, ok: bool)
+    where UNION_HAS(Val_Union, Var) #optional_ok
+{
+    ent := get(ents, handle) or_return
+    var := ent.variant.(^Var) or_return
+    return var, true
+}
+
+// Looks up an entity sub-component using a handle. Returns nil if the entity doesn't have the component or doesn't exist.
+@(require_results)
+get_sub :: proc(ents: ^$Ents/Entities($Val_Union, $Sub_Union), handle: Handle, $Sub: typeid) -> (result: ^Sub, ok: bool)
+    where UNION_HAS(Sub_Union, Sub) #optional_ok
+{
     buf := get_buffer(ents, handle.variant) or_return
     offset := ents.offsets[UNION_INDEX(Sub_Union, Sub)][handle.variant]
     if offset == -1 {
