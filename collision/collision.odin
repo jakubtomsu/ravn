@@ -160,19 +160,13 @@ init :: proc(state: ^State = nil, allocator := context.allocator) {
     base.pool_clear(&_state.meshes)
 
     for &step in _state.step_data {
-        bvh.init(&step.tlas,
-            prims = nil,
-            nodes = runtime.make_aligned([]bvh.Node, bvh.max_nodes_for_prims(MAX_SHAPES), 64, allocator),
-            indices = make([]u32, MAX_SHAPES, allocator),
-            max_leaf_prims = 1,
-        )
+        bvh.init(&step.tlas, max_prims = MAX_SHAPES, max_leaf_prims = 1, allocator = _state.allocator)
     }
 }
 
 shutdown :: proc() {
-    for step in _state.step_data {
-        delete(step.tlas.nodes, _state.allocator)
-        delete(step.tlas.indices, _state.allocator)
+    for &step in _state.step_data {
+        bvh.destroy(&step.tlas)
     }
 
     for arena in _state.arenas.data {
@@ -216,7 +210,6 @@ begin_step :: proc(delta: f32) {
 
     clear(&step.shapes)
     step.tlas.nodes_used = 0
-    step.tlas.prims = nil
 
 }
 
@@ -229,17 +222,16 @@ end_step :: proc() {
     _state.step_read = _state.step_write
     step := &_state.step_data[_state.step_read]
 
-    prims := make([][2][3]f32, len(step.shapes), context.temp_allocator)
+    prims := make([]bvh.Primitive, len(step.shapes), context.temp_allocator)
     for shape, i in step.shapes {
         bb_min, bb_max := get_shape_aabb(shape)
-        prims[i] = {bb_min - BVH_EPS, bb_max + BVH_EPS}
+        prims[i] = {
+            min = bb_min - BVH_EPS,
+            max = bb_max + BVH_EPS,
+        }
     }
 
-    bvh.init_prims(&step.tlas, prims)
-
-    bvh.build_mid(&step.tlas)
-
-    step.tlas.prims = nil
+    bvh.build_binned(&step.tlas, prims, num_bins = 4)
 }
 
 
@@ -378,8 +370,7 @@ create_mesh :: proc(
 
     allocator := arena_allocator(arena_handle)
 
-    tri_bbs := make([][2][3]f32, len(triangles), context.temp_allocator)
-
+    tri_prims := make([]bvh.Primitive, len(triangles), context.temp_allocator)
     for tri, tri_index in triangles {
         v := [3][3]f32{
             verts[tri[0]],
@@ -387,9 +378,9 @@ create_mesh :: proc(
             verts[tri[2]],
         }
 
-        tri_bbs[tri_index] = {
-            bvh.vec_min(v[0], bvh.vec_min(v[1], v[2])) - BVH_EPS,
-            bvh.vec_max(v[0], bvh.vec_max(v[1], v[2])) + BVH_EPS,
+        tri_prims[tri_index] = {
+            min = bvh.vec_min(v[0], bvh.vec_min(v[1], v[2])) - BVH_EPS,
+            max = bvh.vec_max(v[0], bvh.vec_max(v[1], v[2])) + BVH_EPS,
         }
     }
 
@@ -403,14 +394,8 @@ create_mesh :: proc(
         triangles = triangles,
     }
 
-    bvh.init(&mesh.blas,
-        prims = tri_bbs,
-        nodes = runtime.make_aligned([]bvh.Node, bvh.max_nodes_for_prims(len(triangles)), 64, allocator),
-        indices = make([]u32, len(triangles), allocator),
-        max_leaf_prims = 4,
-    )
-
-    bvh.build_binned(&mesh.blas, num_bins = bvh.MAX_BINS)
+    bvh.init(&mesh.blas, max_prims = len(tri_prims), max_leaf_prims = 4, allocator = allocator)
+    bvh.build_binned(&mesh.blas, tri_prims, num_bins = bvh.MAX_BINS)
 
     for vert in verts {
         mesh.bounds_min = linalg.min(mesh.bounds_min, vert)
