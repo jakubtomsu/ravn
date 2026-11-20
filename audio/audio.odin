@@ -1,6 +1,7 @@
 #+vet explicit-allocators shadowing
 package ravn_audio
 
+import "core:flags"
 import "core:log"
 import "base:intrinsics"
 import "base:runtime"
@@ -38,14 +39,9 @@ NUM_GROUPS :: 8
 SCRATCH_FRAMES :: 1024 * 8
 SPEED_OF_SOUND :: 343 // m/s, dry air at around 20C
 
-Handle_Index :: u16
-Handle_Gen :: u8
-
-Handle :: base.Handle
-
-Resource_Handle :: distinct Handle
-Sound_Handle :: distinct Handle
-QOA_Stream_Handle :: distinct Handle
+Resource_Handle :: distinct base.Handle
+Sound_Handle :: distinct base.Handle
+QOA_Stream_Handle :: distinct base.Handle
 
 _state: ^State
 
@@ -61,14 +57,14 @@ State :: struct #align(4096) {
     listener_curr:      Listener,
     listener_prev:      Listener, // Audio thread access only
 
-    resources_free:     base.SPSC(MAX_RESOURCES, Handle_Index),
+    resources_free:     base.SPSC(MAX_RESOURCES, base.Handle_Index),
     resources_state:    [MAX_RESOURCES]Slot_State,
-    resources_gen:      [MAX_RESOURCES]Handle_Gen,
+    resources_gen:      [MAX_RESOURCES]base.Handle_Gen,
     resources:          [MAX_RESOURCES]Resource,
 
-    sounds_free:        base.SPSC(MAX_SOUNDS, Handle_Index),
+    sounds_free:        base.SPSC(MAX_SOUNDS, base.Handle_Index),
     sounds_state:       [MAX_SOUNDS]Slot_State,
-    sounds_gen:         [MAX_SOUNDS]Handle_Gen,
+    sounds_gen:         [MAX_SOUNDS]base.Handle_Gen,
     sounds:             [MAX_SOUNDS]Sound,
 
     qoa_streams:        base.Static_Pool(MAX_QOA_STREAMS, QOA_Stream, QOA_Stream_Handle),
@@ -249,11 +245,11 @@ get_state_ptr :: proc() -> (state: ^State) {
 
 init :: proc(state: ^State = nil, allocator := context.allocator) -> bool {
     state := state
-    
+
     if _state != nil {
         return true
     }
-    
+
     if state == nil {
         state = new(State, allocator)
         state.state_allocator = allocator
@@ -265,11 +261,11 @@ init :: proc(state: ^State = nil, allocator := context.allocator) -> bool {
     _state.running = true
 
     for i in 1..<MAX_SOUNDS {
-        base.spsc_push(&_state.sounds_free, Handle_Index(i))
+        base.spsc_push(&_state.sounds_free, base.Handle_Index(i))
     }
 
     for i in 1..<MAX_RESOURCES {
-        base.spsc_push(&_state.resources_free, Handle_Index(i))
+        base.spsc_push(&_state.resources_free, base.Handle_Index(i))
     }
 
     base.pool_clear(&_state.qoa_streams)
@@ -481,13 +477,14 @@ create_sound :: proc(
     playing                 := true,
     chop:                   [2]f32 = {0, 1},
     start_delay:            f32 = 0,
-    pos:                    [3]f32 = 0,
+    pos:                    Maybe([3]f32) = nil,
     vel:                    [3]f32 = 0,
     #any_int group_index:   int = 0,
     loc                     := #caller_location,
 ) -> (result: Sound_Handle, ok: bool) #optional_ok {
     pitch := pitch
     source := source
+    flags := flags
 
     assert(group_index >= 0)
     assert(group_index < NUM_GROUPS)
@@ -547,6 +544,11 @@ create_sound :: proc(
 
     inv_expected_dur := 1.0 / expected_dur
 
+    pos_val, pos_ok := pos.?
+    if pos_ok {
+        flags += {.Spatial}
+    }
+
     sound := &_state.sounds[index]
     sound^ = {
         group_index = u8(group_index),
@@ -568,8 +570,8 @@ create_sound :: proc(
             .Lowpass           = _param_lerp(lowpass, inv_expected_dur),
             .Highpass          = _param_lerp(highpass, inv_expected_dur),
         },
-        pos_curr = pos,
-        pos_prev = pos,
+        pos_curr = pos_val,
+        pos_prev = pos_val,
         vel_curr = vel,
         vel_prev = vel,
         qoa_stream = qoa_stream,
@@ -1092,7 +1094,7 @@ default_master_mixer :: proc(out_buf: [][2]f32, frame_rate: int) {
         _ = base.pool_remove(&_state.qoa_streams, _state.sounds[sound_index].qoa_stream)
         _state.sounds_gen[sound_index] += 1
         intrinsics.atomic_store(&_state.sounds_state[sound_index], .Free)
-        base.spsc_push(&_state.sounds_free, Handle_Index(sound_index))
+        base.spsc_push(&_state.sounds_free, base.Handle_Index(sound_index))
     }
 }
 
