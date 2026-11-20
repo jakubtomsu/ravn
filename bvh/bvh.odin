@@ -11,18 +11,16 @@ MAX_BINS :: 32
 
 BVH :: struct #all_or_none {
     nodes:          []Node,
+    indices:        []u32, // prim index -> original prim index
     nodes_used:     i32,
     max_leaf_prims: i32,
     allocator:      runtime.Allocator,
 }
 
-// AABB Primitive.
-// The primitive buffer may be reordered during build. For this reason the user can write
-// any value into the 'id' member to have a way to index back into the source data.
+// AABB
 Primitive :: struct {
     min:    [3]f32,
     max:    [3]f32,
-    id:     u32,
 }
 
 // AABB BVH 2-way node.
@@ -45,15 +43,26 @@ Node_SIMD4 :: struct #align(32) {
 
 init :: proc(bvh: ^BVH, #any_int max_prims: int, #any_int max_leaf_prims := 3, allocator := context.allocator) {
     assert(max_leaf_prims > 0)
+    assert(bvh.allocator == {}, "Already initialized")
 
     max_nodes := max_nodes_for_prims(max_prims)
 
     bvh^ = {
         nodes = make([]Node, max_nodes, allocator),
+        indices = make([]u32, max_prims, allocator),
         nodes_used = 0,
         max_leaf_prims = i32(max_leaf_prims),
         allocator = allocator,
     }
+}
+
+destroy :: proc(bvh: ^BVH) {
+    assert(bvh.allocator != {}, "Not initialized")
+
+    delete(bvh.nodes, bvh.allocator)
+    delete(bvh.indices, bvh.allocator)
+
+    bvh^ = {}
 }
 
 
@@ -72,7 +81,7 @@ build :: build_binned
 // Not actual BVH, contains a single huge node with all prims.
 build_none :: proc(bvh: ^BVH, prims: []Primitive) {
     _build_init(bvh, prims)
-    _update_node_bounds(bvh, &bvh.nodes[0], prims)
+    _update_node_bounds(&bvh.nodes[0], prims)
 }
 
 // Very fast but the result isn't a high-quality tree.
@@ -104,8 +113,14 @@ build_binned :: proc(bvh: ^BVH, prims: []Primitive, num_bins := 8) #no_bounds_ch
 
 // Re-initializes the primitive buffer only and clears the existing nodes.
 _build_init :: proc(bvh: ^BVH, prims: []Primitive) {
+    assert(bvh.allocator != {}, "Not initialized")
     assert(len(prims) > 0)
+    assert(len(bvh.indices) >= len(prims))
     assert(len(bvh.nodes) >= max_nodes_for_prims(len(prims)))
+
+    for &index, i in bvh.indices[:len(prims)] {
+        index = u32(i)
+    }
 
     // 1 for the root, another unused one to fill the first cache line
     bvh.nodes_used = 2
@@ -123,7 +138,7 @@ _build_midpoint_recursive :: proc(bvh: ^BVH, prims: []Primitive, curr_index: int
 
     for {
         node := &bvh.nodes[curr_index]
-        mid_min, mid_max := _update_node_bounds_with_mid_bounds(bvh, node, prims)
+        mid_min, mid_max := _update_node_bounds_with_mid_bounds(node, prims)
 
         if int(node.len) <= int(bvh.max_leaf_prims) {
             return
@@ -154,7 +169,7 @@ _build_mean_sah_recursive :: proc(bvh: ^BVH, prims: []Primitive, curr_index: int
 
     for {
         node := &bvh.nodes[curr_index]
-        mean := _update_node_bounds_with_mean(bvh, node, prims)
+        mean := _update_node_bounds_with_mean(node, prims)
 
         if int(node.len) <= int(bvh.max_leaf_prims) {
             return
@@ -227,7 +242,7 @@ _build_sah_recursive :: proc(bvh: ^BVH, prims: []Primitive, curr_index: int) #no
 
     for {
         node := &bvh.nodes[curr_index]
-        _update_node_bounds(bvh, node, prims)
+        _update_node_bounds(node, prims)
 
         if int(node.len) <= int(bvh.max_leaf_prims) {
             return
@@ -307,7 +322,7 @@ _build_binned_recursive :: proc(bvh: ^BVH, prims: []Primitive, num_bins: int, cu
 
     for {
         node := &bvh.nodes[curr_index]
-        mid_min, mid_max := _update_node_bounds_with_mid_bounds(bvh, node, prims)
+        mid_min, mid_max := _update_node_bounds_with_mid_bounds(node, prims)
 
         if int(node.len) <= int(bvh.max_leaf_prims) {
             return
@@ -561,6 +576,7 @@ _split_leaf :: proc(bvh: ^BVH, node: ^Node, prims: []Primitive, axis: int, split
             i += 1
         } else {
             prims[i], prims[j] = prims[j], prims[i]
+            bvh.indices[i], bvh.indices[j] = bvh.indices[j], bvh.indices[i]
             j -= 1
         }
     }
@@ -586,7 +602,7 @@ _split_leaf :: proc(bvh: ^BVH, node: ^Node, prims: []Primitive, axis: int, split
     return true
 }
 
-_update_node_bounds :: proc(bvh: ^BVH, node: ^Node, prims: []Primitive) #no_bounds_check {
+_update_node_bounds :: proc(node: ^Node, prims: []Primitive) #no_bounds_check {
     node.min = max(f32)
     node.max = min(f32)
     for i in 0..<int(node.len) {
@@ -597,7 +613,7 @@ _update_node_bounds :: proc(bvh: ^BVH, node: ^Node, prims: []Primitive) #no_boun
 }
 
 @(require_results)
-_update_node_bounds_with_mid_bounds :: proc(bvh: ^BVH, node: ^Node, prims: []Primitive) -> (mid_min, mid_max: [3]f32) #no_bounds_check {
+_update_node_bounds_with_mid_bounds :: proc(node: ^Node, prims: []Primitive) -> (mid_min, mid_max: [3]f32) #no_bounds_check {
     node.min = max(f32)
     node.max = min(f32)
     mid_min = max(f32)
@@ -618,7 +634,7 @@ _update_node_bounds_with_mid_bounds :: proc(bvh: ^BVH, node: ^Node, prims: []Pri
 }
 
 @(require_results)
-_update_node_bounds_with_mean :: proc(bvh: ^BVH, node: ^Node, prims: []Primitive) -> (mean: [3]f32) #no_bounds_check {
+_update_node_bounds_with_mean :: proc(node: ^Node, prims: []Primitive) -> (mean: [3]f32) #no_bounds_check {
     node.min = max(f32)
     node.max = min(f32)
 
