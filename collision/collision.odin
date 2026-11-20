@@ -434,13 +434,13 @@ destroy_mesh :: proc(handle: Mesh_Handle) -> bool {
 
 to_id :: proc(val: $T) -> (result: u64) where size_of(T) <= size_of(u64) {
     val := val
-    intrinsics.mem_copy_non_overlapping(&result, val, size_of(T))
+    intrinsics.mem_copy_non_overlapping(&result, &val, size_of(T))
     return result
 }
 
 from_id :: proc($T: typeid, id: u64) -> (result: T) where size_of(T) <= size_of(u64) {
     id := id
-    intrinsics.mem_copy_non_overlapping(&result, id, size_of(T))
+    intrinsics.mem_copy_non_overlapping(&result, &id, size_of(T))
     return result
 }
 
