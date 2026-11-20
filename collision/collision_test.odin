@@ -93,6 +93,7 @@ _test_brute_force_parity :: proc(t: ^testing.T) {
 			if bvh_test_ok {
 				if bvh_test.shape == brute_test.shape {
 					testing.expect_value(t, bvh_test.prim, brute_test.prim)
+					testing.expect_value(t, bvh_test.id, brute_test.id)
 				} else if s, s_ok := get_shape(bvh_test.shape); s_ok {
 					_, hit := test_sphere_vs_shape(pos, rad, s)
 					testing.expect(t, hit)

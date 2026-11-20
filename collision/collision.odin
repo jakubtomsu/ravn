@@ -114,6 +114,7 @@ Sweep :: struct {
     t:          f32,
     shape:      i32,
     prim:       i32,
+    id:         u64,
 
     end:        [3]f32, // Hit point
     normal:     [3]f32,
@@ -127,6 +128,7 @@ Test :: struct {
 
     shape:  i32,
     prim:   i32,
+    id:     u64,
 }
 
 // Overlap query result
@@ -430,6 +432,17 @@ destroy_mesh :: proc(handle: Mesh_Handle) -> bool {
 // MARK: Collider submission
 //
 
+to_id :: proc(val: $T) -> (result: u64) where size_of(T) <= size_of(u64) {
+    val := val
+    intrinsics.mem_copy_non_overlapping(&result, val, size_of(T))
+    return result
+}
+
+from_id :: proc($T: typeid, id: u64) -> (result: T) where size_of(T) <= size_of(u64) {
+    id := id
+    intrinsics.mem_copy_non_overlapping(&result, id, size_of(T))
+    return result
+}
 
 add_sphere_shape :: proc(
     pos:            [3]f32,
@@ -685,6 +698,7 @@ make_sweep :: proc(pos: [3]f32, move: [3]f32, rad: f32 = 0, range: f32 = 1) -> S
         t = range,
         shape = -1,
         prim = -1,
+        id = max(u64),
         end = pos + move * range,
         normal = {0, 0, 0},
     }
@@ -716,6 +730,7 @@ sweep_point :: proc(
             result.t, result.prim = sweep_point_vs_shape(pos, move, shape, result.t) or_continue
             assert(base.is_finite_f32(result.t))
             result.shape = i32(index)
+            result.id = shape.id
             ok = true
         }
     } else {
@@ -730,6 +745,7 @@ sweep_point :: proc(
 
                     result.t, result.prim = sweep_point_vs_shape(pos, move, shape, result.t) or_continue
                     result.shape = i32(index)
+                    result.id = shape.id
                     ok = true
                 }
 
@@ -780,6 +796,7 @@ sweep_sphere :: proc(
             result.t, result.prim = sweep_sphere_vs_shape(pos, move, rad, shape, result.t) or_continue
             assert(base.is_finite_f32(result.t))
             result.shape = i32(index)
+            result.id = shape.id
             ok = true
         }
     } else {
@@ -795,6 +812,7 @@ sweep_sphere :: proc(
                     result.t, result.prim = sweep_sphere_vs_shape(pos, move, rad, shape, result.t) or_continue
                     assert(base.is_finite_f32(result.t))
                     result.shape = i32(index)
+                    result.id = shape.id
                     ok = true
                 }
 
@@ -861,6 +879,7 @@ test_sphere :: proc(
             if overlaps {
                 result.shape = i32(index)
                 result.prim = prim
+                result.id = shape.id
                 return result, true
             }
         }
@@ -878,6 +897,7 @@ test_sphere :: proc(
                     if overlaps {
                         result.shape = i32(index)
                         result.prim = prim
+                        result.id = shape.id
                         return result, true
                     }
                 }
