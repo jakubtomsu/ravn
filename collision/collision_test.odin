@@ -9,6 +9,13 @@ import "core:slice"
 import "core:testing"
 
 @(test)
+_test_ids :: proc(t: ^testing.T) {
+	h0 := Handle{index = 123, gen = 32}
+	h1 := from_id(Handle, to_id(h0))
+	testing.expect(t, h0 == h1)
+}
+
+@(test)
 _test_brute_force_parity :: proc(t: ^testing.T) {
 	rng := rand.create(t.seed)
 	context.random_generator = rand.default_random_generator(&rng)
