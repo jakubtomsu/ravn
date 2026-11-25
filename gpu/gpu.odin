@@ -1018,7 +1018,7 @@ create_texture_2d :: proc(
     loc                 := #caller_location,
 ) -> (ok: bool) {
     assert(_state != nil)
-    log.debugf("Creating 2D texture: %s", name)
+    log.debugf("Creating 2D %v texture %q with size %v", desc.format, name, desc.size)
     id := base.create_debug_id(name, loc)
 
     base.assert_id(id, desc.format != .Invalid)
