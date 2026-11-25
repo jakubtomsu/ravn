@@ -1638,7 +1638,7 @@ volume_db_to_linear :: proc(gain: f32) -> f32 {
 
 // Returns frequency in Hz for a given midi note.
 // Zero is A0
-note :: proc(#any_int midi_n: i32) -> f32 {
-    return 440 * math.pow_f32(2, f32(midi_n - 69) * (1.0 / 12.0))
+note :: proc(midi_n: f32) -> f32 {
+    return 440 * math.pow_f32(2, midi_n * (1.0 / 12.0))
 }
 
