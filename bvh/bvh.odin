@@ -565,6 +565,28 @@ calc_height :: proc(bvh: BVH, index := 0) -> int {
 }
 
 @(require_results)
+calc_leaf_depths :: proc(bvh: BVH, index := 0) -> (min_depth, max_depth: int, avg_depth: f32) {
+    if bvh.nodes_used == 0 {
+        return 0, 0, 0
+    }
+
+    min_d, max_d, sum_d, count := _traverse(bvh.nodes, index, 0)
+    return min_d, max_d, f32(sum_d) / f32(count)
+
+    _traverse :: proc(nodes: []Node, idx, depth: int) -> (min_d, max_d, sum_d, count: int) {
+        node := nodes[idx]
+        if node.len != 0 {
+            return depth, depth, depth, 1
+        }
+
+        l_min, l_max, l_sum, l_cnt := _traverse(nodes, int(node.first) + 0, depth + 1)
+        r_min, r_max, r_sum, r_cnt := _traverse(nodes, int(node.first) + 1, depth + 1)
+
+        return min(l_min, r_min), max(l_max, r_max), l_sum + r_sum, l_cnt + r_cnt
+    }
+}
+
+@(require_results)
 _split_leaf :: proc(bvh: ^BVH, node: ^Node, prims: []Primitive, axis: int, split_pos: f32) -> bool #no_bounds_check {
     // In-place partition
     i := int(node.first)
